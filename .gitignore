@@ -1,0 +1,116 @@
+# Python specific ignores
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# Jupyter Notebook
+**/*.ipynb_checkpoints/
+
+# Matplotlib
+figures/*.png
+figures/*.pdf
+figures/*.svg
+figures/*.eps
+
+# MATLAB specific ignores
+*.mex*
+*.mexw*
+*.mexm*
+*.mexa*
+*.mexs*
+*.mexp*
+*.asv
+*.autosave
+*.slx
+*.mdl
+*.slxc
+*.slxp
+*.mlappinstall
+*.mlapp
+*.mlpkginstall
+*.mlproj
+*.mldatx
+*.mlexport
+*.mltbx
+*.mlapp
+*.mltbxproj
+*.mlproj
+*.mexw32
+*.mexw64
+
+# MATLAB session-specific files
+.matlab
+*.asv
+*.autosave
+
+# MATLAB binary files
+*.p
+*.ctf
+
+# MATLAB workspace files
+*.mat
+*.fig
+
+# MATLAB codegen files
+codegen/
+
+# General OS-specific ignores
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*.tmp
+*.temp
+*.swp
+
+# Logs and databases
+*.log
+*.sqlite
+
+# Compiled source files
+*.out
+*.class
+*.o
+*.obj
+
+# Distribution / packaging
+.Python
+*.dist-info/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Unit test / coverage reports
+.coverage
+.tox/
+.nox/
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.code-workspace
+*.sublime-project
+*.sublime-workspace
+
