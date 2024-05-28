@@ -1,7 +1,7 @@
 function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = rosenbrock_problem(plot_bool)
     
-    n_features = 2;
-    n_targets = 1;
+    n_features = ['x0', 'x1'];
+    n_targets = ['y'];
     % Define the objective function (Rosenbrock function)
 
     fun_name = "rosenbruck"

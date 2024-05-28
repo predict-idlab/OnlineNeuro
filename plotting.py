@@ -134,7 +134,8 @@ def plot_circle(model, train_data, search_space=None, eval_points=None,
     plt.close()
 
 def plot_surface(model, train_data, search_space=None, eval_points=None,
-                sampled_data=None, ground_truth=None, init_fun=None, feasible_region=None, save_dir=None,
+                sampled_data=None, ground_truth=None, init_fun=None,
+                 feasible_region=None, save_dir=None,
                  count=0):
 
     if ground_truth:
@@ -196,19 +197,27 @@ def update_plot(bo,
     # TODO implement and improve current_plotting functions
     # TODO os.makedirs if save_dir is not None can be run at the beginning here
     if save_dir is None:
-        save_dir = "figures"
+        save_dir = "figures/default"
+    else:
+        save_dir = f"figures/{bo._observer}"
+
     os.makedirs(save_dir, exist_ok=True)
     if bo._observer == 'log_reg':
         plot_model(model=bo._models[OBJECTIVE],  search_space=bo._search_space,
                    train_data=train_data, eval_points=eval_points,
                    sampled_data=sampled_data, ground_truth=ground_truth,
-                   init_fun=init_fun,save_dir=save_dir,count=count)
+                   init_fun=init_fun, save_dir=save_dir, count=count)
     elif bo._observer == 'circle':
         plot_circle(model=bo._models[OBJECTIVE],  search_space=bo._search_space,
                    train_data=train_data, eval_points=eval_points,
                    sampled_data=sampled_data, ground_truth=ground_truth,
                    init_fun=init_fun, save_dir=save_dir, count=count)
     elif bo._observer == 'rosenbruck':
+        plot_surface(model=bo._models[OBJECTIVE], search_space=bo._search_space,
+                   train_data=train_data, eval_points=eval_points,
+                   sampled_data=sampled_data, ground_truth=ground_truth,
+                   init_fun=init_fun, save_dir=save_dir, count=count)
+    elif bo._observer == 'AxonSim':
         plot_surface(model=bo._models[OBJECTIVE], search_space=bo._search_space,
                    train_data=train_data, eval_points=eval_points,
                    sampled_data=sampled_data, ground_truth=ground_truth,

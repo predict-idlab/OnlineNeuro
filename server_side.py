@@ -16,7 +16,9 @@ import trieste
 from trieste.data import Dataset
 from bayessian_optimizer import BayesianOptimizer
 from trieste.acquisition.rule import EfficientGlobalOptimization
-from trieste.acquisition.function import BayesianActiveLearningByDisagreement, ExpectedFeasibility, NegativePredictiveMean, PredictiveVariance
+from trieste.acquisition.function import BayesianActiveLearningByDisagreement, \
+    ExpectedFeasibility, NegativePredictiveMean, IntegratedVarianceReduction, \
+    PredictiveVariance
 # https://github.com/secondmind-labs/trieste/blob/c6a039aa9ecf413c7bcb400ff565cd283c5a16f5/trieste/acquisition/function/__init__.py
 from online_learning import build_model
 
@@ -86,11 +88,11 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     server_socket.listen(1)
     print("Waiting for a connection...")
 
-    # Start Matlab process via engine and threading
-    if matlab_call:
-        # If threading, Python launches the Matlab main, else, main needs to be manually launched
-        t = threading.Thread(target=run_matlab_main, kwargs={"matlab_initiate":False})
-        t.start()
+    #Start Matlab process via engine and threading
+    # if matlab_call:
+    #     # If threading, Python launches the Matlab main, else, main needs to be manually launched
+    #     t = threading.Thread(target=run_matlab_main, kwargs={"matlab_initiate": False})
+    #     t.start()
 
     # Accept a connection
     client_socket, client_address = server_socket.accept()
@@ -177,13 +179,15 @@ def main(matlab_call=False, *args, **kwargs) -> None:
 
     if config['experiment']['classification']:
         acq = BayesianActiveLearningByDisagreement()
+        print("using Classification BALD")
     else:
         #Sampl close to a given threshold
         #acq = ExpectedFeasibility(threshold=-0.5)
-        #Similar to Maximizing a function
+        #Equivalent to Maximizing a function
         #acq = NegativePredictiveMean()
         #Minimize global variance
-        acq = PredictiveVariance()
+        #acq = PredictiveVariance()
+        acq = IntegratedVarianceReduction()
 
     rule = EfficientGlobalOptimization(acq,
                                        num_query_points=num_query_points
@@ -202,9 +206,6 @@ def main(matlab_call=False, *args, **kwargs) -> None:
                                  fit_initial_model=True,
                                  fit_model=True)
 
-    print(init_dataset.query_points)
-    print(init_dataset.observations)
-
     if qp is None:
         terminate_flag = True
         warnings.warn("Terminated before optimization started \n no query points were retrieved")
@@ -218,7 +219,7 @@ def main(matlab_call=False, *args, **kwargs) -> None:
         # TODO write better functions that help store images sepparetly according to the experiment (so that restarting
         # or changing the problem to be solved is saved in seaparate folders under ./figures
 
-        #count += 1
+        count += 1
 
         # Check if termination signal received from MATLAB
         # Respond back
@@ -243,7 +244,7 @@ def main(matlab_call=False, *args, **kwargs) -> None:
                         train_data=(plot_data.query_points[:init_data_size],
                                     plot_data.observations[:init_data_size]),
                         sampled_data=(plot_data.query_points[init_data_size:],
-                                    plot_data.observations[init_data_size:]),
+                                      plot_data.observations[init_data_size:]),
                         ground_truth=None,
                         init_fun=None,
                         count=count

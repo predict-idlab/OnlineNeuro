@@ -1,0 +1,140 @@
+{
+    "e_pos":
+      { "optimizable": true,
+        "default":[-4, 1, 4, 1],
+        "type": "array",
+        "max_dimensions": 4,
+        "min_dimensions": 2,
+        "min_value": -10,
+        "max_value": 10,
+        "_comment": "also in FEM we use minimal inter-electrode distance of 0.5mm = difference > 0.5mm"
+    },
+    "c" :
+      { "optimizable": false,
+        "default":0,
+        "type": "float",
+        "min_value": -1,
+        "max_value": 1,
+        "_comment": "null"
+    },
+    "phi":
+      { "optimizable": false,
+        "default":35,
+        "type": "float",
+        "min_value": 30,
+        "max_value": 50,
+        "_comment": "Define min and max value"
+    },
+    "dia":
+      { "optimizable": false,
+        "default":10,
+        "type": "float",
+        "min_value": 1,
+        "max_value": 20,
+        "_comment": "Define min and max value"
+    },
+    "sim_dur":
+        { "optimizable": false,
+        "default":5,
+        "type": "float",
+        "min_value": 5,
+        "max_value": 20,
+        "_comment": "Define min and max value"
+    },
+    "pulse_dur":
+        { "optimizable": true,
+        "default":[0.1, 0.1],
+        "type": "array",
+        "max_dimensions": 2,
+        "min_dimensions": 1,
+        "min_value": 0,
+        "max_value": 1,
+        "_comment": "Define min and max value. Dimension needs to match fun_type and custom_fun"
+    },
+    "frq" :
+        { "optimizable": true,
+        "default":1,
+        "type": "float",
+        "min_value": 0.05,
+        "max_value": 2,
+        "_comment": "Define min and max value."
+    },
+    "e_sep" :
+        { "optimizable": true,
+        "default":[0.5, 0.5],
+        "type": "array",
+        "max_dimensions": 2,
+        "min_dimensions": 1,
+        "min_value": 0.25,
+        "max_value": 1,
+        "_comment": "Define min and max value. This needs to match electrode type (double or triple), not relevant for single electrodes"
+    },
+    "e_type":
+          { "optimizable": false,
+        "default":["single", "single"],
+        "type": "array_string",
+        "max_dimensions": 2,
+        "min_dimensions": 1,
+        "valid_values": ["single","double","triple","intracellular"],
+        "_comment": "Define min and max value dimensions. TODO HERE"
+    },
+    "accuracy" :
+        { "optimizable": false,
+        "default":0.01,
+        "type": "float",
+        "min_value": 0.005,
+        "max_value": 0.02,
+        "_comment": "Define min and max value."
+    },
+    "length" :
+        { "optimizable": false,
+        "default":20000,
+        "type": "float",
+        "min_value": 10000,
+        "max_value": 40000,
+        "_comment": "Define min and max value."
+    },
+    "calc_thr" :
+        { "optimizable": false,
+        "default":0,
+        "type": "float",
+        "min_value": 0,
+        "max_value": 0,
+        "_comment": "What is its meaning? Code states it should be zero. I think is the trigger button."
+    },
+    "fun_type" :
+        { "optimizable": false,
+        "default":["single pulse", "single pulse"],
+        "type": "array_string",
+        "max_dimensions": 2,
+        "min_dimensions": 1,
+        "valid_values": ["custom","single_pulse","double pulse"],
+        "_comment": "Define min and max value dimensions. TODO HERE"
+    },
+    "model_type" :
+          { "optimizable": false,
+        "default":"MRG",
+        "type": "string",
+        "valid_values": ["MRG","CRRSS","McNeal"],
+        "_comment": "Only use MRG"
+    },
+    "custom_fun" :
+        { "optimizable": true,
+        "default":["stim_sin(t, 20000, 1)", "stim_sin(t, 2000, 1)"],
+        "type": "array_string",
+        "max_dimensions": 2,
+        "min_dimensions": 1,
+        "valid_values": ["any valid Matlab function"],
+        "_comment": "This could be optimizable at a later stage. TODO Needs code to evaluate if fun is valid. \n should only be square waveform for the anodal blocking technique we are now applying"
+    },
+    "I" :
+        { "optimizable": true,
+        "default":[-1, -1],
+        "type": "array",
+        "max_dimensions": 2,
+        "min_dimensions": 1,
+        "min_value": -2,
+        "max_value": 2,
+        "_comment": "Define min and max value. This needs to match electrode type (double or triple)"
+    }
+}

@@ -1,0 +1,85 @@
+{
+  "pulse_dur":
+      { "optimizable": true,
+      "value":0.1,
+      "min_value": 0.25,
+      "max_value": 2,
+      "type": "array"
+    },
+  "frq":
+      { "optimizable": true,
+      "value":1,
+      "min_value": 0,
+      "max_value": 100,
+      "type": "float"
+    },
+  "e_pos":
+      { "optimizable": false,
+        "value":[-1, 1],
+        "type": "array"
+    },
+    "c" :
+      { "optimizable": false,
+        "value":0,
+        "type": "float"
+    },
+    "phi":
+      { "optimizable": false,
+        "value":35,
+        "type": "float"
+    },
+    "dia":
+      { "optimizable": false,
+        "value":10,
+        "type": "float"
+    },
+    "sim_dur":
+        { "optimizable": false,
+        "value":5
+    },
+    "e_sep" :
+        { "optimizable": false,
+        "value":[0.5],
+        "type": "array"
+    },
+    "e_type":
+          { "optimizable": false,
+        "value":["single"],
+        "type": "array"
+    },
+    "accuracy" :
+        { "optimizable": false,
+        "value":0.01,
+        "type": "float"
+    },
+    "length" :
+        { "optimizable": false,
+        "value":20000,
+        "type": "float"
+    },
+    "calc_thr" :
+        { "optimizable": false,
+        "value":0,
+        "type": "float"
+    },
+    "fun_type" :
+        { "optimizable": false,
+        "value":["single pulse"],
+        "type": "array_string"
+    },
+    "model_type" :
+          { "optimizable": false,
+        "value":"MRG",
+        "type": "string"
+    },
+    "custom_fun" :
+        { "optimizable": false,
+        "value":["stim_sin(t, 20000, 1)"],
+        "type": "array_string"
+   },
+    "I" :
+        { "optimizable": false,
+        "value":[-1],
+        "type": "array"
+    }
+}
