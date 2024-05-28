@@ -78,5 +78,10 @@ A regression problem with smooth surfaces approximated with GP.
 <!-- ![rose.jpg](rose.jpg)![animation1.gif](animations%2Fanimation1.gif) -->
 
 ## Axonsim
+A classification problem using SVG to detect the minimum currrent/pulse duration to create an AP.
+%TODO need to add labels to the axis of these plots
+
+<img src="animations/animation_threshold.gif" alt="Threshold searching" height="250"/>
+
 
 ## Other sources
