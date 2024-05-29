@@ -1,0 +1,67 @@
+function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = multiobjective_problem(plot_bool)
+    % Veldhuizen and Lamont multiobjective
+    if nargin < 1
+        plot_bool=false;
+    end
+    
+    fun_name = "multiobjective_problem";
+    n_features = ['x0', 'x1'];
+    n_targets = ['y0', 'y1'];
+
+    upper_bound = [2, 2];
+    lower_bound = [-2, -2];
+
+    % Define the objective function (Rosenbrock function)
+    eval_fun = @(x)vlmop2(x);
+
+    % Plot the function surface 
+    if plot_bool
+        % Define the range for plotting
+        x1_range = linspace(lower_bound(1), upper_bound(1), 100);
+        x2_range = linspace(lower_bound(2), upper_bound(2), 100);
+
+        % Generate a grid of points for plotting
+        [X1, X2] = meshgrid(x1_range, x2_range);
+        Z0 = zeros(size(X1));
+        Z1 = zeros(size(X1));
+        % Compute function values at each grid point
+        %
+        tiledlayout(2,1)
+
+        for i = 1:size(X1, 1)
+            for j = 1:size(X1, 2)
+                [Z0(i, j), Z1(i,j)] = eval_fun([X1(i, j), X2(i, j)]);
+            end
+        end
+
+        t = tiledlayout(1,2)
+        nexttile
+
+        surf(X1, X2, Z0);
+        xlabel('x1');
+        ylabel('x2');
+        zlabel('Objective one');
+        nexttile
+
+        surf(X1, X2, Z1);
+        xlabel('x1');
+        ylabel('x2');
+        zlabel('Objective two');
+
+        title(t,'VL Multiobjective');
+        set(gcf,'Position',[100 100 500 500])
+
+        drawnow;
+    end
+
+end
+
+function [y0, y1] = vlmop2(x)
+%Veldhuizen and Lamont multiobjective
+    transl = 1 / sqrt(2);
+    part1 = (x(1) - transl).^2 + (x(2) - transl).^2;
+    part2 = (x(1) + transl).^2 + (x(2) + transl).^2;
+    y0 = 1 - exp(-1 * part1);
+    y1 = 1 - exp(-1 * part2);
+    
+end
