@@ -78,6 +78,9 @@ function main(varargin)
             [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = rosenbrock_problem(true);
         case {'axon_single','axon_double','axon_threshold'}
             [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets, eval_dict] = axon_problem(false, data.problem);
+        case 'multiobjective'
+            [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = multiobjective_problem(true);
+        %
         otherwise
             warning('Unexpected problem type, defaulting to Rosenbrock')
             [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = rosenbrock_problem(true);
@@ -192,7 +195,8 @@ function main(varargin)
         end
     end
     % Close connection
-    fclose(tcpipClient);
+    delete(tcpipClient);
+    clear tcpipClient;
 
 end
 

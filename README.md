@@ -77,6 +77,11 @@ A regression problem with smooth surfaces approximated with GP.
 
 <!-- ![rose.jpg](rose.jpg)![animation1.gif](animations%2Fanimation1.gif) -->
 
+### Multiobjective
+A two objective problem with two inputs. Optimizing towards joined targets using Pareto Front.
+% TODO is there a way to set up the constraints from matlab's end and pass them to Python?
+<img src="vlmop2.jpg" alt="vlmop" height="250"/> 
+
 ## Axonsim
 A classification problem using SVG to detect the minimum currrent/pulse duration to create an AP.
 %TODO need to add labels to the axis of these plots

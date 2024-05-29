@@ -156,8 +156,8 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     if observations.ndim <= 1:
         observations = observations.reshape(-1, 1)
 
-    #TODO. For some tensorflow reason observations need to be float even for classification problems.
-    # Tf variance can only accept real numbers
+    #Important note. For some tensorflow reason observations need to be float even for classification problems.
+    #Important note. Tf variance can only accept real numbers
     init_dataset = Dataset(query_points=tf.cast(query_points, tf.float64),
                            observations=tf.cast(observations, tf.float64))
 
@@ -167,7 +167,7 @@ def main(matlab_call=False, *args, **kwargs) -> None:
         config['kernel_variance'] = None
 
     model = build_model(init_dataset, search_space, config)
-    # TODO, need to extend to batch_sampling at a later stage
+    # TODO extend to batch_sampling at a later stage
     if config['experiment']['batch_sampling']:
         if 'num_query_points' in config['experiment']:
             num_query_points = config['experiment']['num_query_points']
@@ -214,17 +214,27 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     with_plots = True
     count = 0
 
-    while not terminate_flag:
-        #Counter is only used to save figures with different names. If kept constant it overwrites the figure.
-        # TODO write better functions that help store images sepparetly according to the experiment (so that restarting
-        # or changing the problem to be solved is saved in seaparate folders under ./figures
+    # TODO send stop signals from both ends upon certain conditions (i.e. no improvement, reached goal,
+    # buget limit, etc...)
 
+    # TODO, for toy-problems, add the option of generating performance results (i.e. Accuracy/RMSE over
+    # updates
+
+    # TODO, for real-world problems, generate the GridSearch solution, store (within GIT?) And use to
+    # generate example figures of online learning efficiency
+
+    # TODO, plotting functions for Pareto
+
+    # TODO, plotting functions for 3D search shapes (see Notebook in NeuoAAA repo)
+
+    while not terminate_flag:
+        #Counter is used to save figures with different names. If kept constant it overwrites the figure.
         count += 1
 
         # Check if termination signal received from MATLAB
         # Respond back
         message = {"query_points": qp_list,
-                    "terminate_flag": terminate_flag}
+                   "terminate": terminate_flag}
 
         response_json = json.dumps(message) + "\n"
         client_socket.sendall(response_json.encode())
@@ -232,7 +242,6 @@ def main(matlab_call=False, *args, **kwargs) -> None:
         if "terminate" in received_data:
             terminate_flag = received_data['terminate']
             print("Termination signal received from MATLAB \n Saving results... \n Closing connection...")
-
 
         received_data = client_socket.recv(1024).decode()
         received_data = json.loads(received_data)

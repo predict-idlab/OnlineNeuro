@@ -16,10 +16,6 @@ function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets, e
     experiment_params = jsondecode(exp_file);
     default_params = jsondecode(default_file);
 
-    if nargin < 1
-        plot_bool = false;
-    end
-
     % Plot the function surface
     if plot_bool
         disp("AxonSim can't display a plot as the response surface is unknown");
