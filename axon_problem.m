@@ -4,7 +4,10 @@ function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets, e
     end
     %TODO ~ This needs to be specified somewhere so that it can load from
     %any machine 
-    addpath(genpath("/home/idlab398/AxonSim-r1-main/"))
+    config_file = ("./config.json");
+    exp_file = fileread(config_file);
+
+    addpath(genpath(exp_file.axonsim_path))
     
     %problem_setting
     

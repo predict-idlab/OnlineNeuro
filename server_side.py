@@ -18,10 +18,13 @@ from bayessian_optimizer import BayesianOptimizer
 from trieste.acquisition.rule import EfficientGlobalOptimization
 from trieste.acquisition.function import BayesianActiveLearningByDisagreement, \
     ExpectedFeasibility, NegativePredictiveMean, IntegratedVarianceReduction, \
-    PredictiveVariance
+    PredictiveVariance, ExpectedHypervolumeImprovement
 # https://github.com/secondmind-labs/trieste/blob/c6a039aa9ecf413c7bcb400ff565cd283c5a16f5/trieste/acquisition/function/__init__.py
 from online_learning import build_model
-
+from trieste.acquisition.multi_objective.pareto import (
+    Pareto,
+    get_reference_point,
+)
 
 # AugmentedExpectedImprovement
 # ExpectedImprovement
@@ -77,6 +80,9 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     print(f"matlab_call flag: {matlab_call}")
     with open('config.json', 'r') as f:
         config = json.load(f)
+
+    # TODO verify here that the problem type matches model type
+    # i.e. prevent multiobjective/regression to be solved with classification, etc...
 
     # Create a TCP/IP socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -166,6 +172,8 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     else:
         config['kernel_variance'] = None
 
+    print("Init dataset")
+    print(init_dataset)
     model = build_model(init_dataset, search_space, config)
     # TODO extend to batch_sampling at a later stage
     if config['experiment']['batch_sampling']:
@@ -177,7 +185,10 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     else:
         num_query_points = 1
 
-    if config['experiment']['classification']:
+    if config['problem'] == 'multiobjective':
+        acq = ExpectedHypervolumeImprovement()
+        print("Multiobjective model using HyperVolumes")
+    elif config['experiment']['classification']:
         acq = BayesianActiveLearningByDisagreement()
         print("using Classification BALD")
     else:
@@ -186,10 +197,10 @@ def main(matlab_call=False, *args, **kwargs) -> None:
         #Equivalent to Maximizing a function
         #acq = NegativePredictiveMean()
         #Minimize global variance
-        #acq = PredictiveVariance()
-        acq = IntegratedVarianceReduction()
+        acq = PredictiveVariance()
+        #acq = IntegratedVarianceReduction()
 
-    rule = EfficientGlobalOptimization(acq,
+    rule = EfficientGlobalOptimization(builder=acq,
                                        num_query_points=num_query_points
                                        )
 
@@ -209,6 +220,7 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     if qp is None:
         terminate_flag = True
         warnings.warn("Terminated before optimization started \n no query points were retrieved")
+
     qp_list = qp.numpy().tolist()
 
     with_plots = True
@@ -234,13 +246,13 @@ def main(matlab_call=False, *args, **kwargs) -> None:
         # Check if termination signal received from MATLAB
         # Respond back
         message = {"query_points": qp_list,
-                   "terminate": terminate_flag}
+                   "terminate_flag": terminate_flag}
 
         response_json = json.dumps(message) + "\n"
         client_socket.sendall(response_json.encode())
 
-        if "terminate" in received_data:
-            terminate_flag = received_data['terminate']
+        if "terminate_flag" in received_data:
+            terminate_flag = received_data['terminate_flag']
             print("Termination signal received from MATLAB \n Saving results... \n Closing connection...")
 
         received_data = client_socket.recv(1024).decode()
@@ -262,7 +274,12 @@ def main(matlab_call=False, *args, **kwargs) -> None:
 
         observations = np.array(received_data['observations'])
         if observations.ndim <= 1:
-            observations = observations.reshape(-1, 1)
+            # TODO Need to fix this to allow batch sampling, but also multivariate modeling.
+            # Right not this is basically hardcoded
+            if config['problem'] == 'multiobjective':
+                observations = observations.reshape(-1, 2)
+            else:
+                observations = observations.reshape(-1, 1)
 
         bo.optimize_step(query_points=qp,
                          observer_output=observations)
