@@ -10,7 +10,6 @@ function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets, e
     addpath(genpath(exp_file.axonsim_path))
     
     %problem_setting
-    
     exp_file = sprintf('./config_experiments/experiment_%s.json',problem_setting);
     exp_file = fileread(exp_file);
     default_file  = sprintf('./config_experiments/parameter_spec_%s.json', problem_setting);
