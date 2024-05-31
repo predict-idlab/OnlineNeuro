@@ -104,22 +104,23 @@ function main(varargin)
     
     query_points = receivedData.query_points;
     num_points = length(query_points);
-
-    fvalues = zeros(length(query_points), 1);
+    
+    num_targets = length(n_targets);
+    fvalues = zeros(length(query_points), num_targets);
     
     switch data.problem
         case {'axon','axon_single','axon_double'}
             for i =1:num_points
-                fvalues(i) = fun_wrapper(eval_fun, query_points(i,:), n_features, eval_dict);
+                fvalues(i,:) = fun_wrapper(eval_fun, query_points(i,:), num_targets, n_features, eval_dict);
             end
         case {'axon_threshold'}
             for i =1:num_points
-                fvalues(i) = fun_wrapper(eval_fun, query_points(i,:), n_features, eval_dict,'threshold');
+                fvalues(i,:) = fun_wrapper(eval_fun, query_points(i,:), num_targets, n_features, eval_dict, 'threshold');
             end
             
         otherwise
             for i =1:num_points
-                fvalues(i) = fun_wrapper(eval_fun, query_points(i,:));
+                fvalues(i,:) = fun_wrapper(eval_fun, query_points(i,:), num_targets);
             end
     end
     
@@ -165,7 +166,8 @@ function main(varargin)
     while ~terminateFlag
         % Receive data from Python
         receivedData = readData(tcpipClient);
-
+        qp = receivedData.query_points; %TODO Reshape if needed (batch_sampling may need this)
+        num_points = length(qp)/length(n_features);
         % Check if termination signal received from Python
         terminateFlag = receivedData.terminate_flag;
 
@@ -173,20 +175,19 @@ function main(varargin)
             fprintf('Termination signal received from Python \n Saving data ... \n Closing connection...');
         else
             fprintf("requested query points \n")
-            num_points = size(receivedData.query_points,1);
-            fvalues = zeros(num_points);
+            fvalues = zeros(num_points, num_targets);
             switch data.problem
                 case {'axon','axon_single','axon_double'}
                     for i = 1:num_points
-                        fvalues(i) = fun_wrapper(eval_fun, receivedData.query_points(i,:), n_features, eval_dict);
+                        fvalues(i,:) = fun_wrapper(eval_fun, qp(i,:), num_targets, n_features, eval_dict);
                     end
                 case {'axon_threshold'}
                     for i =1:num_points
-                        fvalues(i) = fun_wrapper(eval_fun, receivedData.query_points(i,:), n_features, eval_dict,'threshold');
+                        fvalues(i,:) = fun_wrapper(eval_fun, qp(i,:), num_targets, n_features, eval_dict,'threshold');
                     end
                 otherwise
                     for i = 1:num_points
-                        fvalues(i) = fun_wrapper(eval_fun, receivedData.query_points(i,:));
+                        fvalues(i,:) = fun_wrapper(eval_fun, qp(i,:), num_targets);
                     end
             end
             dataToSend = struct('observations', fvalues);
@@ -206,29 +207,42 @@ function decodedData = readData(obj, ~)
 
     % Decode the received data (assuming it's JSON)
    decodedData = jsondecode(data);
-    
 end
 
 
-function y = fun_wrapper(fun, qp, feat_names, feat_struct, operator, chanel)
+function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator, channel)
     % operator defines how to post-process the AP, need to discuss what's
     % meaningful to extract.
     if nargin < 2
         error('Fun Wrapper requires at least two input arguments.');
     end
 
+    if nargin == 2
+        num_targets = 1;
+    end
     % Toy problems
-    if nargin == 3
-        y = fun(qp);
-    else
+    if nargin <= 3
+        if num_targets == 1
+            y = fun(qp);
+        elseif num_targets ==2
+            [y0, y1] = fun(qp);
+            y = [y0;y1];
+        else
+            error("More than 2 targets not implemented!")
+        end
 
+    else
         % Default values
-        if nargin < 5
-            operator = 'default';
+        if nargin <5
+            error("If using feat_names, a feat_struct is required")
         end
 
         if nargin < 6
-            chanel = 8;
+            operator = 'default';
+        end
+
+        if nargin < 7
+            channel = 8;
         end
 
         for i=1:length(feat_names)
@@ -241,15 +255,15 @@ function y = fun_wrapper(fun, qp, feat_names, feat_struct, operator, chanel)
         switch operator
             case 'min_global'
                 % Pass the entire signal (models AP over time)
-                y = y.Yp(:,chanel);
+                y = y.Yp(:,channel);
 
             case 'min_max'
-                y_min = min(y.Yp(:,chanel));
-                y_max = max(y.Yp(:,chanel));
+                y_min = min(y.Yp(:,channel));
+                y_max = max(y.Yp(:,channel));
                 y = -(y_max - y_min);
 
             case 'threshold'
-                y_max = max(y.Yp(:,chanel));
+                y_max = max(y.Yp(:,channel));
                 if y_max>0.0
                     y = 1;
                 else
@@ -258,8 +272,8 @@ function y = fun_wrapper(fun, qp, feat_names, feat_struct, operator, chanel)
 
             otherwise
                 % min_max (default)
-                y_min = min(y.Yp(:,chanel));
-                y_max = max(y.Yp(:,chanel));
+                y_min = min(y.Yp(:,channel));
+                y_max = max(y.Yp(:,channel));
                 y = -(y_max - y_min);
         end
     
