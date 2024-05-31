@@ -2,10 +2,10 @@ function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets, e
     if nargin < 2
         error('axon_problem requires at two input arguments.');
     end
-    %TODO ~ This needs to be specified somewhere so that it can load from
-    %any machine 
+    
+     
     config_file = ("./config.json");
-    exp_file = fileread(config_file);
+    exp_file = jsondecode(fileread(config_file));
 
     addpath(genpath(exp_file.axonsim_path))
     
@@ -43,7 +43,7 @@ function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets, e
     for i = 1:length(fields)
         if isfield(experiment_params, fields{i})
             if experiment_params.(fields{i}).('optimizable')
-                n_features = [n_features, fields{i}];
+                n_features = [n_features; fields{i}];
                 if isfield(experiment_params.(fields{i}), 'min_value')
                     lower_bound = [lower_bound, experiment_params.(fields{i}).('min_value')];
                 else
