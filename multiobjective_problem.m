@@ -4,9 +4,9 @@ function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] =
         plot_bool=false;
     end
     
-    fun_name = "multiobjective_problem";
-    n_features = ['x0', 'x1'];
-    n_targets = ['y0', 'y1'];
+    fun_name = "vlmop2";
+    n_features = ['x0'; 'x1'];
+    n_targets = ['y0'; 'y1'];
 
     upper_bound = [2, 2];
     lower_bound = [-2, -2];

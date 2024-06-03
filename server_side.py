@@ -15,6 +15,7 @@ import time
 import trieste
 from trieste.data import Dataset
 from bayessian_optimizer import BayesianOptimizer
+from trieste.models.interfaces import TrainableModelStack
 from trieste.acquisition.rule import EfficientGlobalOptimization
 from trieste.acquisition.function import BayesianActiveLearningByDisagreement, \
     ExpectedFeasibility, NegativePredictiveMean, IntegratedVarianceReduction, \
@@ -95,10 +96,10 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     print("Waiting for a connection...")
 
     #Start Matlab process via engine and threading
-    # if matlab_call:
-    #     # If threading, Python launches the Matlab main, else, main needs to be manually launched
-    #     t = threading.Thread(target=run_matlab_main, kwargs={"matlab_initiate": False})
-    #     t.start()
+    if matlab_call:
+        # If threading, Python launches the Matlab main, else, main needs to be manually launched
+        t = threading.Thread(target=run_matlab_main, kwargs={"matlab_initiate": False})
+        t.start()
 
     # Accept a connection
     client_socket, client_address = server_socket.accept()
@@ -260,16 +261,11 @@ def main(matlab_call=False, *args, **kwargs) -> None:
 
         if with_plots:
             plot_data = bo.result.try_get_final_datasets()[OBJECTIVE]
-            update_plot(bo,
-                        #eval_points=None,
-                        train_data=(plot_data.query_points[:init_data_size],
-                                    plot_data.observations[:init_data_size]),
+            update_plot(bo, initial_data=(plot_data.query_points[:init_data_size],
+                                          plot_data.observations[:init_data_size]),
                         sampled_data=(plot_data.query_points[init_data_size:],
-                                      plot_data.observations[init_data_size:]),
-                        ground_truth=None,
-                        init_fun=None,
-                        count=count
-                        )
+                                      plot_data.observations[init_data_size:]), ground_truth=None, init_fun=None,
+                        count=count)
             time.sleep(1)
 
         observations = np.array(received_data['observations'])

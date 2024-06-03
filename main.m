@@ -89,7 +89,7 @@ function main(varargin)
     display(eval_fun)
     % TODO adjust function_name
     exp_summary = struct('name', fun_name, ...
-                        'n_features',{n_features},'n_targets', n_targets, ...
+                        'n_features',{n_features},'n_targets', {n_targets}, ...
                         'lower_bound', lower_bound, ...
                         'upper_bound', upper_bound, ...
                         'constraints', '');
@@ -226,7 +226,7 @@ function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator
             y = fun(qp);
         elseif num_targets ==2
             [y0, y1] = fun(qp);
-            y = [y0;y1];
+            y = [y0; y1];
         else
             error("More than 2 targets not implemented!")
         end
