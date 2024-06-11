@@ -11,12 +11,8 @@ from trieste.experimental.plotting import plot_bo_points, plot_function_2d
 import matplotlib.pyplot as plt
 import seaborn as sns
 from trieste.models.interfaces import TrainableModelStack
-import functools
+from trieste.acquisition.multi_objective.pareto import Pareto
 
-from trieste.acquisition.multi_objective.pareto import (
-    Pareto,
-    get_reference_point,
-)
 
 
 plt.style.use('ggplot')
@@ -256,15 +252,17 @@ def plot_pareto_2d(model, initial_data, search_space=None, test_data=None,
         Zvar = Zvar.numpy()
         #else:
         #    raise Exception("Case not defined (If Not TrainableModelStack")
+        ax[0].contour(xx, yy, Z[:, 0].reshape(*xx.shape), 40, zorder=1, alpha=1)
+        ax[1].contour(xx, yy, Z[:, 1].reshape(*xx.shape), 40, zorder=1, alpha=1)
 
-        ax[0].contour(xx, yy, Z[:, 0].reshape(*xx.shape), 80, alpha=1)
-        ax[1].contour(xx, yy, Z[:, 1].reshape(*xx.shape), 80, alpha=1)
-
-    ax[0].scatter(initial_data[0][:, 0], initial_data[0][:, 1],
-                  initial_data[1][:, 0], marker='o', c='C0', label='Initial samples')
+    ax[0].scatter(initial_data[0][:, 0], initial_data[0][:, 1], zorder=2, marker='o', c='orange', label='Initial samples')
+    ax[1].scatter(initial_data[0][:, 0], initial_data[0][:, 1], zorder=2, marker='o', c='orange', label='Initial samples')
 
     if sampled_data:
-        ax[0].scatter(sampled_data[0][:, 0], sampled_data[0][:, 1], marker='o', c='C1', label='Sampled-data')
+        ax[0].scatter(sampled_data[0][:, 0], sampled_data[0][:, 1],
+                      zorder=1, marker='o', c='red', label='Sampled-data')
+        ax[1].scatter(sampled_data[0][:, 0], sampled_data[0][:, 1],
+                      zorder=1, marker='o', c='red', label='Sampled-data')
 
     if test_data:
         #if isinstance(TrainableModelStack):
@@ -273,12 +271,14 @@ def plot_pareto_2d(model, initial_data, search_space=None, test_data=None,
         Zvar = Zvar.numpy()
         #else:
         #    raise Exception("Case not defined (If Not TrainableModelStack")
-        ax[0].scatter(test_data[0][:, 0], test_data[0][:, 1], Z[0], c='k', marker='x', label='Test samples')
-        ax[1].scatter(test_data[0][:, 0], test_data[0][:, 1], Z[0], c='k', marker='x', label='Test samples')
+        # TODO, for single models with two outputs the predict may be different, verify this
+        ax[0].scatter(test_data[0][:, 0], test_data[0][:, 1], Z[:, 0], zorder=1, c='k', marker='x', label='Test samples')
+        ax[1].scatter(test_data[0][:, 0], test_data[0][:, 1], Z[:, 1], zorder=1, c='k', marker='x', label='Test samples')
 
-    #Cached value (to avoid modifying it between repeated calls, although it shouldn't change
-    # A bit arbitrary how trieste select the ref point.
-    # Plotting the pareto front
+    #TODO, probably a caching would be handy to not have to recompute all the hlv values
+    #TODO. Note: a bit arbitrary how trieste select the ref point, verify if there are other methods. In general
+    # it should be fine as the ref. value doesn't change when comparing vs other models/techniques, or acrros incremental
+    # calculations of the HV
 
     Z_init, Zvar_init = model.predict(initial_data[0])
     Z_samp, Zvar_init = model.predict(sampled_data[0])
@@ -291,20 +291,38 @@ def plot_pareto_2d(model, initial_data, search_space=None, test_data=None,
     front = Pareto(Z_stack).front
     ax[2].scatter(Z_init[:, 0], Z_init[:, 1], c='C0', marker='o', label='Initial \n sample')
     ax[2].scatter(Z_samp[:, 0], Z_samp[:, 1], c='purple', marker='o', label='Sampled-data')
-    ax[2].scatter(front[:,0], front[:,1], c='r', marker='x', label="Pareto front")
+    # Just for the toy problem, other problems have ranges beyond these limits.
+    ax[2].set_xlim(0, 1.2)
+    ax[2].set_ylim(0, 1.2)
+
+    order = tf.argsort(front[:, 0])
+    sorted_front = tf.gather(front, order).numpy()
+    ax[2].plot(sorted_front[:, 0], sorted_front[:, 1], c='r', label="Pareto front")
+
+    ax[2].set_xlabel("Objective #1")
+    ax[2].set_xlabel("Objective #2")
 
     ref_point = calculate_reference_point(initial_data[1].numpy())
 
     _idxs = np.arange(1, len(Z_stack) + 1)
     log_vol = [log_hv(Z_stack[:i, :], ref_point) for i in _idxs]
-    ax[3].plot(_idxs, log_vol, color='C1')
-    ax[3].axvline(x=len(initial_data[0]), color='C2')
+    ax[3].plot(_idxs, log_vol, color='C1', label='Neg. Log hypervolume')
+    ax[3].axvline(x=len(initial_data[0]), color='C2', label='Initial samples')
     ax[3].grid()
+    ax[3].set_xlabel("Data points")
+    ax[3].set_ylabel("Log (HV)")
+    ax[3].grid()
+
+    ax[0].legend()
+    ax[1].legend()
+    ax[2].legend(loc='lower left')
+    ax[3].legend()
 
     ax[0].set_title("Objective 1")
     ax[1].set_title("Objective 2")
     ax[2].set_title("Pareto front")
-
+    ax[3].set_title("Hypervolume")
+    fig.suptitle(f"Multiobjective optimization Step #{count}")
     fig.tight_layout()
 
     if save_dir is None:
@@ -316,12 +334,9 @@ def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, ground
                 save_dir=None, count=0):
     # TODO implement and improve current_plotting functions
     # TODO os.makedirs if save_dir is not None can be run at the beginning here
-    if save_dir is None:
-        save_dir = "figures/default"
-    else:
-        save_dir = f"figures/{bo._observer}"
-
+    save_dir = f"figures/{bo._observer}"
     os.makedirs(save_dir, exist_ok=True)
+
     if bo._observer == 'log_reg':
         plot_model(model=bo._models[OBJECTIVE], search_space=bo._search_space,
                    initial_data=initial_data, test_data=test_data,

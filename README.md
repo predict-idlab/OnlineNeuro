@@ -109,7 +109,9 @@ A regression problem with smooth surfaces approximated with GP.
 
 A two objective problem with two inputs. Optimizing towards joined targets using Pareto Front.
 % TODO is there a way to set up the constraints from matlab's end and pass them to Python?
-`<img src="vlmop2.jpg" alt="vlmop" height="250"/>`
+
+<img src="vlmop2.jpg" alt="vlmop2" width="450"/>
+<img src="animations/animation_vlmop2.gif" alt="animation_vlmop2" width="450"/>
 
 ## Axonsim
 
