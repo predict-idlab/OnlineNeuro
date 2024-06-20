@@ -1,12 +1,12 @@
 {
     "e_pos":
       { "optimizable": true,
-        "default":[1, 1],
+        "default":[-4, 1, 4, 1],
         "type": "array",
         "max_dimensions": 4,
         "min_dimensions": 2,
-        "min_value": [-10,-10],
-        "max_value": [10,10],
+        "min_value": [-10,-10,-10,-10],
+        "max_value": [10,10,10,10],
         "_comment": "also in FEM we use minimal inter-electrode distance of 0.5mm = difference > 0.5mm"
     },
     "c" :
@@ -43,35 +43,35 @@
     },
     "pulse_dur":
         { "optimizable": true,
-        "default":[0.1],
+        "default":[0.1, 0.1],
         "type": "array",
         "max_dimensions": 2,
         "min_dimensions": 1,
-        "min_value": 0,
-        "max_value": 1,
+        "min_value": [0,0],
+        "max_value": [1,1],
         "_comment": "Define min and max value. Dimension needs to match fun_type and custom_fun"
     },
     "frq" :
         { "optimizable": true,
-        "default":1,
-        "type": "float",
-        "min_value": 0.05,
-        "max_value": 2,
+        "default":[1,1],
+        "type": "array",
+        "min_value": [0.05,0.05],
+        "max_value": [2,2],
         "_comment": "Define min and max value."
     },
     "e_sep" :
         { "optimizable": true,
-        "default":[0.5],
+        "default":[0.5, 0.5],
         "type": "array",
         "max_dimensions": 2,
         "min_dimensions": 1,
-        "min_value": 0.25,
-        "max_value": 1,
+        "min_value": [0.25,0.25],
+        "max_value": [1,1],
         "_comment": "Define min and max value. This needs to match electrode type (double or triple), not relevant for single electrodes"
     },
     "e_type":
           { "optimizable": false,
-        "default":["single"],
+        "default":["single", "single"],
         "type": "array_string",
         "max_dimensions": 2,
         "min_dimensions": 1,
@@ -80,7 +80,7 @@
     },
     "accuracy" :
         { "optimizable": false,
-        "default": 0.01,
+        "default":0.01,
         "type": "float",
         "min_value": 0.005,
         "max_value": 0.02,
@@ -88,7 +88,7 @@
     },
     "length" :
         { "optimizable": false,
-        "default": 20000,
+        "default":20000,
         "type": "float",
         "min_value": 10000,
         "max_value": 40000,
@@ -104,7 +104,7 @@
     },
     "fun_type" :
         { "optimizable": false,
-        "default":["single pulse"],
+        "default":["single pulse", "single pulse"],
         "type": "array_string",
         "max_dimensions": 2,
         "min_dimensions": 1,
@@ -120,7 +120,7 @@
     },
     "custom_fun" :
         { "optimizable": true,
-        "default":["stim_sin(t, 2000, 1)"],
+        "default":["stim_sin(t, 20000, 1)", "stim_sin(t, 2000, 1)"],
         "type": "array_string",
         "max_dimensions": 2,
         "min_dimensions": 1,
@@ -129,12 +129,19 @@
     },
     "I" :
         { "optimizable": true,
-        "default":[-1],
+        "default":[-1, -1],
         "type": "array",
         "max_dimensions": 2,
         "min_dimensions": 1,
-        "min_value": -2,
-        "max_value": 2,
+        "min_value": [-2,-2],
+        "max_value": [2,2],
         "_comment": "Define min and max value. This needs to match electrode type (double or triple)"
-    }
+    },
+    "electrode_shift":
+      {
+        "optimizable": true,
+        "value": 0,
+        "min_value": 0,
+        "max_value": 12
+      }
 }

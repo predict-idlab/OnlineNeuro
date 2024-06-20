@@ -22,17 +22,33 @@ function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets, e
     if plot_bool
         disp("AxonSim can't display a plot as the response surface is unknown");
     end
-    fun_name = 'AxonSim';
+    fun_name = problem_setting;
     eval_fun = @axonsim_call;
 
     fields = fieldnames(default_params);
     eval_dict = struct();
 
     for i = 1:length(fields)
+        %Making sure that if variables are going to be optimized, and have multiple electrodes
+        % they have the same dimensions.
+        %This allows setting different min/max values for each electrode.
+
         if isfield(experiment_params, fields{i})
+            if experiment_params.(fields{i}).('optimizable')
+                assert(isequal(size(experiment_params.(fields{i}).value,1), ...
+                               size(experiment_params.(fields{i}).min_value,1), ...
+                               size(experiment_params.(fields{i}).max_value,1)))
+            end
+
             eval_dict.(fields{i}) = experiment_params.(fields{i}).('value');
         else
-            eval_dict.(fields{i}) = default_struct.(fields{i}).('default');
+            if default_params.(fields{i}).('optimizable')
+                assert(isequal(size(default_params.(fields{i}).value,1), ...
+                               size(default_params.(fields{i}).min_value,1), ...
+                               size(default_params.(fields{i}).max_value,1)))
+            end
+
+            eval_dict.(fields{i}) = default_params.(fields{i}).('default');
         end
     end
     
@@ -43,19 +59,57 @@ function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets, e
     for i = 1:length(fields)
         if isfield(experiment_params, fields{i})
             if experiment_params.(fields{i}).('optimizable')
-                n_features = [n_features; fields{i}];
-                if isfield(experiment_params.(fields{i}), 'min_value')
-                    lower_bound = [lower_bound, experiment_params.(fields{i}).('min_value')];
+                array_size = size(experiment_params.(fields{i}).('value'), 1);
+                
+                if array_size==1 | strcmp(fields{i},"I")
+                    n_features = [n_features; fields{i}];
                 else
-                    lower_bound = [lower_bound, default_params.(fields{i}).('min_value')];
+                    for j=1:array_size
+                        n_features = [n_features; strcat(fields{i},"_",string(j))];
+                    end
                 end
+                
+                if isfield(experiment_params.(fields{i}), 'min_value')
+                    min_value = experiment_params.(fields{i}).('min_value');
+                else
+                    min_value = default_params.(fields{i}).('min_value');
+                end
+
                 %It would be strange that min was specified but no max, but
                 %out of completeness
                 if isfield(experiment_params.(fields{i}),'max_value')
-                    upper_bound = [upper_bound, experiment_params.(fields{i}).('max_value')];
+                    max_value = experiment_params.(fields{i}).('max_value');
                 else
-                    upper_bound = [upper_bound, default_params.(fields{i}).('max_value')];
-                end                
+                    max_value = default_params.(fields{i}).('max_value');
+                end
+
+                % Converting it to vectors in case size_array>1
+                %if array_size>1
+                %    min_value = ones(1,array_size)*min_value;
+                %    max_value = ones(1,array_size)*max_value;
+                %end
+                if strcmp(fields{i},"I")
+                    min_value = abs(min_value);
+                    max_value = abs(max_value);
+                    warning_bool = false;
+                    if size(min_value, 1)>1
+                        warning_bool = true;
+                        min_value = min(min_value);
+                    end
+                    if size(max_value, 1)>1
+                        warning_bool = true;
+                        max_value= max(max_value);
+                    end
+                    if warning_bool
+                        warning("Total acurrent set to be mirrored and a single value to be tuned (instead of two separate ones)")
+                    end
+
+                    
+                end
+
+                lower_bound = [lower_bound; min_value];
+                upper_bound = [upper_bound; max_value];
+
             end
         end % Non specified variables cannot be tuned and are fixed.
     end    

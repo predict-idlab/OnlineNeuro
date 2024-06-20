@@ -190,6 +190,7 @@ function result = axonsim_call(varin)
     m = 16;
     
     Yp=zeros(szy(1),N-m);
+    
     for i = 1:N-m
        Yp(:,i) = Y(:,i+m/2);%-(i-1)*40; No scaling done (this can be handled externally)
     end

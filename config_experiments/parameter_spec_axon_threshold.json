@@ -5,8 +5,8 @@
         "type": "array",
         "max_dimensions": 4,
         "min_dimensions": 2,
-        "min_value": -10,
-        "max_value": 10,
+        "min_value": [-10,-10],
+        "max_value": [10,10],
         "_comment": "also in FEM we use minimal inter-electrode distance of 0.5mm = difference > 0.5mm"
     },
     "c" :

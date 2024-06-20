@@ -1,4 +1,5 @@
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import Normalize
 import warnings
 import tensorflow as tf
 from trieste.observer import OBJECTIVE
@@ -7,13 +8,18 @@ from mpl_toolkits.mplot3d import axes3d
 import gpflow
 from matplotlib import cm
 import os
+import itertools
 from trieste.experimental.plotting import plot_bo_points, plot_function_2d
 import matplotlib.pyplot as plt
 import seaborn as sns
 from trieste.models.interfaces import TrainableModelStack
 from trieste.acquisition.multi_objective.pareto import Pareto
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
 
-
+GRID_RESOLUTION = 0.02
+#TODO, change grid resolution to DATAPOINTS
+#So that sampling spaces are the same for each feature (features are not normalized)
 
 plt.style.use('ggplot')
 
@@ -25,12 +31,11 @@ def custom_cmap():
     return cmap
 
 
-def plot_model(model, initial_data, search_space=None, test_data=None,
-               sampled_data=None, ground_truth=None, init_fun=None,
-               save_dir=None,
-               count=0):
+def plot_model(model, initial_data, search_space=None, scaler=None, test_data=None, sampled_data=None,
+               ground_truth=None, init_fun=None, save_dir=None, count=0):
     """
     Plot a two feature 1 output model
+    @param scaler:
     @param model: Trieste model
     @param initial_data: Trieste Dataset
     @param search_space: Trieste search space
@@ -93,8 +98,8 @@ def plot_model(model, initial_data, search_space=None, test_data=None,
     plt.close()
 
 
-def plot_circle(model, initial_data, search_space=None, test_data=None,
-                sampled_data=None, ground_truth=None, init_fun=None, save_dir=None, count=0):
+def plot_circle(model, initial_data, search_space=None, scaler=None, test_data=None, sampled_data=None, ground_truth=None,
+                init_fun=None, save_dir=None, count=0):
     if ground_truth:
         assert callable(init_fun)
         assert search_space is not None
@@ -104,8 +109,8 @@ def plot_circle(model, initial_data, search_space=None, test_data=None,
     if search_space:
         x_min, y_min = search_space._lower.numpy()
         x_max, y_max = search_space._upper.numpy()
-        xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),
-                             np.arange(y_min, y_max, 0.02))
+        xx, yy = np.meshgrid(np.arange(x_min, x_max+GRID_RESOLUTION, GRID_RESOLUTION),
+                             np.arange(y_min, y_max+GRID_RESOLUTION, GRID_RESOLUTION))
 
         Z, Zvar = model.predict_y(np.c_[xx.ravel(), yy.ravel()])
         Z = gpflow.likelihoods.Bernoulli().invlink(Z).numpy().squeeze()
@@ -121,8 +126,8 @@ def plot_circle(model, initial_data, search_space=None, test_data=None,
     if ground_truth:
         x_min, y_min = search_space._lower.numpy()
         x_max, y_max = search_space._upper.numpy()
-        xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),
-                             np.arange(y_min, y_max, 0.02))
+        xx, yy = np.meshgrid(np.arange(x_min, x_max+GRID_RESOLUTION, GRID_RESOLUTION),
+                             np.arange(y_min, y_max+GRID_RESOLUTION, GRID_RESOLUTION))
 
         Z = model.predict_y(np.c_[xx.ravel(), yy.ravel()])
         Z = tf.math.round(Z[0]).numpy().squeeze()
@@ -135,6 +140,7 @@ def plot_circle(model, initial_data, search_space=None, test_data=None,
 
     if test_data:
         mean, var = model.predict_y(test_data[0])
+        mean = gpflow.likelihoods.Bernoulli().invlink(mean).numpy().squeeze()
         preds = tf.math.round(mean).numpy()
         corr_bool = (preds > 0).squeeze()
 
@@ -153,15 +159,16 @@ def plot_circle(model, initial_data, search_space=None, test_data=None,
     plt.close()
 
 
-def plot_surface(model, initial_data, search_space=None, test_data=None,
-                 sampled_data=None, ground_truth=None, init_fun=None,
-                 feasible_region=None, save_dir=None,
-                 count=0):
+def plot_surface(model, initial_data, search_space=None, scaler=None,
+                 test_data=None, sampled_data=None, ground_truth=None,
+                 init_fun=None, feasible_region=None, save_dir=None, count=0):
     """
 
+    @param scaler:
     @param model: Model from Trieste. TODO in some cases this may be a list with single output.
     @param initial_data:
     @param search_space:
+    @param scaler:
     @param test_data:
     @param sampled_data:
     @param ground_truth:
@@ -182,8 +189,8 @@ def plot_surface(model, initial_data, search_space=None, test_data=None,
     if search_space:
         x_min, y_min = search_space._lower.numpy()
         x_max, y_max = search_space._upper.numpy()
-        xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),
-                             np.arange(y_min, y_max, 0.02))
+        xx, yy = np.meshgrid(np.arange(x_min, x_max+GRID_RESOLUTION, GRID_RESOLUTION),
+                             np.arange(y_min, y_max+GRID_RESOLUTION, GRID_RESOLUTION))
         Z, Zvar = model.predict_y(np.c_[xx.ravel(), yy.ravel()])
         Z = Z.numpy().squeeze()
         Z = Z.reshape(xx.shape)
@@ -207,6 +214,7 @@ def plot_surface(model, initial_data, search_space=None, test_data=None,
 
     if test_data:
         mean, var = model.predict_y(test_data[0])
+        #TODO, check if this is correct
         preds = tf.math.round(mean).numpy()
 
         ax[0].scatter(test_data[0][:, 0], test_data[0][:, 1], preds, c='k', marker='o', label='Samples added')
@@ -229,10 +237,9 @@ def log_hv(obs, ref_point):
     obs_hv = Pareto(obs).hypervolume_indicator(ref_point)
     return np.log10(obs_hv)
 
-def plot_pareto_2d(model, initial_data, search_space=None, test_data=None,
-                   sampled_data=None, ground_truth=None, init_fun=None,
-                   save_dir=None,
-                   count=0):
+def plot_pareto_2d(model, initial_data, search_space=None,
+                   scaler=None,  test_data=None, sampled_data=None, ground_truth=None,
+                   init_fun=None, save_dir=None, count=0):
 
     if ground_truth:
         assert callable(init_fun)
@@ -244,8 +251,8 @@ def plot_pareto_2d(model, initial_data, search_space=None, test_data=None,
     if search_space:
         x_min, y_min = search_space._lower.numpy()
         x_max, y_max = search_space._upper.numpy()
-        xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),
-                             np.arange(y_min, y_max, 0.02))
+        xx, yy = np.meshgrid(np.arange(x_min, x_max+GRID_RESOLUTION, GRID_RESOLUTION),
+                             np.arange(y_min, y_max+GRID_RESOLUTION, GRID_RESOLUTION))
         #if isinstance(model, TrainableModelStack):
         Z, Zvar = model.predict(np.c_[xx.ravel(), yy.ravel()])
         Z = Z.numpy()
@@ -330,38 +337,151 @@ def plot_pareto_2d(model, initial_data, search_space=None, test_data=None,
     else:
         plt.savefig(f'{save_dir}/plot_{count:02}.png')
     plt.close()
+
+def plot_nerve_block(model, initial_data, search_space, scaler=None,
+                     test_data=None, sampled_data=None, ground_truth=None,
+                     init_fun=None, save_dir=None, count=0):
+    """
+    Nerve_block is a binary output but has more inputs.
+    Here I implement a simple 2 inputs 1 output plot (similar to circle), in which the first 2 variables
+    are plotted and for the rest the central value of the search_space is taken for the rest of the features.
+
+    As a side plot, a PCA is included.
+    @param scaler:
+    """
+
+    if ground_truth:
+        assert callable(init_fun)
+        assert search_space is not None
+
+    num_vars = len(search_space._lower.numpy())
+    counts = np.arange(num_vars)
+    feat_pairs = {frozenset((a, b)) for a in counts for b in counts if a != b}
+    feat_pairs = [tuple(pair) for pair in feat_pairs]
+    num_feat_pairs = len(feat_pairs)
+
+    fig, ax = plt.subplots(figsize=(num_feat_pairs*3, 6), ncols=num_feat_pairs, nrows=2)
+    ax = ax.ravel()
+
+    mins_ = search_space._lower.numpy()
+    maxs_ = search_space._upper.numpy()
+
+    mean_values = (mins_ + maxs_) / 2
+    norm = Normalize(vmin=0, vmax=1)
+
+    for i in range(num_feat_pairs):
+        x_ix = feat_pairs[i][0]
+        y_ix = feat_pairs[i][1]
+
+        x_min, y_min = mins_[x_ix], mins_[y_ix]
+        x_max, y_max = maxs_[x_ix], maxs_[y_ix]
+
+        xx, yy = np.meshgrid(np.arange(x_min, x_max+GRID_RESOLUTION, GRID_RESOLUTION),
+                             np.arange(y_min, y_max+GRID_RESOLUTION, GRID_RESOLUTION))
+
+        x_y_cols = np.c_[xx.ravel(), yy.ravel()]
+        mean_cols = np.ones((x_y_cols.shape[0], mean_values.shape[0])) * mean_values
+        inputs = np.zeros((x_y_cols.shape[0], mean_values.shape[0]))
+        other_ixs = [i for i in range(mean_values.shape[0]) if i not in [x_ix, y_ix]]
+        inputs[:, x_ix] = x_y_cols[:, 0]
+        inputs[:, y_ix] = x_y_cols[:, 1]
+        for ix in other_ixs:
+            inputs[:, ix] = mean_cols[:, ix]
+
+        Z, Zvar = model.predict_y(inputs)
+        Z = gpflow.likelihoods.Bernoulli().invlink(Z)
+        Z = Z.numpy()
+        Z = Z.squeeze().reshape(xx.shape)
+
+        if scaler:
+            xx = scaler.inverse_transform_mat(xx, ix=x_ix)
+            yy = scaler.inverse_transform_mat(yy, ix=y_ix)
+
+        ax[i].contourf(xx, yy, Z, alpha=0.8, cmap=cm.coolwarm,
+                       norm=norm
+                       )
+        ax[i].set_ylabel(f"feat_{y_ix}")
+        ax[i].set_xlabel(f"feat_{x_ix}")
+        ax[i].set_title(f"{i}")
+
+    x = initial_data[0].numpy()
+    y = initial_data[1].numpy()
+
+    if scaler:
+        x = scaler.inverse_transform(x)
+
+    for i in range(num_feat_pairs):
+        x_ix = feat_pairs[i][0]
+        y_ix = feat_pairs[i][1]
+        ax[i].scatter(x[:, x_ix], x[:, y_ix], c=y, marker='*', edgecolors='k', s=60)
+
+    if ground_truth:
+        #TBD
+        raise Exception("Ground truth not implemented for Nerve block (yet). This may work as a precomputed result")
+
+    if sampled_data:
+        samp_data = sampled_data[0]
+        if scaler:
+            samp_data = scaler.inverse_transform(samp_data)
+        for i in range(num_feat_pairs):
+            x_ix = feat_pairs[i][0]
+            y_ix = feat_pairs[i][1]
+            ax[i].scatter(samp_data[:, x_ix],
+                          samp_data[:, y_ix],
+                          c='k',
+                          marker='*',
+                          s=50, label='Sampled data'
+                          )
+        # ax[1].scatter(sampled_data[0][:, x_ix], sampled_data[0][:, y_ix],
+        #               marker='x', c='r', label='Sampled datapoints')
+    #ax[0].legend()
+    fig.tight_layout()
+
+    if save_dir is None:
+        plt.savefig(f'./figures/plot_{count:02}.png')
+    else:
+        plt.savefig(f'{save_dir}/plot_{count:02}.png')
+    plt.close()
+
 def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, ground_truth=None, init_fun=None,
-                save_dir=None, count=0):
+                save_dir=None, count=0, *args, **vargs):
     # TODO implement and improve current_plotting functions
+    # TODO Include inverse scaling for features when bo.scaler is not None
     # TODO os.makedirs if save_dir is not None can be run at the beginning here
     save_dir = f"figures/{bo._observer}"
     os.makedirs(save_dir, exist_ok=True)
 
     if bo._observer == 'log_reg':
-        plot_model(model=bo._models[OBJECTIVE], search_space=bo._search_space,
-                   initial_data=initial_data, test_data=test_data,
-                   sampled_data=sampled_data, ground_truth=ground_truth,
-                   init_fun=init_fun, save_dir=save_dir, count=count)
+        plot_model(model=bo._models[OBJECTIVE], initial_data=initial_data, search_space=bo._search_space,
+                   scaler=bo.scaler,
+                   test_data=test_data, sampled_data=sampled_data, ground_truth=ground_truth,
+                   init_fun=init_fun,
+                   save_dir=save_dir, count=count)
     elif bo._observer == 'circle':
-        plot_circle(model=bo._models[OBJECTIVE], search_space=bo._search_space,
-                    initial_data=initial_data, test_data=test_data,
-                    sampled_data=sampled_data, ground_truth=ground_truth,
-                    init_fun=init_fun, save_dir=save_dir, count=count)
+        plot_circle(model=bo._models[OBJECTIVE], initial_data=initial_data, search_space=bo._search_space,
+                    scaler=bo.scaler,
+                    test_data=test_data, sampled_data=sampled_data, ground_truth=ground_truth, init_fun=init_fun,
+                    save_dir=save_dir, count=count)
+    elif bo._observer == 'nerve_block':
+        plot_nerve_block(model=bo._models[OBJECTIVE], initial_data=initial_data, search_space=bo._search_space,
+                         scaler=bo.scaler,
+                         test_data=test_data, sampled_data=sampled_data, ground_truth=ground_truth, init_fun=init_fun,
+                         save_dir=save_dir, count=count)
     elif bo._observer == 'rosenbruck':
-        plot_surface(model=bo._models[OBJECTIVE], search_space=bo._search_space,
-                     initial_data=initial_data, test_data=test_data,
-                     sampled_data=sampled_data, ground_truth=ground_truth,
-                     init_fun=init_fun, save_dir=save_dir, count=count)
+        plot_surface(model=bo._models[OBJECTIVE], initial_data=initial_data, search_space=bo._search_space,
+                     scaler=bo.scaler,
+                     test_data=test_data, sampled_data=sampled_data, ground_truth=ground_truth, init_fun=init_fun,
+                     save_dir=save_dir, count=count, **vargs)
     elif bo._observer in ['axon_single', 'axon_double', 'axon_threshold']:
-        plot_surface(model=bo._models[OBJECTIVE], search_space=bo._search_space,
-                     initial_data=initial_data, test_data=test_data,
-                     sampled_data=sampled_data, ground_truth=ground_truth,
-                     init_fun=init_fun, save_dir=save_dir, count=count)
+        plot_surface(model=bo._models[OBJECTIVE], initial_data=initial_data, search_space=bo._search_space,
+                     scaler=bo.scaler,
+                     test_data=test_data, sampled_data=sampled_data, ground_truth=ground_truth, init_fun=init_fun,
+                     save_dir=save_dir, count=count, **vargs)
     elif bo._observer in ['vlmop2','multiobjective']:
-        plot_pareto_2d(model=bo._models[OBJECTIVE], search_space=bo._search_space,
-                       initial_data=initial_data, test_data=test_data,
-                       sampled_data=sampled_data, ground_truth=ground_truth,
-                       init_fun=init_fun, save_dir=save_dir, count=count)
+        plot_pareto_2d(model=bo._models[OBJECTIVE], initial_data=initial_data, search_space=bo._search_space,
+                       scaler=bo.scaler,
+                       test_data=test_data, sampled_data=sampled_data, ground_truth=ground_truth, init_fun=init_fun,
+                       save_dir=save_dir, count=count)
     else:
         msg = f"Plot fun Not implemented for {bo._observer} problems."
         warnings.warn(msg)

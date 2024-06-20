@@ -1,7 +1,6 @@
 import os
 import socket
 import json
-import threading
 import sys
 import pandas as pd
 import numpy as np
@@ -22,10 +21,6 @@ from trieste.acquisition.function import BayesianActiveLearningByDisagreement, \
     PredictiveVariance, ExpectedHypervolumeImprovement
 # https://github.com/secondmind-labs/trieste/blob/c6a039aa9ecf413c7bcb400ff565cd283c5a16f5/trieste/acquisition/function/__init__.py
 from online_learning import build_model
-from trieste.acquisition.multi_objective.pareto import (
-    Pareto,
-    get_reference_point,
-)
 
 # AugmentedExpectedImprovement
 # ExpectedImprovement
@@ -48,7 +43,9 @@ from trieste.acquisition.rule import OBJECTIVE
 from threading import Thread
 
 from plotting import update_plot
-#from flask import Flask, send_file
+from utils import customMinMaxScaler
+
+# from flask import Flask, send_file
 # app = Flask(__name__)
 #
 # @app.route('/plot.png')
@@ -96,10 +93,10 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     print("Waiting for a connection...")
 
     #Start Matlab process via engine and threading
-    if matlab_call:
-        # If threading, Python launches the Matlab main, else, main needs to be manually launched
-        t = threading.Thread(target=run_matlab_main, kwargs={"matlab_initiate": False})
-        t.start()
+    # if matlab_call:
+    #     # If threading, Python launches the Matlab main, else, main needs to be manually launched
+    #     t = Thread(target=run_matlab_main, kwargs={"matlab_initiate": False})
+    #     t.start()
 
     # Accept a connection
     client_socket, client_address = server_socket.accept()
@@ -108,7 +105,7 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     # Receive data
     data = client_socket.recv(1024).decode()
     data = json.loads(data)
-    print(f"Received data:", data)
+    print("Received data:", data)
 
     # Respond back
     response = {"message": "Hello from Python",
@@ -120,26 +117,46 @@ def main(matlab_call=False, *args, **kwargs) -> None:
 
     ## First batch of data
     # Passes 'name of fun'
-    # num of features, num of targets, and UB, LB.
+    # feature names, target_names, Upper boundary, and lower_boundary.
+    # This should probably also pass constraints, although this needs to be thought still.
+
     received_data = client_socket.recv(1024).decode()
     exp_config = json.loads(received_data)
-    print("Received from MATLAB:", received_data)
+    #exp_config['lower_bound'] = exp_config['lower_bound']
+    #exp_config['upper_bound'] = exp_config['upper_bound']
 
-    ## Create the first fit, using experiment configuration
-    # Send this values to query from matlab
-    search_space = trieste.space.Box(lower=exp_config['lower_bound'],
-                                     upper=exp_config['upper_bound'])
+    print("Received from MATLAB:")
+    print(exp_config)
+    ## Sample first search_space
+    if config['experiment']['scale_inputs']:
+        output_range = (-1, 1)
+        lb = len(exp_config['lower_bound'])*[output_range[0]]
+        ub = len(exp_config['upper_bound'])*[output_range[1]]
+        search_space = trieste.space.Box(lower=lb,
+                                         upper=ub)
 
-    #TODO Optional. Add other sampling methods such as LHS (Halton is in Trieste but not needed).
+        scaler = customMinMaxScaler(feature_min=exp_config['lower_bound'],
+                                    feature_max=exp_config['upper_bound'],
+                                    output_range=output_range)
 
+    else:
+        search_space = trieste.space.Box(lower=exp_config['lower_bound'],
+                                         upper=exp_config['upper_bound'])
+        scaler = None
+
+    # TODO Optional. Add other sampling methods such as LHS (Halton is in Trieste but not needed).
     initial_qp = search_space.sample_sobol(num_samples=config['experiment']['init_samples'])
 
+    if scaler:
+        initial_qp_inv = scaler.inverse_transform(initial_qp)
+
     response = {'message': 'first queried points using Sobol method',
-                'query_points': initial_qp.numpy().tolist()}
+                'query_points': initial_qp_inv.tolist()}
 
     response_json = json.dumps(response) + "\n"
     client_socket.sendall(response_json.encode())
 
+    # TODO wrap this as a single function so that larger packages can be retrieved in the other loop
     received_data = client_socket.recv(1024).decode()
     received_data = json.loads(received_data)
     if 'tot_pckgs' in received_data:
@@ -155,16 +172,15 @@ def main(matlab_call=False, *args, **kwargs) -> None:
                     received_data[k] += v
 
     print("First data package:", received_data)
-
-    query_points = np.stack(initial_qp.numpy())
+    query_points = np.stack(initial_qp)
     observations = np.array(received_data['init_response'])
     init_data_size = len(query_points)
 
     if observations.ndim <= 1:
         observations = observations.reshape(-1, 1)
 
-    #Important note. For some tensorflow reason observations need to be float even for classification problems.
-    #Important note. Tf variance can only accept real numbers
+    # Important note. For some tensorflow reason observations need to be float even for classification problems.
+    # Important note. Tf variance can only accept real numbers
     init_dataset = Dataset(query_points=tf.cast(query_points, tf.float64),
                            observations=tf.cast(observations, tf.float64))
 
@@ -181,7 +197,7 @@ def main(matlab_call=False, *args, **kwargs) -> None:
         if 'num_query_points' in config['experiment']:
             num_query_points = config['experiment']['num_query_points']
         else:
-            #Default
+            # Not implemented
             num_query_points = 3
     else:
         num_query_points = 1
@@ -193,13 +209,12 @@ def main(matlab_call=False, *args, **kwargs) -> None:
         acq = BayesianActiveLearningByDisagreement()
         print("using Classification BALD")
     else:
-        #Sampl close to a given threshold
-        #acq = ExpectedFeasibility(threshold=-0.5)
-        #Equivalent to Maximizing a function
-        #acq = NegativePredictiveMean()
-        #Minimize global variance
-        acq = PredictiveVariance()
-        #acq = IntegratedVarianceReduction()
+        # Sample close to a given threshold
+        # acq = ExpectedFeasibility(threshold=-0.5)
+        # Equivalent to Maximizing a function
+        acq = NegativePredictiveMean()
+        # Minimize global variance
+        #acq = PredictiveVariance()
 
     rule = EfficientGlobalOptimization(builder=acq,
                                        num_query_points=num_query_points
@@ -208,6 +223,7 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     os.makedirs(f"{config['save_path']}/{exp_config['name']}/", exist_ok=True)
     bo = BayesianOptimizer(observer=exp_config['name'],
                            search_space=search_space,
+                           scaler=scaler,
                            track_state=True,
                            track_path=f"{config['save_path']}/{exp_config['name']}/",
                            acquisition_rule=rule)
@@ -220,9 +236,9 @@ def main(matlab_call=False, *args, **kwargs) -> None:
 
     if qp is None:
         terminate_flag = True
-        warnings.warn("Terminated before optimization started \n no query points were retrieved")
+        raise Exception("Terminated before optimization started \n no query points were retrieved")
 
-    qp_list = qp.numpy().tolist()
+    qp_list = qp.tolist()
 
     with_plots = True
     count = 0
@@ -241,14 +257,14 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     # TODO, plotting functions for 3D search shapes (see Notebook in NeuoAAA repo)
 
     while not terminate_flag:
-        #Counter is used to save figures with different names. If kept constant it overwrites the figure.
+        # Counter is used to save figures with different names. If kept constant it overwrites the figure.
         count += 1
 
         # Check if termination signal received from MATLAB
         # Respond back
         message = {"query_points": qp_list,
                    "terminate_flag": terminate_flag}
-
+        print(message)
         response_json = json.dumps(message) + "\n"
         client_socket.sendall(response_json.encode())
 
@@ -264,9 +280,10 @@ def main(matlab_call=False, *args, **kwargs) -> None:
             update_plot(bo, initial_data=(plot_data.query_points[:init_data_size],
                                           plot_data.observations[:init_data_size]),
                         sampled_data=(plot_data.query_points[init_data_size:],
-                                      plot_data.observations[init_data_size:]), ground_truth=None, init_fun=None,
+                                      plot_data.observations[init_data_size:]),
+                        ground_truth=None, init_fun=None,
                         count=count)
-            time.sleep(1)
+            time.sleep(0.5)
 
         observations = np.array(received_data['observations'])
         if observations.ndim <= 1:
@@ -288,7 +305,7 @@ def main(matlab_call=False, *args, **kwargs) -> None:
                                      fit_initial_model=False,
                                      fit_model=True)
 
-        qp_list = qp.numpy().tolist()
+        qp_list = qp.tolist()
 
     # Close the connection
     client_socket.close()

@@ -5,8 +5,8 @@
         "type": "array",
         "max_dimensions": 4,
         "min_dimensions": 2,
-        "min_value": -10,
-        "max_value": 10,
+        "min_value": [-10,-10,-10,-10],
+        "max_value": [10,10,10,10],
         "_comment": "also in FEM we use minimal inter-electrode distance of 0.5mm = difference > 0.5mm"
     },
     "c" :
@@ -47,8 +47,8 @@
         "type": "array",
         "max_dimensions": 2,
         "min_dimensions": 1,
-        "min_value": 0,
-        "max_value": 1,
+        "min_value": [0,0],
+        "max_value": [1,1],
         "_comment": "Define min and max value. Dimension needs to match fun_type and custom_fun"
     },
     "frq" :
@@ -65,8 +65,8 @@
         "type": "array",
         "max_dimensions": 2,
         "min_dimensions": 1,
-        "min_value": 0.25,
-        "max_value": 1,
+        "min_value": [0.25,0.25],
+        "max_value": [1,1],
         "_comment": "Define min and max value. This needs to match electrode type (double or triple), not relevant for single electrodes"
     },
     "e_type":
@@ -133,8 +133,8 @@
         "type": "array",
         "max_dimensions": 2,
         "min_dimensions": 1,
-        "min_value": -2,
-        "max_value": 2,
+        "min_value": [-2,-2],
+        "max_value": [2,2],
         "_comment": "Define min and max value. This needs to match electrode type (double or triple)"
     }
 }

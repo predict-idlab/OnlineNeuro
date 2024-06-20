@@ -16,7 +16,7 @@
 This module contains the :class:`BayesianOptimizer` class, used to perform Bayesian optimization.
 
 @Author Diego Nieves
-Modified version of Trieste's Github.
+Modified version of Trieste's GitHub.
 -Remove requirements and links to ~Observer~ Class.
 - Explicit optimization.
 - Request of datapoints is done in an outer loop.
@@ -75,6 +75,9 @@ from trieste.space import SearchSpace
 from trieste.types import State, Tag, TensorType
 from trieste.utils import Err, Ok, Result, Timer
 from trieste.utils.misc import LocalizedTag, get_value_for_tag, ignoring_local_tags
+
+import utils
+from utils import customMinMaxScaler
 
 import warnings
 StateType = TypeVar("StateType")
@@ -358,6 +361,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
     """
 
     def __init__(self, observer: str, search_space: SearchSpaceType,
+                 scaler: customMinMaxScaler = None,
                  track_state: bool = True,
                  track_path: Optional[Path | str] = None,
                  acquisition_rule: AcquisitionRule[
@@ -381,6 +385,8 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
 
         :param search_space: The space over which to search. Must be a
             :class:`~trieste.space.SearchSpace`.
+        :param scale_inputs: Whether inputs should be scaled or not. It uses the search_space to define MinMax values
+            by default this is True
         :param track_state: If `True`, this method saves the optimization state at the start of each
             step. Models and acquisition state are copied using `copy.deepcopy`.
         :param track_path: If set, the optimization state is saved to disk at this path,
@@ -400,7 +406,10 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
 
         self._observer = observer
         self.result: OptimizationResult = None
+
         self._search_space = search_space
+        self.scaler = scaler
+
         self._steps = 0
 
         self._crash_result = None
@@ -433,7 +442,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                              fit_initial_model: bool = True
                              ):
         """
-        Otrain the query points based on the minimizer of the ``dataset`` and ``search_space`` (specified at
+        Obtain the query points based on the minimizer of the ``dataset`` and ``search_space`` (specified at
         :meth:`__init__`). This is the central implementation of the Bayesian optimization loop.
 
         - Finds the next points with which to query the ``observer`` using the
@@ -474,6 +483,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         """
         # Copy the dataset, so we don't change the one provided by the user.
         datasets = copy.deepcopy(datasets)
+        #new_sample = Dataset(query_points=query_points, observations=observer_output)
 
         if isinstance(datasets, Dataset):
             datasets = {OBJECTIVE: datasets}
@@ -581,12 +591,17 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
 
             with Timer() as query_point_generation_timer:
                 points_or_stateful = self._acquisition_rule.acquire(self._search_space,
-                                                                   self._models,
-                                                                   datasets=filtered_datasets)
+                                                                    self._models,
+                                                                    datasets=filtered_datasets)
                 if callable(points_or_stateful):
                     self._acquisition_state, query_points = points_or_stateful(self._acquisition_state)
                 else:
                     query_points = points_or_stateful
+
+            if self.scaler:
+                query_points = self.scaler.inverse_transform(query_points)
+            else:
+                query_points = query_points.numpy()
 
             if summary_writer:
                 with summary_writer.as_default(step=self._steps):
@@ -598,6 +613,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                         query_point_generation_timer,
                         self.query_plot_dfs,
                     )
+
             return query_points
 
         except Exception as error:  # pylint: disable=broad-except
@@ -643,7 +659,12 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         # if tf.rank(query_points) == 3:
         #     observer = mk_batch_observer(observer)
         # observer_output = observer(query_points)
+        if self.scaler:
+            #TODO, check this is valid for batch samples(?)
+            query_points = self.scaler.transform(query_points)
+
         new_sample = Dataset(query_points=query_points, observations=observer_output)
+
         if isinstance(new_sample, Dataset):
             new_sample = {OBJECTIVE: new_sample}
 

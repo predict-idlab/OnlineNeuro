@@ -1,21 +1,35 @@
 {
+  "I" : {
+    "optimizable": true,
+    "value":[0, 0],
+    "min_value": [-3, 0.05],
+    "max_value": [-0.05, 3],
+    "type": "array"
+    },
+  "electrode_shift": {
+    "optimizable": true,
+    "value": 0,
+    "min_value": 0,
+    "max_value": 12
+  },
   "pulse_dur":
-      { "optimizable": true,
-      "value":[0.1,0.1],
-      "min_value": [0.25,0.25],
-      "max_value": [2,2],
+      { "optimizable": false,
+      "value": [2, 2],
+      "min_value": [1, 1],
+      "max_value": [2, 2],
       "type": "array"
     },
   "frq":
-      { "optimizable": true,
+      { "optimizable": false,
       "value": [1, 1],
-      "min_value": [0,0],
-      "max_value": [100,100],
+      "min_value": [0, 0],
+      "max_value": [100, 100],
       "type": "float"
     },
+
   "e_pos":
       { "optimizable": false,
-        "value":[-1, 1, -1, 3],
+        "value":[0, 0, 2, 0],
         "type": "array"
     },
     "c" :
@@ -76,10 +90,5 @@
         { "optimizable": false,
         "value":["stim_sin(t, 20000, 1)","stim_sin(t, 20000, 1)"],
         "type": "array_string"
-   },
-    "I" :
-        { "optimizable": false,
-        "value":[-1,-1],
-        "type": "array"
-    }
+   }
 }

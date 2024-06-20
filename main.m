@@ -76,7 +76,7 @@ function main(varargin)
             [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = circle_problem(true);
         case 'rose'
             [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = rosenbrock_problem(true);
-        case {'axon_single','axon_double','axon_threshold'}
+        case {'axon_single', 'axon_double', 'axon_threshold','nerve_block'}
             [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets, eval_dict] = axon_problem(false, data.problem);
         case 'multiobjective'
             [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = multiobjective_problem(true);
@@ -87,7 +87,6 @@ function main(varargin)
     end
     
     display(eval_fun)
-    % TODO adjust function_name
     exp_summary = struct('name', fun_name, ...
                         'n_features',{n_features},'n_targets', {n_targets}, ...
                         'lower_bound', lower_bound, ...
@@ -113,9 +112,9 @@ function main(varargin)
             for i =1:num_points
                 fvalues(i,:) = fun_wrapper(eval_fun, query_points(i,:), num_targets, n_features, eval_dict);
             end
-        case {'axon_threshold'}
+        case {'axon_threshold','nerve_block'}
             for i =1:num_points
-                fvalues(i,:) = fun_wrapper(eval_fun, query_points(i,:), num_targets, n_features, eval_dict, 'threshold');
+                fvalues(i,:) = fun_wrapper(eval_fun, query_points(i,:), num_targets, n_features, eval_dict, data.problem);
             end
             
         otherwise
@@ -167,6 +166,7 @@ function main(varargin)
         % Receive data from Python
         receivedData = readData(tcpipClient);
         qp = receivedData.query_points; %TODO Reshape if needed (batch_sampling may need this)
+        display(qp)
         num_points = length(qp)/length(n_features);
         % Check if termination signal received from Python
         terminateFlag = receivedData.terminate_flag;
@@ -181,10 +181,12 @@ function main(varargin)
                     for i = 1:num_points
                         fvalues(i,:) = fun_wrapper(eval_fun, qp(i,:), num_targets, n_features, eval_dict);
                     end
-                case {'axon_threshold'}
+                %TODO, define experiment setup for nerve block tests                    
+                case {'axon_threshold','nerve_block'}
                     for i =1:num_points
-                        fvalues(i,:) = fun_wrapper(eval_fun, qp(i,:), num_targets, n_features, eval_dict,'threshold');
+                        fvalues(i,:) = fun_wrapper(eval_fun, qp(i,:), num_targets, n_features, eval_dict, data.problem);
                     end
+
                 otherwise
                     for i = 1:num_points
                         fvalues(i,:) = fun_wrapper(eval_fun, qp(i,:), num_targets);
@@ -206,13 +208,15 @@ function decodedData = readData(obj, ~)
     data = readline(obj);  % Read all available bytes
 
     % Decode the received data (assuming it's JSON)
-   decodedData = jsondecode(data);
+  
+    decodedData = jsondecode(data);
 end
 
 
 function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator, channel)
     % operator defines how to post-process the AP, need to discuss what's
     % meaningful to extract.
+    % TODO. handle putting multi-input vectors in the correct struct 
     if nargin < 2
         error('Fun Wrapper requires at least two input arguments.');
     end
@@ -248,7 +252,8 @@ function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator
         for i=1:length(feat_names)
             feat_struct.(string(feat_names(i))) = qp(i);
         end
-
+        feat_struct = preprocess_struct(feat_struct);
+        display(feat_struct)
         y = fun(feat_struct);
         % Operator applied to only a node 
         % TODO, extend what else to do here. 
@@ -269,6 +274,54 @@ function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator
                 else
                     y = 0;
                 end
+            case 'nerve_block' %Seen as classification atm
+                %TODO save the entire pulses.
+                ch_1 = y.Yp(:,1); % Verify this?
+                ch_2 = y.Yp(:,18);
+                
+                ch_1_min = min(ch_1);
+                ch_1_max = max(ch_1);
+                ch_2_min = min(ch_2);
+                ch_2_max = max(ch_2);
+                
+                if ((ch_1_max - ch_1_min) > 80) && (ch_1_max > 0)
+                    ap_1 = 1;
+                else
+                    ap_1 = 0;
+                end
+                
+                if ((ch_2_max - ch_2_min) > 80) && (ch_2_max > 0)
+                    ap_2 = 1;
+                else
+                    ap_2 = 0;
+                end
+                
+                if ((ap_1 == 1) & (ap_2 == 0)) | ((ap_1 == 0) & (ap_2 == 1))
+                    figure(1)
+                    plot(ch_1)
+                    hold on
+                    plot(ch_2)
+                    hold off
+
+                    figure(2)
+                    plot(y.Yp(:,1:18)+ (-9:8)*40)
+                    y = 1;
+
+                else
+                    y = 0;
+                end
+                % a Ranvier node every 2 "Channels"?
+                % if (y_max_channel_first > 0.0) && (y_max_channel_last) < 0.9
+                %     y = 1;
+                % else
+                %     y = 0;
+                % end
+                %Ideally, this should be binary, but I am not seeing
+                %anything, so trying something different for the moment
+
+                %y = -(y_max_channel_first - y_max_channel_last);
+
+            % Detect y.yp(:,0) and no y.yp(:,-1)
 
             otherwise
                 % min_max (default)
@@ -280,3 +333,4 @@ function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator
     end
 
 end
+
