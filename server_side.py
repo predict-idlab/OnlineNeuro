@@ -43,7 +43,7 @@ from trieste.acquisition.rule import OBJECTIVE
 from threading import Thread
 
 from plotting import update_plot
-from utils import customMinMaxScaler
+from utils import customMinMaxScaler, run_matlab_main, fetch_data
 
 # from flask import Flask, send_file
 # app = Flask(__name__)
@@ -51,27 +51,6 @@ from utils import customMinMaxScaler
 # @app.route('/plot.png')
 # def plot_png(file):
 #     return send_file('plot.png', mimetype='image/png')
-
-
-def run_matlab_main(**kwargs):
-    # TODO this function can be modified so that arguments are passed to the matlab engine
-
-    # Start MATLAB engine
-    print("Launching Matlab from Python side")
-    eng = matlab.engine.start_matlab()
-
-    # Change directory to current directory
-    current_directory = os.path.dirname(os.path.abspath(__file__))
-
-    eng.cd(current_directory)  # Change path to your directory where main.m resides
-
-    # Call MATLAB function main
-    confirm_bool = bool(kwargs['matlab_initiate'])
-    eng.main(confirm_bool, nargout=0)  # nargout=0 means we're not expecting any output from the MATLAB function
-
-    # Stop MATLAB engine
-    eng.quit()
-
 
 def main(matlab_call=False, *args, **kwargs) -> None:
     # Load port configuration
@@ -157,23 +136,14 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     client_socket.sendall(response_json.encode())
 
     # TODO wrap this as a single function so that larger packages can be retrieved in the other loop
-    received_data = client_socket.recv(1024).decode()
-    received_data = json.loads(received_data)
-    if 'tot_pckgs' in received_data:
-        rest_of_msg = []
-        for _ in range(received_data['tot_pckgs'] - 1):
-            msg = client_socket.recv(1024).decode()
-            msg = json.loads(msg)
-            rest_of_msg.append(msg)
-
-        for msg in rest_of_msg:
-            for k, v in msg.items():
-                if k != 'tot_pckgs':
-                    received_data[k] += v
+    received_data = fetch_data(client_socket)
 
     print("First data package:", received_data)
+    received_data = pd.DataFrame(received_data)
+
     query_points = np.stack(initial_qp)
-    observations = np.array(received_data['init_response'])
+    observations = received_data['init_response'].values
+
     init_data_size = len(query_points)
 
     if observations.ndim <= 1:
@@ -189,8 +159,6 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     else:
         config['kernel_variance'] = None
 
-    print("Init dataset")
-    print(init_dataset)
     model = build_model(init_dataset, search_space, config)
     # TODO extend to batch_sampling at a later stage
     if config['experiment']['batch_sampling']:
@@ -284,11 +252,13 @@ def main(matlab_call=False, *args, **kwargs) -> None:
                         ground_truth=None, init_fun=None,
                         count=count)
             time.sleep(0.5)
+        print(received_data)
+        observations = received_data['observations']
+        observations = np.array(observations)
 
-        observations = np.array(received_data['observations'])
         if observations.ndim <= 1:
             # TODO Need to fix this to allow batch sampling, but also multivariate modeling.
-            # Right not this is basically hardcoded
+            # Right now this is basically hardcoded
             if config['problem'] == 'multiobjective':
                 observations = observations.reshape(-1, 2)
             else:

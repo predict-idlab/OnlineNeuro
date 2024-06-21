@@ -1,19 +1,24 @@
 % MATLAB code to send data via TCP/IP
-function main(varargin)
+function main(matlab_initiates, full_response)
     pyenv('ExecutionMode','InProcess')
 
-    if nargin==0
+    if nargin<1
         matlab_initiates = true; %default value
     else
         matlab_initiates = false;
     end
 
-    format long g
-    str = fileread('config.json'); % dedicated for reading files as text 
-    data = jsondecode(str); % Using the jsondecode function to parse JSON from string 
-    
-    fprintf("Verifying port is open \n");    
+    if nargin<2
+        full_response = false;
+    else
+        full_response = true;
+    end
 
+    format long g
+    str = fileread('config.json');
+    data = jsondecode(str);
+
+    fprintf("Verifying port is open \n");
     if matlab_initiates
         % TODO PENDING. Python execution from within Matlab is a whole mess due to 
         % not finding libraries such as libstdc++.so.6.
@@ -44,7 +49,6 @@ function main(varargin)
     cmd = sprintf('fuser %d/tcp', data.port);
     system(cmd);
 
-    %server = tcpserver(data.ip,data.port);
     tcpipClient = tcpclient(data.ip, data.port, ...
         "Timeout",data.Timeout, "ConnectTimeout",data.ConnectTimeout, "EnableTransferDelay",false);
 
@@ -60,17 +64,15 @@ function main(varargin)
     pause(1);
     receivedData = readData(tcpipClient);
     display(receivedData)
-    
     % End handshake, connection works.
 
-    % First package contains the logic of the simulation.
-    % Details such as experiment name, feature dimensionality,
+    % First package sent to Python contains the details of the simulation.
+    % Information such as experiment name, feature dimensionality,
     % feature names, number of objectives (1), constraints should be passed here.
     % It could also be loaded as shared parameters like config.json,
     % however, it may make sense for later stages, that it is defined from
-    % the Matlab side and passed to Python
+    % the Matlab side and passed to Python.
 
-    %Defining problem, getting N first samples
     switch data.problem
         case 'circle'
             [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = circle_problem(true);
@@ -80,7 +82,7 @@ function main(varargin)
             [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets, eval_dict] = axon_problem(false, data.problem);
         case 'multiobjective'
             [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = multiobjective_problem(true);
-        %
+
         otherwise
             warning('Unexpected problem type, defaulting to Rosenbrock')
             [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = rosenbrock_problem(true);
@@ -105,21 +107,21 @@ function main(varargin)
     num_points = length(query_points);
     
     num_targets = length(n_targets);
-    fvalues = zeros(length(query_points), num_targets);
+    fvalues = cell(length(query_points), num_targets);
     
     switch data.problem
         case {'axon','axon_single','axon_double'}
             for i =1:num_points
-                fvalues(i,:) = fun_wrapper(eval_fun, query_points(i,:), num_targets, n_features, eval_dict);
+                fvalues{i,:} = fun_wrapper(eval_fun, query_points(i,:), num_targets, n_features, eval_dict);
             end
         case {'axon_threshold','nerve_block'}
             for i =1:num_points
-                fvalues(i,:) = fun_wrapper(eval_fun, query_points(i,:), num_targets, n_features, eval_dict, data.problem);
+                fvalues{i,:} = fun_wrapper(eval_fun, query_points(i,:), num_targets, n_features, eval_dict, data.problem);
             end
             
         otherwise
             for i =1:num_points
-                fvalues(i,:) = fun_wrapper(eval_fun, query_points(i,:), num_targets);
+                fvalues{i,:} = fun_wrapper(eval_fun, query_points(i,:), num_targets);
             end
     end
     
@@ -175,21 +177,21 @@ function main(varargin)
             fprintf('Termination signal received from Python \n Saving data ... \n Closing connection...');
         else
             fprintf("requested query points \n")
-            fvalues = zeros(num_points, num_targets);
+            fvalues = cell(num_points, num_targets);
             switch data.problem
                 case {'axon','axon_single','axon_double'}
                     for i = 1:num_points
-                        fvalues(i,:) = fun_wrapper(eval_fun, qp(i,:), num_targets, n_features, eval_dict);
+                        fvalues{i,:} = fun_wrapper(eval_fun, qp(i,:), num_targets, n_features, eval_dict);
                     end
                 %TODO, define experiment setup for nerve block tests                    
                 case {'axon_threshold','nerve_block'}
                     for i =1:num_points
-                        fvalues(i,:) = fun_wrapper(eval_fun, qp(i,:), num_targets, n_features, eval_dict, data.problem);
+                        fvalues{i,:} = fun_wrapper(eval_fun, qp(i,:), num_targets, n_features, eval_dict, data.problem);
                     end
 
                 otherwise
                     for i = 1:num_points
-                        fvalues(i,:) = fun_wrapper(eval_fun, qp(i,:), num_targets);
+                        fvalues{i,:} = fun_wrapper(eval_fun, qp(i,:), num_targets);
                     end
             end
             dataToSend = struct('observations', fvalues);
@@ -208,14 +210,11 @@ function decodedData = readData(obj, ~)
     data = readline(obj);  % Read all available bytes
 
     % Decode the received data (assuming it's JSON)
-  
-    decodedData = jsondecode(data);
+   decodedData = jsondecode(data);
 end
 
 
-function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator, channel)
-    % operator defines how to post-process the AP, need to discuss what's
-    % meaningful to extract.
+function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator, channel, full_response)
     % TODO. handle putting multi-input vectors in the correct struct 
     if nargin < 2
         error('Fun Wrapper requires at least two input arguments.');
@@ -249,12 +248,18 @@ function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator
             channel = 8;
         end
 
+        if nargin < 8
+            full_response = false;
+        end
+
         for i=1:length(feat_names)
             feat_struct.(string(feat_names(i))) = qp(i);
         end
+
         feat_struct = preprocess_struct(feat_struct);
         display(feat_struct)
         y = fun(feat_struct);
+
         % Operator applied to only a node 
         % TODO, extend what else to do here. 
         switch operator
@@ -310,21 +315,7 @@ function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator
                 else
                     y = 0;
                 end
-                % a Ranvier node every 2 "Channels"?
-                % if (y_max_channel_first > 0.0) && (y_max_channel_last) < 0.9
-                %     y = 1;
-                % else
-                %     y = 0;
-                % end
-                %Ideally, this should be binary, but I am not seeing
-                %anything, so trying something different for the moment
-
-                %y = -(y_max_channel_first - y_max_channel_last);
-
-            % Detect y.yp(:,0) and no y.yp(:,-1)
-
             otherwise
-                % min_max (default)
                 y_min = min(y.Yp(:,channel));
                 y_max = max(y.Yp(:,channel));
                 y = -(y_max - y_min);
