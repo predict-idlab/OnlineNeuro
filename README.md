@@ -91,7 +91,7 @@ All parameters (connection and optimization) are selected in the config.json
 
 A classification problem approximated sith SVGP and log-likelihood.
 
-<img src="circle.jpg" alt="circle" height="250"/> 
+<img src="figures/circle.jpg" alt="circle" height="250"/> 
 <img src="animations/animation_circle.gif" alt="circle_opt" height="250"/>
 
 <!-- ![circle.jpg](circle.jpg) ![animation_circle.gif](animations%2Fanimation_circle.gif) -->
@@ -100,17 +100,17 @@ A classification problem approximated sith SVGP and log-likelihood.
 
 A regression problem with smooth surfaces approximated with GP.
 
-<img src="rose.jpg" alt="rose" height="250"/> 
-<img src="animations/animation1.gif" alt="rose_opt" height="250"/>
+<img src="figures/rose.jpg" alt="rose" height="250"/> 
+<img src="animations/animation_rose.gif" alt="rose_opt" height="250"/>
 
-<!-- ![rose.jpg](rose.jpg)![animation1.gif](animations%2Fanimation1.gif) -->
+<!-- ![rose.jpg](rose.jpg)![animation1.gif](animations%2Fanimation_rose.gif) -->
 
 ### Multiobjective
 
 A two objective problem with two inputs. Optimizing towards joined targets using Pareto Front.
 % TODO is there a way to set up the constraints from matlab's end and pass them to Python?
 
-<img src="vlmop2.jpg" alt="vlmop2" width="450"/>
+<img src="figures/vlmop2.jpg" alt="vlmop2" width="450"/>
 <img src="animations/animation_vlmop2.gif" alt="animation_vlmop2" width="450"/>
 
 ## Axonsim
