@@ -72,10 +72,10 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     print("Waiting for a connection...")
 
     #Start Matlab process via engine and threading
-    # if matlab_call:
-    #     # If threading, Python launches the Matlab main, else, main needs to be manually launched
-    #     t = Thread(target=run_matlab_main, kwargs={"matlab_initiate": False})
-    #     t.start()
+    if matlab_call:
+        # If threading, Python launches the Matlab main, else, main needs to be manually launched
+        t = Thread(target=run_matlab_main, kwargs={"matlab_initiate": False})
+        t.start()
 
     # Accept a connection
     client_socket, client_address = server_socket.accept()
