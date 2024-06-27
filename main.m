@@ -162,7 +162,12 @@ function main(matlab_initiates, full_response)
     % Read values sent from Python 
     fprintf("Beginning loop now \n")
 
-    terminateFlag = false;
+    if isfield(receivedData, 'terminate_flag')
+        terminateFlag = receivedData.terminate_flag;
+    else
+        terminateFlag = false;
+    end
+
     
     while ~terminateFlag
         % Receive data from Python
