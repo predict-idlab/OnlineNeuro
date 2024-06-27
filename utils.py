@@ -94,7 +94,7 @@ class customMinMaxScaler:
         X_original = X_original * self.feature_range[ix] + self.feature_min[ix]  # scale to original feature range
         return X_original
 
-def run_matlab_main(matlab_script_path=None, matlab_function_name='main', **kwargs):
+def run_matlab(matlab_script_path=None, matlab_function_name='main', **kwargs):
     """
     Launch a matlab process
     @param kwargs:

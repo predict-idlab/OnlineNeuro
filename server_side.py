@@ -43,7 +43,7 @@ from trieste.acquisition.rule import OBJECTIVE
 from threading import Thread
 
 from plotting import update_plot
-from utils import customMinMaxScaler, run_matlab_main, fetch_data
+from utils import customMinMaxScaler, run_matlab, fetch_data
 
 # from flask import Flask, send_file
 # app = Flask(__name__)
@@ -74,7 +74,7 @@ def main(matlab_call=False, *args, **kwargs) -> None:
     #Start Matlab process via engine and threading
     if matlab_call:
         # If threading, Python launches the Matlab main, else, main needs to be manually launched
-        t = Thread(target=run_matlab_main, kwargs={"matlab_initiate": False})
+        t = Thread(target=run_matlab, kwargs={"matlab_initiate": False})
         t.start()
 
     # Accept a connection
