@@ -130,28 +130,32 @@ function main(matlab_initiates, full_response)
     dataToSend = struct('init_response', fvalues);
     jsonData = jsonencode(dataToSend);
     
-    size_lim = 1024;
+    %size_lim = 1024;
+    size_lim = 124;
+
     if length(jsonData)>size_lim 
-        pckgs = floor(length(jsonData)/1024) + 1;
         sprintf("breaking down message")
+
+        pckgs = floor(length(jsonData)/1024) + 1;
         %dataToSend.tot_pckgs = pckgs;
         %jsonData = jsonencode(dataToSend);
-        row_per_pckg = floor(length(random_inputs)/pckgs);
+        row_per_pckg = floor(length(fvalues)/pckgs);
 
         for i=1:pckgs
             start_ix = (i-1)*row_per_pckg + 1;
-            end_ix = min(i*row_per_pckg , length(random_inputs));
+            end_ix = min(i*row_per_pckg , length(fvalues));
 
             chunk = struct();
-            fields = fieldnames(dataToSend);
-            for j = 1:length(fields)
-                if ndims(dataToSend.(fields{j}))==1 | size(dataToSend.(fields{j}),1) == 1
-                    chunk.(fields{j}) = dataToSend.(fields{j})(start_ix:end_ix);
-                else
-                    chunk.(fields{j}) = dataToSend.(fields{j})(start_ix:end_ix,:);
-                end
-            end
-            chunk.tot_pckgs = pckgs;
+            %fields = fieldnames(dataToSend);
+            % for j = 1:length(fields)
+            %     if ndims(dataToSend.(fields{j}))==1 | size(dataToSend.(fields{j}),1) == 1
+            %         chunk.(fields{j}) = dataToSend.(fields{j})(start_ix:end_ix);
+            %     else
+            %         chunk.(fields{j}) = dataToSend.(fields{j})(start_ix:end_ix,:);
+            %     end
+            % end
+            chunk.('data') = dataToSend(start_ix:end_ix);
+            chunk.('tot_pckgs') = pckgs;
             jsonChunk = jsonencode(chunk);
             write(tcpipClient, jsonChunk, 'char');
         end

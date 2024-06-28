@@ -167,14 +167,24 @@ def fetch_data(client_socket):
     received_data = client_socket.recv(1024).decode()
     received_data = json.loads(received_data)
     if 'tot_pckgs' in received_data:
-        rest_of_msg = []
-        for _ in range(received_data['tot_pckgs'] - 1):
+        tot_packages = received_data['tot_pckgs']
+
+        #received_data = []
+        all_data = []
+        all_data.append(received_data['data'])
+        for _ in range(tot_packages - 1):
             msg = client_socket.recv(1024).decode()
             msg = json.loads(msg)
-            rest_of_msg.append(msg)
+            print(msg)
+            all_data.append(msg['data'])
 
-        for msg in rest_of_msg:
-            for k, v in msg.items():
-                if k != 'tot_pckgs':
-                    received_data[k] += v
-    return received_data
+        # for msg in rest_of_msg:
+        #     for k, v in msg.items():
+        #         if k != 'tot_pckgs':
+        #             received_data[k] += v
+        if isinstance(all_data, list):
+            if len(all_data)==1:
+                all_data = all_data[0]
+        return all_data
+    else:
+        return received_data

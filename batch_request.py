@@ -11,7 +11,7 @@ import time
 from threading import Thread
 from utils import run_matlab, generate_grids, fetch_data
 
-NUM_POINTS = 5
+NUM_POINTS = 12
 
 def main(*args, **kwargs) -> None:
     # Load port configuration
@@ -78,28 +78,32 @@ def main(*args, **kwargs) -> None:
     received_data = pd.DataFrame(received_data)
 
     save_df = pd.DataFrame(full_grid, columns=exp_config['n_features'])
-    save_df['response'] = received_data['init_response']
+    for col in received_data.columns:
+        if col not in save_df:
+            save_df[col] = received_data[col]
+        else:
+            warnings.warn(f"Column {col} already present in array (verify!)")
 
     train_df = save_df.iloc[:len(train_grid), :]
     test_df = save_df.iloc[len(train_grid):, :]
 
-    os.makedirs(f"{config['benchmark_path']}/{exp_config['name']}/{NUM_POINTS}", exist_ok=True)
-    train_df.to_csv(f"{config['benchmark_path']}/{exp_config['name']}/{NUM_POINTS}/train_df.csv", index=False)
-    test_df.to_csv(f"{config['benchmark_path']}/{exp_config['name']}/{NUM_POINTS}/test_df.csv", index=False)
-
-    #Prepare metadata based on config_experiments files
-    # with open('config.json', 'r') as f:
-    #     config = json.load(f)
     with open(f"./config_experiments/experiment_{exp_config['name']}.json","r") as f:
         carried_exp = json.load(f)
     with open(f"./config_experiments/parameter_spec_{exp_config['name']}.json", "r") as f:
         default_exp = json.load(f)
 
-    for k,v in default_exp:
+    for k, v in default_exp.items():
         if k not in carried_exp:
-            carried_exp[k]= default_exp
+            carried_exp[k] = default_exp
 
-    with open(f"{config['benchmark_path']}/{exp_config['name']}/{NUM_POINTS}/metadata.json", 'w') as output_file:
+    diam = carried_exp['dia']['value']
+    dip_dis = abs(carried_exp['e_pos']['value'][0] - carried_exp['e_pos']['value'][2])
+    save_path = f"{config['benchmark_path']}/{exp_config['name']}/fib_dia_{diam}mm_dip_dis{dip_dis}mm_{NUM_POINTS}/"
+    os.makedirs(save_path, exist_ok=True)
+    train_df.to_csv(save_path + "train_df.csv", index=False)
+    test_df.to_csv(save_path + "test_df.csv", index=False)
+
+    with open(save_path + "metadata.json", 'w') as output_file:
         json.dump(carried_exp, output_file, indent=4)
 
     # Close the connection
