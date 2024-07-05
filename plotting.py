@@ -32,7 +32,7 @@ def custom_cmap():
 
 
 def plot_model(model, initial_data, search_space=None, scaler=None, test_data=None, sampled_data=None,
-               ground_truth=None, init_fun=None, save_dir=None, count=0):
+               plot_ground_truth=None, ground_truth_function=None, save_dir=None, count=0):
     """
     Plot a two feature 1 output model
     @param scaler:
@@ -41,14 +41,14 @@ def plot_model(model, initial_data, search_space=None, scaler=None, test_data=No
     @param search_space: Trieste search space
     @param test_data: Data points to evaluate (normally test)
     @param sampled_data: Data points to evaluate (normally the incremental train)
-    @param ground_truth: boolean to decide whether ground_truth is plotted
-    @param init_fun: the generator function of the problem (available for some toy problems)
+    @param plot_ground_truth: boolean to decide whether ground_truth is plotted
+    @param ground_truth_function: the generator function of the problem (available for some toy problems)
     @param save_dir: path to save figure
     @param count: numeric value to include in the figure name
     @return:
     """
-    if ground_truth:
-        assert init_fun is not None
+    if plot_ground_truth:
+        assert ground_truth_function is not None
         assert search_space is not None
 
     plt.figure(figsize=(6, 3))
@@ -57,11 +57,11 @@ def plot_model(model, initial_data, search_space=None, scaler=None, test_data=No
              'ro', mew=2,
              label='Initial samples')
 
-    if ground_truth:
+    if plot_ground_truth:
         x_min = search_space._lower.numpy()
         x_max = search_space._upper.numpy()
         x = np.linspace(x_min, x_max, num=50)
-        mean = init_fun(x, noise=0)
+        mean = ground_truth_function(x, noise=0)
         plt.plot(x,
                  mean,
                  color='k', linestyle='--',
@@ -98,10 +98,10 @@ def plot_model(model, initial_data, search_space=None, scaler=None, test_data=No
     plt.close()
 
 
-def plot_circle(model, initial_data, search_space=None, scaler=None, test_data=None, sampled_data=None, ground_truth=None,
-                init_fun=None, save_dir=None, count=0):
-    if ground_truth:
-        assert callable(init_fun)
+def plot_circle(model, initial_data, search_space=None, scaler=None, test_data=None, sampled_data=None, plot_ground_truth=None,
+                ground_truth_function=None, save_dir=None, count=0):
+    if plot_ground_truth:
+        assert callable(ground_truth_function)
         assert search_space is not None
     fig = plt.figure(figsize=(6, 6))
     ax = fig.add_subplot(111, projection='3d')
@@ -123,7 +123,7 @@ def plot_circle(model, initial_data, search_space=None, scaler=None, test_data=N
     ax.scatter(x[locs, 0], x[locs, 1], marker='o', c='k', label='Train-pos')
     ax.scatter(x[~locs, 0], x[~locs, 1], marker='x', c='k', label='Train-neg')
 
-    if ground_truth:
+    if plot_ground_truth:
         x_min, y_min = search_space._lower.numpy()
         x_max, y_max = search_space._upper.numpy()
         xx, yy = np.meshgrid(np.arange(x_min, x_max+GRID_RESOLUTION, GRID_RESOLUTION),
@@ -160,8 +160,8 @@ def plot_circle(model, initial_data, search_space=None, scaler=None, test_data=N
 
 
 def plot_surface(model, initial_data, search_space=None, scaler=None,
-                 test_data=None, sampled_data=None, ground_truth=None,
-                 init_fun=None, feasible_region=None, save_dir=None, count=0):
+                 test_data=None, sampled_data=None, plot_ground_truth=None,
+                 ground_truth_function=None, feasible_region=None, save_dir=None, count=0):
     """
 
     @param scaler:
@@ -171,15 +171,15 @@ def plot_surface(model, initial_data, search_space=None, scaler=None,
     @param scaler:
     @param test_data:
     @param sampled_data:
-    @param ground_truth:
-    @param init_fun:
+    @param plot_ground_truth:
+    @param ground_truth_function:
     @param feasible_region:
     @param save_dir:
     @param count:
     @return:
     """
-    if ground_truth:
-        assert callable(init_fun)
+    if plot_ground_truth:
+        assert callable(ground_truth_function)
         assert search_space is not None
 
     fig = plt.figure()
@@ -238,11 +238,11 @@ def log_hv(obs, ref_point):
     return np.log10(obs_hv)
 
 def plot_pareto_2d(model, initial_data, search_space=None,
-                   scaler=None,  test_data=None, sampled_data=None, ground_truth=None,
-                   init_fun=None, save_dir=None, count=0):
+                   scaler=None, test_data=None, sampled_data=None, plot_ground_truth=None,
+                   ground_truth_function=None, save_dir=None, count=0):
 
-    if ground_truth:
-        assert callable(init_fun)
+    if plot_ground_truth:
+        assert callable(ground_truth_function)
         assert search_space is not None
 
     fig, ax = plt.subplots(figsize=(10, 10), ncols=2, nrows=2)
@@ -339,8 +339,8 @@ def plot_pareto_2d(model, initial_data, search_space=None,
     plt.close()
 
 def plot_nerve_block(model, initial_data, search_space, scaler=None,
-                     test_data=None, sampled_data=None, ground_truth=None,
-                     init_fun=None, save_dir=None, count=0):
+                     test_data=None, sampled_data=None, plot_ground_truth=None,
+                     ground_truth_function=None, save_dir=None, count=0):
     """
     Nerve_block is a binary output but has more inputs.
     Here I implement a simple 2 inputs 1 output plot (similar to circle), in which the first 2 variables
@@ -350,8 +350,8 @@ def plot_nerve_block(model, initial_data, search_space, scaler=None,
     @param scaler:
     """
 
-    if ground_truth:
-        assert callable(init_fun)
+    if plot_ground_truth:
+        assert callable(ground_truth_function)
         assert search_space is not None
 
     num_vars = len(search_space._lower.numpy())
@@ -415,7 +415,7 @@ def plot_nerve_block(model, initial_data, search_space, scaler=None,
         y_ix = feat_pairs[i][1]
         ax[i].scatter(x[:, x_ix], x[:, y_ix], c=y, marker='*', edgecolors='k', s=60)
 
-    if ground_truth:
+    if plot_ground_truth:
         #TBD
         raise Exception("Ground truth not implemented for Nerve block (yet). This may work as a precomputed result")
 
@@ -443,46 +443,58 @@ def plot_nerve_block(model, initial_data, search_space, scaler=None,
         plt.savefig(f'{save_dir}/plot_{count:02}.png')
     plt.close()
 
-def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, ground_truth=None, init_fun=None,
-                save_dir=None, count=0, *args, **vargs):
+def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, plot_ground_truth=None, ground_truth_function=None,
+                count=0, *args, **vargs):
+    """
+    @param bo: BayesianOptimizer object
+    @param initial_data: Initial data for plotting
+    @param sampled_data: Sampled data for plotting
+    @param test_data: Test data for plotting
+    @param plot_ground_truth: Boolean to indicate whether the true labels should be plotted. It requires passing a valid
+            search space and ground_truth_function.
+    @param ground_truth_function: Function that generates the ground truth labels. Only available for toy problems.
+    @param count: Counter for saving plot with unique names
+    @param args: Additional positional arguments
+    @param vargs: Additional keyword arguments
+    @return: None
+    """
+
     # TODO implement and improve current_plotting functions
     # TODO Include inverse scaling for features when bo.scaler is not None
-    # TODO os.makedirs if save_dir is not None can be run at the beginning here
+        #Partially done for some methods
+    
     save_dir = f"figures/{bo._observer}"
     os.makedirs(save_dir, exist_ok=True)
 
-    if bo._observer == 'log_reg':
-        plot_model(model=bo._models[OBJECTIVE], initial_data=initial_data, search_space=bo._search_space,
-                   scaler=bo.scaler,
-                   test_data=test_data, sampled_data=sampled_data, ground_truth=ground_truth,
-                   init_fun=init_fun,
-                   save_dir=save_dir, count=count)
-    elif bo._observer == 'circle':
-        plot_circle(model=bo._models[OBJECTIVE], initial_data=initial_data, search_space=bo._search_space,
-                    scaler=bo.scaler,
-                    test_data=test_data, sampled_data=sampled_data, ground_truth=ground_truth, init_fun=init_fun,
-                    save_dir=save_dir, count=count)
-    elif bo._observer == 'nerve_block':
-        plot_nerve_block(model=bo._models[OBJECTIVE], initial_data=initial_data, search_space=bo._search_space,
-                         scaler=bo.scaler,
-                         test_data=test_data, sampled_data=sampled_data, ground_truth=ground_truth, init_fun=init_fun,
-                         save_dir=save_dir, count=count)
-    elif bo._observer == 'rosenbruck':
-        plot_surface(model=bo._models[OBJECTIVE], initial_data=initial_data, search_space=bo._search_space,
-                     scaler=bo.scaler,
-                     test_data=test_data, sampled_data=sampled_data, ground_truth=ground_truth, init_fun=init_fun,
-                     save_dir=save_dir, count=count, **vargs)
-    elif bo._observer in ['axon_single', 'axon_double', 'axon_threshold']:
-        plot_surface(model=bo._models[OBJECTIVE], initial_data=initial_data, search_space=bo._search_space,
-                     scaler=bo.scaler,
-                     test_data=test_data, sampled_data=sampled_data, ground_truth=ground_truth, init_fun=init_fun,
-                     save_dir=save_dir, count=count, **vargs)
-    elif bo._observer in ['vlmop2','multiobjective']:
-        plot_pareto_2d(model=bo._models[OBJECTIVE], initial_data=initial_data, search_space=bo._search_space,
-                       scaler=bo.scaler,
-                       test_data=test_data, sampled_data=sampled_data, ground_truth=ground_truth, init_fun=init_fun,
-                       save_dir=save_dir, count=count)
+    common_args = {
+        'model': bo._models[OBJECTIVE],
+        'initial_data': initial_data,
+        'search_space': bo._search_space,
+        'scaler': bo.scaler,
+        'test_data': test_data,
+        'sampled_data': sampled_data,
+        'plot_ground_truth': plot_ground_truth,
+        'ground_truth_function': ground_truth_function,
+        'save_dir': save_dir,
+        'count': count
+    }
+    plot_functions = {
+        'log_reg': plot_model,
+        'circle': plot_circle,
+        'nerve_block': plot_nerve_block,
+        'rosenbruck': plot_surface,
+        'axon_single': plot_surface,
+        'axon_double': plot_surface,
+        'axon_threshold': plot_surface,
+        'vlmop2': plot_pareto_2d,
+        'multiobjective': plot_pareto_2d
+    }
+    if bo._observer in plot_functions:
+        plot_func = plot_functions[bo._observer]
+        if bo._observer in ['rosenbruck', 'axon_single', 'axon_double', 'axon_threshold']:
+            plot_func(*args, **common_args, **vargs)
+        else:
+            plot_func(*args, **common_args)
     else:
-        msg = f"Plot fun Not implemented for {bo._observer} problems."
+        msg = f"Plot function not implemented for {bo._observer} problems."
         warnings.warn(msg)
-        pass
