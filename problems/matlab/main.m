@@ -20,16 +20,20 @@ function main(matlab_initiates, full_response)
 
     fprintf("Verifying port is open \n");
     if matlab_initiates
-        % TODO PENDING. Python execution from within Matlab is a whole mess due to 
-        % not finding libraries such as libstdc++.so.6.
-        % For the time being the process can only be started from within
-        % Python!!!
+        % IMPORTANT
+        % Matlab comes with its on C++ libraries which are used Python.
+        % If using linux, hide those (or delete) as explained in 
+        % https://nl.mathworks.com/matlabcentral/answers/1907290-how-to-manually-select-the-libstdc-library-to-use-to-resolve-a-version-glibcxx_-not-found
+        
         if ispc
-            status = dos("python server_side.py");
+            [status, output]= dos('python server_side.py --initiator MATLAB --target MATLAB &');
         else
-            status = unix("python3 server_side.py");
+            [status, output] = unix('python3 server_side.py --initiator MATLAB --target MATLAB &');
         end
+
         fprintf(sprintf("running python command %d \n", status));
+        fprintf(output)
+
         cmd = sprintf("fuser %d/tcp >/dev/null 2>&1 && echo 1 || echo 0", data.port);
         fprintf("Process status %s waiting ... \n", status)
 
@@ -40,7 +44,7 @@ function main(matlab_initiates, full_response)
                 break;
             else
                 fprintf("Waiting for server to start...\n");
-                pause(3); % Wait for 1 second before checking again
+                pause(3); % Wait for n seconds before checking again
             end
         end
 
@@ -55,44 +59,47 @@ function main(matlab_initiates, full_response)
     pause(1);
 
     % Send handshake
+    %if matlab_initiates
     dataToSend = struct('message', 'Hello from MATLAB','dummyNumber', 123);
     jsonData = jsonencode(dataToSend);
     write(tcpipClient, jsonData, 'char');
     fprintf("Data sent \n") 
     disp('Waiting for data...');
-    
+    %end
     pause(1);
     receivedData = readData(tcpipClient);
     display(receivedData)
     % End handshake, connection works.
 
     % First package sent to Python contains the details of the simulation.
-    % Information such as experiment name, feature dimensionality,
-    % feature names, number of objectives (1), constraints should be passed here.
+    % Information such as experiment name, feature map (name -> [min_bound, max_bound]),
+    % number of objectives (1), constraints should be passed here.
     % It could also be loaded as shared parameters like config.json,
     % however, it may make sense for later stages, that it is defined from
-    % the Matlab side and passed to Python.
+    % the simulator side and passed to Python.
+    % TODO decide on the logic if using Streamlit
 
     switch data.problem
         case 'circle'
-            [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = circle_problem(true);
+            [fun_name, eval_fun, features, n_targets] = circle_problem(true);
         case 'rose'
-            [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = rosenbrock_problem(true);
-        case {'axon_single', 'axon_double', 'axon_threshold','nerve_block'}
-            [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets, eval_dict] = axon_problem(false, data.problem);
+            [fun_name, eval_fun, features, n_targets] = rosenbrock_problem(true);
         case 'multiobjective'
-            [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = multiobjective_problem(true);
-
+            %TODO fix this
+            [fun_name, eval_fun, features, n_targets] = multiobjective_problem(true);
+        case {'axon_single', 'axon_double', 'axon_threshold','nerve_block'}
+            [fun_name, eval_fun, features, n_targets, eval_dict] = axon_problem(false, data.problem);
+            n_features = fieldnames(features);
         otherwise
             warning('Unexpected problem type, defaulting to Rosenbrock')
-            [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = rosenbrock_problem(true);
+            [fun_name, eval_fun, features, n_targets] = rosenbrock_problem(true);
     end
     
     display(eval_fun)
+    display(features)
+
     exp_summary = struct('name', fun_name, ...
-                        'n_features',{n_features},'n_targets', {n_targets}, ...
-                        'lower_bound', lower_bound, ...
-                        'upper_bound', upper_bound, ...
+                        'features',features,'n_targets', {n_targets}, ...
                         'constraints', '');
 
     jsonData = jsonencode(exp_summary);
@@ -107,53 +114,41 @@ function main(matlab_initiates, full_response)
     num_points = length(query_points);
     
     num_targets = length(n_targets);
-    fvalues = cell(length(query_points), num_targets);
+    fvalues = cell(length(query_points), 1);
     
     switch data.problem
         case {'axon','axon_single','axon_double'}
             for i =1:num_points
-                fvalues{i,:} = fun_wrapper(eval_fun, query_points(i,:), num_targets, n_features, eval_dict);
+                fvalues{i} = fun_wrapper(eval_fun, query_points(i,:), num_targets, n_features, eval_dict);
             end
         case {'axon_threshold','nerve_block'}
             for i =1:num_points
-                fvalues{i,:} = fun_wrapper(eval_fun, query_points(i,:), num_targets, n_features, eval_dict, data.problem);
+                fvalues{i} = fun_wrapper(eval_fun, query_points(i,:), num_targets, n_features, eval_dict, data.problem);
             end
-            
         otherwise
             for i =1:num_points
-                fvalues{i,:} = fun_wrapper(eval_fun, query_points(i,:), num_targets);
+                fvalues{i} = fun_wrapper(eval_fun, query_points(i,:), num_targets);
             end
     end
     
-    %Sending first (large batch) Usually a GP is initialized with a
-    % a few samples
+    %Sending first (large batch)
     dataToSend = struct('init_response', fvalues);
     jsonData = jsonencode(dataToSend);
     
-    %size_lim = 1024;
-    size_lim = 124;
+    size_lim = 1024;
 
     if length(jsonData)>size_lim 
-        sprintf("breaking down message")
+        fprintf("breaking down message")
 
-        pckgs = floor(length(jsonData)/1024) + 1;
+        pckgs = floor(length(jsonData)/size_lim) + 1;
         %dataToSend.tot_pckgs = pckgs;
         %jsonData = jsonencode(dataToSend);
-        row_per_pckg = floor(length(fvalues)/pckgs);
+        row_per_pckg = ceil(length(fvalues)/pckgs);
 
         for i=1:pckgs
             start_ix = (i-1)*row_per_pckg + 1;
             end_ix = min(i*row_per_pckg , length(fvalues));
-
             chunk = struct();
-            %fields = fieldnames(dataToSend);
-            % for j = 1:length(fields)
-            %     if ndims(dataToSend.(fields{j}))==1 | size(dataToSend.(fields{j}),1) == 1
-            %         chunk.(fields{j}) = dataToSend.(fields{j})(start_ix:end_ix);
-            %     else
-            %         chunk.(fields{j}) = dataToSend.(fields{j})(start_ix:end_ix,:);
-            %     end
-            % end
             chunk.('data') = dataToSend(start_ix:end_ix);
             chunk.('tot_pckgs') = pckgs;
             jsonChunk = jsonencode(chunk);
@@ -177,8 +172,7 @@ function main(matlab_initiates, full_response)
         % Receive data from Python
         receivedData = readData(tcpipClient);
         qp = receivedData.query_points; %TODO Reshape if needed (batch_sampling may need this)
-        display(qp)
-        num_points = length(qp)/length(n_features);
+        num_points = length(qp)/length(fieldnames(features));
         % Check if termination signal received from Python
         terminateFlag = receivedData.terminate_flag;
 
@@ -186,21 +180,21 @@ function main(matlab_initiates, full_response)
             fprintf('Termination signal received from Python \n Saving data ... \n Closing connection...');
         else
             fprintf("requested query points \n")
-            fvalues = cell(num_points, num_targets);
+            fvalues = cell(num_points, 1);
             switch data.problem
                 case {'axon','axon_single','axon_double'}
                     for i = 1:num_points
-                        fvalues{i,:} = fun_wrapper(eval_fun, qp(i,:), num_targets, n_features, eval_dict);
+                        fvalues{i} = fun_wrapper(eval_fun, qp(i,:), num_targets, n_features, eval_dict);
                     end
                 %TODO, define experiment setup for nerve block tests                    
                 case {'axon_threshold','nerve_block'}
                     for i =1:num_points
-                        fvalues{i,:} = fun_wrapper(eval_fun, qp(i,:), num_targets, n_features, eval_dict, data.problem);
+                        fvalues{i} = fun_wrapper(eval_fun, qp(i,:), num_targets, n_features, eval_dict, data.problem);
                     end
 
                 otherwise
                     for i = 1:num_points
-                        fvalues{i,:} = fun_wrapper(eval_fun, qp(i,:), num_targets);
+                        fvalues{i} = fun_wrapper(eval_fun, qp(i,:), num_targets);
                     end
             end
             dataToSend = struct('observations', fvalues);
@@ -219,7 +213,7 @@ function decodedData = readData(obj, ~)
     data = readline(obj);  % Read all available bytes
 
     % Decode the received data (assuming it's JSON)
-   decodedData = jsondecode(data);
+  decodedData = jsondecode(data);
 end
 
 
@@ -266,7 +260,6 @@ function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator
         end
 
         feat_struct = preprocess_struct(feat_struct);
-        display(feat_struct)
         y = fun(feat_struct);
 
         % Operator applied to only a node 
@@ -297,7 +290,20 @@ function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator
                 ch_1_max = max(ch_1);
                 ch_2_min = min(ch_2);
                 ch_2_max = max(ch_2);
-                
+
+                % figure(1)
+                % plot(ch_1)
+                % hold on
+                % plot(ch_2)
+                % hold off
+                % fig = gca;
+                % save_figure_counter(fig, './figures/nerve_block/caps/', 'caps_first_last')
+                % 
+                % figure(2)
+                % plot(y.Yp(:,1:18)+ (-9:8)*40)
+                % fig = gca;
+                % save_figure_counter(fig, './figures/nerve_block/caps/', 'caps_all')
+
                 if ((ch_1_max - ch_1_min) > 80) && (ch_1_max > 0)
                     ap_1 = 1;
                 else
@@ -311,14 +317,6 @@ function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator
                 end
                 
                 if ((ap_1 == 1) & (ap_2 == 0)) | ((ap_1 == 0) & (ap_2 == 1))
-                    figure(1)
-                    plot(ch_1)
-                    hold on
-                    plot(ch_2)
-                    hold off
-
-                    figure(2)
-                    plot(y.Yp(:,1:18)+ (-9:8)*40)
                     y = 1;
 
                 else

@@ -1,24 +1,21 @@
-function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = multiobjective_problem(plot_bool)
+function [fun_name, eval_fun, features, n_targets] = multiobjective_problem(plot_bool)
     % Veldhuizen and Lamont multiobjective
     if nargin < 1
         plot_bool=false;
     end
     
     fun_name = "vlmop2";
-    n_features = ['x0'; 'x1'];
     n_targets = ['y0'; 'y1'];
-
-    upper_bound = [2, 2];
-    lower_bound = [-2, -2];
 
     % Define the objective function (Rosenbrock function)
     eval_fun = @(x)vlmop2(x);
 
+    features = struct('x0',[-2,2],'x1',[-2,2]);
     % Plot the function surface 
     if plot_bool
         % Define the range for plotting
-        x1_range = linspace(lower_bound(1), upper_bound(1), 100);
-        x2_range = linspace(lower_bound(2), upper_bound(2), 100);
+        x1_range = linspace(features.x0(1), features.x0(2), 100);
+        x2_range = linspace(features.x1(1), features.x1(2), 100);
 
         % Generate a grid of points for plotting
         [X1, X2] = meshgrid(x1_range, x2_range);

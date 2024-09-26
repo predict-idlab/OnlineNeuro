@@ -63,7 +63,7 @@ All parameters (connection and optimization) are selected in the config.json
   "port":55131,
   "Timeout":20,
   "ConnectTimeout":30,
-  "save_path": "./simulations",
+  "save_path": "./results",
   "problem": "rose",
   "experiment": {
     "classification": false,

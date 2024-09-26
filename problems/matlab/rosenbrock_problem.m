@@ -1,13 +1,12 @@
-function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = rosenbrock_problem(plot_bool)
-    
-    n_features = ['x0'; 'x1'];
+function [fun_name, eval_fun, features, n_targets] = rosenbrock_problem(plot_bool)
     n_targets = ['y'];
-    % Define the objective function (Rosenbrock function)
+    % Define the objective function (Modified Rosenbrock function)
 
     fun_name = "rosenbruck"
     eval_fun = @(x) (x(2) + 2*sin(x(1)*2*pi) - (2*x(1))^2)^2 + (2.1 - x(1)*cos(x(1)*pi))^2;
-    upper_bound = [1, 1];
-    lower_bound = [-1, -1];
+
+    features = struct('x0',[-1, 1],'x1',[-1,1])
+
     % Plot the function surface
     if plot_bool
         % Define the range for plotting

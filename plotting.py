@@ -462,7 +462,7 @@ def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, plot_g
     # TODO implement and improve current_plotting functions
     # TODO Include inverse scaling for features when bo.scaler is not None
         #Partially done for some methods
-    
+
     save_dir = f"figures/{bo._observer}"
     os.makedirs(save_dir, exist_ok=True)
 
@@ -470,7 +470,7 @@ def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, plot_g
         'model': bo._models[OBJECTIVE],
         'initial_data': initial_data,
         'search_space': bo._search_space,
-        'scaler': bo.scaler,
+        'scaler': bo._scaler,
         'test_data': test_data,
         'sampled_data': sampled_data,
         'plot_ground_truth': plot_ground_truth,

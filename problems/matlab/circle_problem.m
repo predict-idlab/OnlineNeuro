@@ -1,4 +1,4 @@
-function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] = circle_problem(plot_bool, radius, noise, center)
+function [fun_name, eval_fun, features, n_targets] = circle_problem(plot_bool, radius, noise, center)
     
     if nargin < 4
         center = [0, 0];
@@ -14,15 +14,11 @@ function [fun_name, eval_fun, upper_bound, lower_bound, n_features, n_targets] =
     end
     
     fun_name = "circle";
-    n_features = ['x0'; 'x1'];
     n_targets = ['y'];
-
-    upper_bound = [1, 1];
-    lower_bound = [-1, -1];
+    features = struct('x0',[-1, 1], 'x1',[-1, 1])
 
     % Define the objective function (Rosenbrock function)
     eval_fun = @(x) calculateCircle(x, radius, noise, center);
-
 
     % Plot the function surface
     if plot_bool

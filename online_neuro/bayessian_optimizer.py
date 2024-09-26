@@ -361,6 +361,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
     """
 
     def __init__(self, observer: str, search_space: SearchSpaceType,
+                 feature_names: Optional[np.array | list] = None,
                  scaler: customMinMaxScaler = None,
                  track_state: bool = True,
                  track_path: Optional[Path | str] = None,
@@ -408,7 +409,8 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         self.result: OptimizationResult = None
 
         self._search_space = search_space
-        self.scaler = scaler
+        self._feature_names = feature_names
+        self._scaler = scaler
 
         self._steps = 0
 
@@ -516,6 +518,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                 write_summary_init(
                     self._observer,
                     self._search_space,
+                    self._feature_names,
                     self._acquisition_rule,
                     self._datasets,
                     self._models
@@ -598,8 +601,8 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                 else:
                     query_points = points_or_stateful
 
-            if self.scaler:
-                query_points = self.scaler.inverse_transform(query_points)
+            if self._scaler:
+                query_points = self._scaler.inverse_transform(query_points)
             else:
                 query_points = query_points.numpy()
 
@@ -659,9 +662,9 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         # if tf.rank(query_points) == 3:
         #     observer = mk_batch_observer(observer)
         # observer_output = observer(query_points)
-        if self.scaler:
+        if self._scaler:
             #TODO, check this is valid for batch samples(?)
-            query_points = self.scaler.transform(query_points)
+            query_points = self._scaler.transform(query_points)
 
         new_sample = Dataset(query_points=query_points, observations=observer_output)
 
@@ -780,6 +783,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
 def write_summary_init(
     observer: Observer,
     search_space: SearchSpace,
+    feature_names: Optional[np.array|list],
     acquisition_rule: AcquisitionRule[
         TensorType | State[StateType | None, TensorType],
         SearchSpaceType,
@@ -796,6 +800,7 @@ def write_summary_init(
         f"Number of initial points: "
         f"`{dict((k, len(v)) for k, v in datasets.items())}`\n\n"
         f"Search Space: `{search_space}`\n\n"
+        f"Features: `{feature_names}`\n\n"
         f"Acquisition rule:\n\n    {acquisition_rule}\n\n"
         f"Models:\n\n    {models}\n\n"
         f"Available devices: `{dict(Counter(d.device_type for d in devices))}`",

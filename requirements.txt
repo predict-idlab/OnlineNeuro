@@ -3,11 +3,14 @@ trieste==3.1.0
 matlab==0.1
 imageio
 matplotlib
+flask
 plotly
 numpy
 pandas
 scikit_learn
 scipy
 seaborn
+streamlit
 tensorflow
 tensorflow_probability
+requests

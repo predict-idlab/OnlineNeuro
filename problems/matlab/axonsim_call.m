@@ -190,9 +190,9 @@ function result = axonsim_call(varin)
     m = 16;
     
     Yp=zeros(szy(1),N-m);
-    
+
     for i = 1:N-m
-       Yp(:,i) = Y(:,i+m/2);%-(i-1)*40; No scaling done (this can be handled externally)
+        Yp(:,i) = Y(:,i+m/2);%-(i-1)*40; No scaling done (this can be handled externally)
     end
 
     isi = 1/frq*1000;
@@ -226,6 +226,6 @@ function result = axonsim_call(varin)
 
     result = tosave;
     %currentFolder = pwd;
-    %fname = sprintf('%s/simulations/simulation_%s.mat',currentFolder, datestr(now,'mm-dd-yyyy HH-MM'));
+    %fname = sprintf('%s/results/simulation_%s.mat',currentFolder, datestr(now,'mm-dd-yyyy HH-MM'));
     %save(fname,'tosave');
 end

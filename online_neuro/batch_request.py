@@ -11,9 +11,9 @@ import time
 from threading import Thread
 from utils import run_matlab, generate_grids, fetch_data
 
-NUM_POINTS = 12
+NUM_POINTS = 3
 
-def main(*args, **kwargs) -> None:
+def main(matlab_call=True, *args, **kwargs) -> None:
     # Load port configuration
     print(f"matlab_call flag: {matlab_call}")
     with open('config.json', 'r') as f:
@@ -30,8 +30,9 @@ def main(*args, **kwargs) -> None:
     print("Waiting for a connection...")
 
     #Start Matlab process via engine and threading
-    t = Thread(target=run_matlab, kwargs={"matlab_initiate": False})
-    t.start()
+    if matlab_call:
+        t = Thread(target=run_matlab, kwargs={"matlab_initiate": False})
+        t.start()
 
     # Accept a connection
     client_socket, client_address = server_socket.accept()
@@ -66,6 +67,8 @@ def main(*args, **kwargs) -> None:
     test_grid = lower_bound + test_grid*(upper_bound - lower_bound)
 
     full_grid = np.concatenate([train_grid, test_grid])
+    print(f"Test points: {full_grid.shape}")
+
     response = {'message': 'All data points to query',
                 'query_points': full_grid.tolist(),
                 'terminate_flag': True}
@@ -74,10 +77,13 @@ def main(*args, **kwargs) -> None:
     client_socket.sendall(response_json.encode())
 
     received_data = fetch_data(client_socket)
-    print("First data package:", received_data)
     received_data = pd.DataFrame(received_data)
 
     save_df = pd.DataFrame(full_grid, columns=exp_config['n_features'])
+    if len(save_df) != len(received_data):
+        msg = f"Features and results with different lengths {received_data.shape}, {save_df.shape}"
+        warnings.warn(msg)
+
     for col in received_data.columns:
         if col not in save_df:
             save_df[col] = received_data[col]
@@ -103,8 +109,10 @@ def main(*args, **kwargs) -> None:
     train_df.to_csv(save_path + "train_df.csv", index=False)
     test_df.to_csv(save_path + "test_df.csv", index=False)
 
+
     with open(save_path + "metadata.json", 'w') as output_file:
         json.dump(carried_exp, output_file, indent=4)
+    print(f"Results saved to {save_path}")
 
     # Close the connection
     client_socket.close()
@@ -112,9 +120,12 @@ def main(*args, **kwargs) -> None:
 
 
 if __name__ == "__main__":
-    if "--matlab_call" in sys.argv:
-        matlab_call = True
-    else:
-        matlab_call = False
+    parsed_args = {}
+    for arg in sys.argv[1:]:
+        if '=' in arg:
+            key, value = arg.split('=', 1)
+            parsed_args[key] = value
+        else:
+            parsed_args[arg] = True
 
-    main(matlab_call=matlab_call)
+    main(**parsed_args)

@@ -53,20 +53,23 @@ function new_struct = preprocess_struct(old_struct)
     end
 
     %Convert electrode pulses to multiple array
-    num_pulses = size(old_struct.('fun_type'),1);
-    if all(strcmp(old_struct.('fun_type'),'single pulse'))
-        if num_pulses==2
-            new_struct.("I") = new_struct.("I")*[1,-1];
-        elseif num_pulses ==3
-            new_struct.("I") = new_struct.("I")*[-0.5, 1, -0.5];
-        end
+    % num_pulses = size(old_struct.('fun_type'),1);
+    % if all(strcmp(old_struct.('fun_type'),'single pulse'))
+    %     if num_pulses==2
+    %         new_struct.("I") = new_struct.("I")*[1, -1];
+    %     elseif num_pulses ==3
+    %         new_struct.("I") = new_struct.("I")*[-0.5, 1, -0.5];
+    %     end
+    % 
+    % end
 
-    end
     % Adjust electrode shift
     if isfield('electrode_shift',new_struct)
         new_struct.('e_pos')(1) = new_struct.('e_pos')(1) + new_struct('electrode_shift');
         new_struct.('e_pos')(3) = new_struct.('e_pos')(1) + new_struct('electrode_shift');
     end
 
+    % Adjust I sign(?) TODO verify this
+    new_struct.("I") = new_struct.("I")*[1, -1];
 
 end
