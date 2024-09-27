@@ -6,19 +6,31 @@ import time
 import subprocess
 import atexit
 import requests
-
 from components.config_forms import config_problem
+
 PORT = 8888
 BASE_URL = f"http://localhost:{PORT}"
 flask_process = None
-def start_flask()->None:
+
+
+def start_flask() -> None:
+    """
+    Start Flask backend to handle calls to optimizers, plotting, etc...
+    @return:  None
+    """
     global flask_process
     global PORT
     if flask_process is None or flask_process.poll() is not None:  # Check if process has finished
         flask_process = subprocess.Popen(['python3', 'backend/process_manager.py', '--port', str(PORT)])
     else:
         print("Flask is already running.")
-def kill_flask()->None:
+
+
+def kill_flask() -> None:
+    """
+    Make sure Flask server is terminated before finishing the process.
+    @return: None
+    """
     global flask_process
     if flask_process is not None:
         flask_process.terminate()  # Attempt to terminate the process
@@ -26,28 +38,26 @@ def kill_flask()->None:
             flask_process.wait(timeout=5)  # Wait for the process to terminate
         except subprocess.TimeoutExpired:
             print("Flask process did not terminate in time, forcing kill.")
-            flask_process.kill()  # Force kill if it doesn't exit
+            flask_process.kill()  # Force kill
         finally:
-            flask_process = None  # Set to None after killing
+            flask_process = None  # Set to None
 
 
 atexit.register(kill_flask)  # Ensure the process is killed when the app exits
 
 
-# Function to generate random data (simulating live data updates)
-def generate_data( )->np.ndarray:
+def generate_data() -> np.ndarray:
+    # Dummy function to generate random data (simulating live data updates)
     return np.random.randn(100)
 
 def experiment()->None:
-    #Placeholder code
+    # Placeholder code
     st.session_state['data1'] = generate_data()
     st.session_state['data2'] = generate_data()
 
     # Sleep for a short while to simulate new data coming in
     time.sleep(2)
     update_plots()
-
-
 
 
 # Initialize session state for experiment control
@@ -62,22 +72,25 @@ if 'data2' not in st.session_state:
 # Sidebar - Generate UI elements based on JSON keys
 st.sidebar.title("Configuration")
 
+experiment_list = ("Axonsim (nerve block)", "Axonsim (regression)", "Toy Regression",
+                   "Toy Classification", "Toy MOO", "Placeholder")
+
 st.session_state['experiment'] = st.sidebar.selectbox("Experiment/simulation",
-                                                      ("Axonsim (nerve block)", "Axonsim (regression)", "Toy Regression",
-                                                       "Toy Classification", "Toy MOO", "Placeholder"),
+                                                      experiment_list,
                                                       index=None,
-                                                      placeholder="Select experiment...",
-)
+                                                      placeholder="Select experiment..."
+                                                      )
 
 if st.session_state['experiment'] is not None:
-    config = config_problem(st.session_state['experiment'])
+    st.session_state['config'] = config_problem(st.session_state['experiment'])
 else:
-    config = dict()
+    st.session_state['config'] = dict()
+
 
 # Display updated configuration in the sidebar
-st.sidebar.write("Current Configuration:", config)
+st.sidebar.write("Current Configuration:", st.session_state['config'])
 
-# Main page - Display two plots side by side
+# Main page
 st.title("Live Data Plots")
 
 # Create two columns for side-by-side plots
@@ -93,15 +106,20 @@ def start_experiment_thread() -> None:
     check_experiment_thread()
 
     if not st.session_state['experiment_running']:
+
+        if flask_process is None:
+            start_flask()
+            time.sleep(1)
+
         st.session_state['experiment_running'] = True
-        start_flask()
-        time.sleep(1)
-        response = requests.post(f"{BASE_URL}/start", json={"command": "ls -l"})
+
+        response = requests.post(f"{BASE_URL}/start", json=st.session_state['config'])
         response = response.json()
         print(response)
-        #experiment()  # Start the experiment loop
+        # experiment()  # Start the experiment loop
     else:
         print("Experiment already running")
+
 
 def check_experiment_thread() -> None:
     if st.session_state['experiment_running']:
@@ -109,12 +127,13 @@ def check_experiment_thread() -> None:
         response = response.json()
         print(response)
 
-        #If process ended, set experiment_running to false
-        if response['status']!='running':
+        # If process ended, set experiment_running to false
+        if response['status'] != 'running':
             st.session_state['experiment_running'] = False
 
     else:
         print("No experiment is running")
+
 
 # Function to handle stopping the experiment
 def stop_experiment_thread() -> None:

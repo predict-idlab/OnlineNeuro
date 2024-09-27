@@ -94,41 +94,47 @@ class customMinMaxScaler:
         X_original = X_original * self.feature_range[ix] + self.feature_min[ix]  # scale to original feature range
         return X_original
 
-def run_matlab(matlab_script_path=None, matlab_function_name='main', **kwargs):
+def run_matlab(matlab_script_path, matlab_function_name='main', **kwargs):
     """
     Launch a matlab process
-    @param kwargs:
+    @param matlab_script_path:
     @return:
     # TODO If needed, modify this function so that arguments are passed to the matlab engine
     # TODO modify function so that path is parameter (instead of file location)
     """
+    if os.path.isabs(matlab_script_path):
+        matlab_script_full_path = matlab_script_path
+    else:
+        # If it's a relative path, join with current_directory
+        # Here we assume that problems will be stored at ./problems/matlab/
+        # TODO this may need to be changed in the logic
+        current_directory = os.path.dirname(os.path.abspath(__file__))
+        parent_directory = os.path.dirname(current_directory)
+        matlab_script_full_path = os.path.join(parent_directory, matlab_script_path)
+
+    if not os.path.exists(matlab_script_full_path):
+        raise FileNotFoundError(f"The MATLAB folder does not exist: {matlab_script_full_path}")
+
     # Start MATLAB engine
     print("Launching Matlab from Python side")
-    eng = matlab.engine.start_matlab()
 
-    # Change directory to current directory
-    if matlab_script_path is None:
-        current_directory = os.path.dirname(os.path.abspath(__file__))
-        eng.cd(current_directory)  # Change path to your directory where main.m resides
-    else:
-        eng.cd(matlab_script_path)
+    eng = matlab.engine.start_matlab()
+    eng.cd(matlab_script_full_path)
 
     # Call MATLAB function main
-    matlab_args = []
-    if 'matlab_initiate' in kwargs:
-        initiate_bool = bool(kwargs['matlab_initiate'])
-        matlab_args.append(initiate_bool)
+    matlab_args = json.dumps(kwargs)
 
-    for key, value in kwargs.items():
-        if key != 'matlab_initiate':
-            matlab_args.append(value)
+    print(matlab_args)
+        #Converting to Matlab format (if arrays)
+        #matlab_args = [eng.convert_to_mlarray(arg) if isinstance(arg, list) else arg for arg in matlab_args]
+    try:
+        eng.feval(matlab_function_name, matlab_args, nargout=0)
+        # Stop MATLAB engine
+        eng.quit()
 
-    #Converting to Matlab format (if arrays)
-    matlab_args = [eng.convert_to_mlarray(arg) if isinstance(arg, list) else arg for arg in matlab_args]
-    eng.feval(matlab_function_name, *matlab_args, nargout=0)
+    except Exception as e:
+        print(f"Error starting MATLAB: {e}")
 
-    # Stop MATLAB engine
-    eng.quit()
 
 def generate_grids(n, num_points):
     """

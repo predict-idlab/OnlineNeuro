@@ -1,18 +1,10 @@
 # frontend/components/config_forms.py
 import warnings
 import streamlit as st
-import json
-from typing import Union, Any, Dict, List
+from common.utils import load_json
 
-def load_json(json_file: str) -> Union[Dict[str, Any], List[Any]]:
-    """
-    @param json_file: path to the json file
-    @return: loaded json, either dict or list.
-    """
-    with open(json_file) as f:
-        return json.load(f)
 
-def config_problem(problem: str='Axonsim')->dict:
+def config_problem(problem: str='Axonsim') -> dict:
     """
     @param problem: String, to define the type of problem that will be solved (examples or simulators)
     @return: config: dict containing the selected parameters
@@ -21,7 +13,7 @@ def config_problem(problem: str='Axonsim')->dict:
     config = {}
     # Load the JSON file
     if problem.startswith("Axonsim"):
-        json_file = "config_experiments/template.json"
+        json_file = "config_experiments/axonsim_template.json"
         json_data = load_json(json_file)
 
         config["num_electrodes"] = st.sidebar.number_input("Select the number of pulses",

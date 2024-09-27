@@ -16,7 +16,7 @@ NUM_POINTS = 3
 def main(matlab_call=True, *args, **kwargs) -> None:
     # Load port configuration
     print(f"matlab_call flag: {matlab_call}")
-    with open('config.json', 'r') as f:
+    with open('../config.json', 'r') as f:
         config = json.load(f)
 
     # Create a TCP/IP socket

@@ -177,20 +177,26 @@ def build_vgp(data: Dataset,
 
 
 def build_model(init_dataset, search_space, config):
-    if config['experiment']['classification']:
-        if config['experiment']['variational'] and config['experiment']['sparse']:
+    """
+    @param init_dataset:
+    @param search_space:
+    @param config:
+    @return:
+    """
+    if config['classification']:
+        if config['variational'] and config['sparse']:
             # TODO
             # build_svgp by Trieste does not have a noisy version, need to rewrite this function but low priority
             gpflow_model = build_svgp(init_dataset, search_space, classification=True,
                                       #noise_free=config['experiment']['noise_free'],
-                                      trainable_likelihood=config['experiment']['trainable_likelihood'],
+                                      trainable_likelihood=config['trainable_likelihood'],
                                       )
             model = VariationalGaussianProcess(
                 gpflow_model
             )
-        elif config['experiment']['variational'] and ~config['experiment']['sparse']:
+        elif config['variational'] and ~config['sparse']:
             gpflow_model = build_vgp_classifier(init_dataset, search_space,
-                                                noise_free=config['experiment']['noise_free']
+                                                noise_free=config['noise_free']
                                                 )
 
             model = VariationalGaussianProcess(
@@ -199,11 +205,11 @@ def build_model(init_dataset, search_space, config):
         else:
             raise Exception("Classification not implemented with non variational GPs")
     else:
-        if config['experiment']['variational'] and config['experiment']['sparse']:
+        if config['variational'] and config['sparse']:
             gpflow_model = build_svgp(init_dataset, search_space,
                                       classification=False,
                                       likelihood_variance=config['kernel_variance'],
-                                      trainable_likelihood=config['experiment']['trainable_likelihood'],
+                                      trainable_likelihood=config['trainable_likelihood'],
                                       num_inducing_points=20
                                       )
             inducing_point_selector = KMeansInducingPointSelector()
@@ -216,19 +222,19 @@ def build_model(init_dataset, search_space, config):
                 optimizer=BatchOptimizer(tf.optimizers.Adam(0.1), max_iter=100,
                                          batch_size=50, compile=True),
             )
-        elif config['experiment']['variational'] and ~config['experiment']['sparse']:
+        elif config['variational'] and ~config['sparse']:
             gpflow_model = build_vgp(init_dataset, search_space,
                                      likelihood_variance=config['kernel_variance'],
-                                     trainable_likelihood=config['experiment']['trainable_likelihood'],
+                                     trainable_likelihood=config['trainable_likelihood'],
                                      )
 
             model = VariationalGaussianProcess(
                 gpflow_model
             )
-        elif ~config['experiment']['variational'] and config['experiment']['sparse']:
+        elif ~config['variational'] and config['sparse']:
             gpflow_model = build_sgpr(init_dataset, search_space,
                                       likelihood_variance=config['kernel_variance'],
-                                      trainable_likelihood=config['experiment']['trainable_likelihood'],
+                                      trainable_likelihood=config['trainable_likelihood'],
                                       )
             inducing_point_selector = KMeansInducingPointSelector()
 
@@ -239,10 +245,10 @@ def build_model(init_dataset, search_space, config):
                 optimizer=BatchOptimizer(tf.optimizers.Adam(0.1), max_iter=100,
                                          batch_size=50, compile=True)
             )
-        elif ~config['experiment']['variational'] and ~config['experiment']['sparse']:
+        elif ~config['variational'] and ~config['sparse']:
             gpflow_model = build_gpr(init_dataset, search_space,
                                      likelihood_variance=config['kernel_variance'],
-                                     trainable_likelihood=config['experiment']['trainable_likelihood'],
+                                     trainable_likelihood=config['trainable_likelihood'],
                                      )
 
             model = GaussianProcessRegression(gpflow_model)
