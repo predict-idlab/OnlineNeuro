@@ -1,55 +1,15 @@
 % MATLAB code to send data via TCP/IP
-function main(matlab_initiates, full_response)
+function main(json_data)
     pyenv('ExecutionMode','InProcess')
-
-    if nargin<1
-        matlab_initiates = true; %default value
-    else
-        matlab_initiates = false;
-    end
-
-    if nargin<2
-        full_response = false;
-    else
-        full_response = true;
-    end
-
     format long g
-    str = fileread('config.json');
-    data = jsondecode(str);
+    data = jsondecode(json_data);
 
     fprintf("Verifying port is open \n");
-    if matlab_initiates
-        % IMPORTANT
-        % Matlab comes with its on C++ libraries which are used Python.
-        % If using linux, hide those (or delete) as explained in 
-        % https://nl.mathworks.com/matlabcentral/answers/1907290-how-to-manually-select-the-libstdc-library-to-use-to-resolve-a-version-glibcxx_-not-found
-        
-        if ispc
-            [status, output]= dos('python server_side.py --initiator MATLAB --target MATLAB &');
-        else
-            [status, output] = unix('python3 server_side.py --initiator MATLAB --target MATLAB &');
-        end
+    % IMPORTANT
+    % Matlab comes with its on C++ libraries which are used Python.
+    % If using linux, hide those (or delete) as explained in
+    % https://nl.mathworks.com/matlabcentral/answers/1907290-how-to-manually-select-the-libstdc-library-to-use-to-resolve-a-version-glibcxx_-not-found
 
-        fprintf(sprintf("running python command %d \n", status));
-        fprintf(output)
-
-        cmd = sprintf("fuser %d/tcp >/dev/null 2>&1 && echo 1 || echo 0", data.port);
-        fprintf("Process status %s waiting ... \n", status)
-
-        while true
-            [status, output] = system(cmd);
-            if status == 0 && strcmp(strtrim(output), '1')
-                fprintf("Server is up and running.\n");
-                break;
-            else
-                fprintf("Waiting for server to start...\n");
-                pause(3); % Wait for n seconds before checking again
-            end
-        end
-
-    end
-    
     cmd = sprintf('fuser %d/tcp', data.port);
     system(cmd);
 
@@ -84,7 +44,7 @@ function main(matlab_initiates, full_response)
             [fun_name, eval_fun, features, n_targets] = circle_problem(true);
         case 'rose'
             [fun_name, eval_fun, features, n_targets] = rosenbrock_problem(true);
-        case 'multiobjective'
+        case 'vlmop2'
             %TODO fix this
             [fun_name, eval_fun, features, n_targets] = multiobjective_problem(true);
         case {'axon_single', 'axon_double', 'axon_threshold','nerve_block'}
