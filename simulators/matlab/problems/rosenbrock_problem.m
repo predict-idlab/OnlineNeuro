@@ -1,17 +1,27 @@
-function [fun_name, eval_fun, features, n_targets] = rosenbrock_problem(plot_bool)
-    n_targets = ['y'];
+function [eval_fun, features, n_targets] = rosenbrock_problem(varargin)
     % Define the objective function (Modified Rosenbrock function)
 
-    fun_name = "rosenbruck"
-    eval_fun = @(x) (x(2) + 2*sin(x(1)*2*pi) - (2*x(1))^2)^2 + (2.1 - x(1)*cos(x(1)*pi))^2;
+    p = inputParser;
 
-    features = struct('x0',[-1, 1],'x1',[-1,1])
+    % Define the parameters and their default values
+    addOptional(p, 'plot', false, @(x) islogical(x) || isnumeric(x));
+
+    % Parse the input arguments
+    parse(p, varargin{:});
+    plot_bool = p.Results.plot_bool;
+
+    n_targets = ['y'];
+
+    %a =1 , b=100
+    eval_fun =  @(x) (1 - x(:,1)).^2 + 100 * (x(:,2) - x(:,1).^2).^2;
+
+    features = struct('x0',[-5, 10],'x1',[-5, 10]);
 
     % Plot the function surface
     if plot_bool
         % Define the range for plotting
-        x1_range = linspace(-1, 1, 100);
-        x2_range = linspace(-1, 1, 100);
+        x1_range = linspace(-5, 10, 100);
+        x2_range = linspace(-5, 10, 100);
         
         % Generate a grid of points for plotting
         [X1, X2] = meshgrid(x1_range, x2_range);

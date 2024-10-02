@@ -1,32 +1,83 @@
-function [fun_name, eval_fun, features, n_targets, eval_dict] = axon_problem(plot_bool, problem_setting)
-    if nargin < 2
-        error('axon_problem requires at two input arguments.');
+function [eval_fun, features, n_targets, eval_dict] = axon_problem(problem_setting, varargin)
+    % Create an input parser object
+    p = inputParser;
+    p.KeepUnmatched = true;  % Optional, to allow unspecified name-value pairs
+    p.PartialMatching = false;  % To avoid ambiguities in argument names
+
+    % Define the parameters and their default values
+    addRequired(p, 'problem_setting', @(x) ischar(x) || isstring(x) || isstruct(x));
+
+    addParameter(p, 'plot', false, @(x) islogical(x) || isnumeric(x));
+    addParameter(p, 'default_setting', 'config.json', @(x) ischar(x) || isstring(x) || isstruct(x));
+    addParameter(p, 'path_config', 'config.json', @(x) ischar(x) || isstring(x) || isstruct(x));
+    % Parse the input arguments
+    parse(p, problem_setting, varargin{:});
+
+    % Retrieve values after parsing
+    plot= p.Results.plot;
+    problem_setting = p.Results.problem_setting;
+    default_setting = p.Results.default_setting;
+    path_setting = p.Results.path_config;
+    
+    % If problem_setting is a string, interpret it as a JSON file path and load the config
+    if ischar(problem_setting) || isstring(problem_setting)
+        try
+            experiment_params = jsondecode(fileread(problem_setting));
+        catch
+            error("Configuration file could not be loaded.");
+        end
+    elseif isstruct(problem_setting)% If problem_setting is already a struct, use it directly
+        experiment_params = problem_setting;
+    else
+        error('Invalid type for problem_setting. It must be either a string (filename) or a struct.');
     end
-    
-    config_file = ("./config.json");
-    exp_file = jsondecode(fileread(config_file));
-    
-    addpath(genpath(exp_file.axonsim_path))
-    
+
+    if ischar(default_setting) || isstring(default_setting)
+        try
+            default_params = jsondecode(fileread(default_setting));
+        catch
+            warning("Configuration file could not be loaded, using default ('config_experiments/axonsim_template.json').");
+            default_params = jsondecode(fileread('config_experiments/axonsim_template.json'));
+        end
+    elseif isstruct(default_setting)
+        default_params = default_setting;
+    else
+        error('Invalid type for default_setting. It must be either a string (filename) or a struct.');
+    end
+
+    if ischar(path_setting) || isstring(path_setting)
+        try
+            path_params = jsondecode(fileread(path_setting));
+        catch
+            error("Configuration file could not be loaded.");
+        end
+    elseif isstruct(path_setting)% If problem_setting is already a struct, use it directly
+        experiment_params = path_setting;
+    else
+        error('Invalid type for path_setting. It must be either a string (filename) or a struct.');
+    end
+    %Adding axonsim and all its folders to path
+    addpath(genpath(path_params.path_config.axonsim_path))
+
     %problem_setting
-    exp_file = sprintf('./config_experiments/experiment_%s.json',problem_setting);
-    exp_file = fileread(exp_file);
-    default_file  = sprintf('./config_experiments/parameter_spec_%s.json', problem_setting);
-    default_file = fileread(default_file);
+    %exp_file = sprintf('./config_experiments/experiment_%s.json',problem_setting);
+    %exp_file = fileread(exp_file);
+
+    %default_file  = sprintf('./config_experiments/parameter_spec_%s.json', problem_setting);
+    %default_file = fileread(default_file);
     
-    experiment_params = jsondecode(exp_file);
-    default_params = jsondecode(default_file);
+    %experiment_params = jsondecode(exp_file);
+    %default_params = jsondecode(default_file);
     
     % Plot the function surface
-    if plot_bool
+    if plot
         disp("AxonSim can't display a plot as the response surface is unknown");
     end
-    fun_name = problem_setting;
     eval_fun = @axonsim_call;
     
     fields = fieldnames(default_params);
     eval_dict = struct();
-    
+    display("Checking the fields")
     for i = 1:length(fields)
         %Making sure that if variables are going to be optimized, and have multiple electrodes
         % they have the same dimensions.

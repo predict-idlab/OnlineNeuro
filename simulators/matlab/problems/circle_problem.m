@@ -1,19 +1,22 @@
-function [fun_name, eval_fun, features, n_targets] = circle_problem(plot_bool, radius, noise, center)
+function [eval_fun, features, n_targets] = circle_problem(varargin)
+   % Create an input parser object
+    p = inputParser;
     
-    if nargin < 4
-        center = [0, 0];
-    end
-    if nargin < 3
-        noise = 0;
-    end
-    if nargin < 2
-        radius = 0.5;
-    end
-    if nargin < 1
-        plot_bool=false;
-    end
+    % Define the parameters and their default values
+    addOptional(p, 'plot', false, @(x) islogical(x) || isnumeric(x));
+    addOptional(p, 'radius', 0.5, @(x) isnumeric(x) && x > 0);
+    addOptional(p, 'noise', 0, @(x) isnumeric(x) && x >= 0);
+    addOptional(p, 'center', [0, 0], @(x) isnumeric(x) && numel(x) == 2);
     
-    fun_name = "circle";
+    % Parse the input arguments
+    parse(p, varargin{:});
+    
+    % Retrieve values after parsing
+    plot_bool = p.Results.plot_bool;
+    radius = p.Results.radius;
+    noise = p.Results.noise;
+    center = p.Results.center;
+
     n_targets = ['y'];
     features = struct('x0',[-1, 1], 'x1',[-1, 1])
 

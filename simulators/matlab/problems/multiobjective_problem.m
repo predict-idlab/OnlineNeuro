@@ -1,10 +1,10 @@
-function [fun_name, eval_fun, features, n_targets] = multiobjective_problem(plot_bool)
+function [eval_fun, features, n_targets] = multiobjective_problem(varargin)
     % Veldhuizen and Lamont multiobjective
-    if nargin < 1
-        plot_bool=false;
-    end
-    
-    fun_name = "vlmop2";
+    p = inputParser;
+    addOptional(p, 'plot', false, @(x) islogical(x) || isnumeric(x));
+    parse(p, varargin{:});
+    plot_bool = p.Results.plot_bool;
+
     n_targets = ['y0'; 'y1'];
 
     % Define the objective function (Rosenbrock function)
