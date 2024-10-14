@@ -1,175 +1,250 @@
 # frontend/app.py
-import streamlit as st
-import matplotlib.pyplot as plt
+import json
 import numpy as np
+from flask import Flask, request, jsonify, render_template
+import threading
 import time
 import subprocess
 import atexit
 import requests
-from components.config_forms import config_problem
+import argparse
+import traceback
 
-PORT = 8888
-BASE_URL = f"http://localhost:{PORT}"
-flask_process = None
+from frontend.components.config_forms import config_problem
 
+app = Flask(__name__)
+#CORS(app)  # This will allow CORS for all routes and origins
 
-def start_flask() -> None:
-    """
-    Start Flask backend to handle calls to optimizers, plotting, etc...
-    @return:  None
-    """
-    global flask_process
-    global PORT
-    if flask_process is None or flask_process.poll() is not None:  # Check if process has finished
-        flask_process = subprocess.Popen(['python3', 'backend/process_manager.py', '--port', str(PORT)])
-    else:
-        print("Flask is already running.")
+DASK_PORT = 9000
+DASK_URL = f"http://localhost:{DASK_PORT}"
 
+process = None
+data_cache = None
 
-def kill_flask() -> None:
-    """
-    Make sure Flask server is terminated before finishing the process.
-    @return: None
-    """
-    global flask_process
-    if flask_process is not None:
-        flask_process.terminate()  # Attempt to terminate the process
-        try:
-            flask_process.wait(timeout=5)  # Wait for the process to terminate
-        except subprocess.TimeoutExpired:
-            print("Flask process did not terminate in time, forcing kill.")
-            flask_process.kill()  # Force kill
-        finally:
-            flask_process = None  # Set to None
+cache = {'x': [], 'y': []}
+x_ix = 0
 
+process_lock = threading.Lock()  # Lock to ensure thread safety
+cache_lock = threading.Lock()
 
-atexit.register(kill_flask)  # Ensure the process is killed when the app exits
+matlab_experiments = {"Axonsim (nerve block)": "axonsim_nerve_block",
+                       "Axonsim (regression)": "axonsim_regression",
+                       "Toy Regression": "rose_regression",
+                       "Toy Classification": "circle_classification",
+                       "Toy MOO": "vlmop2",
+                       "Placeholder": "placeholder"}
 
+python_experiments = {}
 
-def generate_data() -> np.ndarray:
-    # Dummy function to generate random data (simulating live data updates)
-    return np.random.randn(100)
+experiment_list = list(matlab_experiments.keys()) + list(python_experiments.keys())
 
-def experiment()->None:
-    # Placeholder code
-    st.session_state['data1'] = generate_data()
-    st.session_state['data2'] = generate_data()
+def monitor_process(proc):
+    proc.wait()
+    with process_lock:
+        global process
+        process = None
 
-    # Sleep for a short while to simulate new data coming in
-    time.sleep(2)
-    update_plots()
+def generate_data():
+    # Simulate adding new data points (this could come from real sources)
+    global cache
+    while True:
+        x_val = 0 if len(cache['x'])==0 else cache['x'][-1]+1
+        cache['x'].append(x_val)
+        cache['y'].append(np.random.uniform(0, 10))
+        print(cache)
+        print("data extended")
+        #eventlet.sleep(1)
 
 
-# Initialize session state for experiment control
-if 'experiment_running' not in st.session_state:
-    st.session_state['experiment_running'] = False
 
-if 'data1' not in st.session_state:
-    st.session_state['data1'] = np.zeros(100)  # Initialize with zeros
-if 'data2' not in st.session_state:
-    st.session_state['data2'] = np.zeros(100)  # Initialize with zeros
-
-# Sidebar - Generate UI elements based on JSON keys
-st.sidebar.title("Configuration")
-
-experiment_list = ("Axonsim (nerve block)", "Axonsim (regression)", "Toy Regression",
-                   "Toy Classification", "Toy MOO", "Placeholder")
-
-st.session_state['experiment'] = st.sidebar.selectbox("Experiment/simulation",
-                                                      experiment_list,
-                                                      index=None,
-                                                      placeholder="Select experiment..."
-                                                      )
-
-if st.session_state['experiment'] is not None:
-    st.session_state['config'] = config_problem(st.session_state['experiment'])
-else:
-    st.session_state['config'] = dict()
+@app.route('/')
+def index():
+    return render_template('frontend.html', port=DASK_PORT)
 
 
-# Display updated configuration in the sidebar
-st.sidebar.write("Current Configuration:", st.session_state['config'])
+@app.route('/experiments', methods=['GET'])
+def get_experiments():
+    return jsonify(experiment_list)
 
-# Main page
-st.title("Live Data Plots")
+@app.route('/get_parameters', methods=['POST'])
+def get_parameters():
+    data = request.json
+    experiment = data.get('experiment')
+    if not experiment:
+        return jsonify({"error": "No experiment provided"}), 400
 
-# Create two columns for side-by-side plots
-col1, col2 = st.columns(2)
+    exp_params = config_problem(experiment)
+    return jsonify(exp_params)
 
-# Placeholders for live plot updates
-placeholder1 = col1.empty()
-placeholder2 = col2.empty()
+
+# def start_flask() -> None:
+#     """
+#     Start Flask backend to handle calls to optimizers, plotting, etc...
+#     @return:  None
+#     """
+#     global flask_process
+#     global PORT
+#     try:
+#         if flask_process is None or flask_process.poll() is not None:  # Check if process has finished
+#             print("Starting process manager")
+#             flask_process = subprocess.Popen(['python3', 'backend/process_manager.py', '--port', str(PORT)],
+#                                              stdout=subprocess.PIPE, stderr=subprocess.PIPE
+#                                              )
+#             time.sleep(1)
+#         else:
+#             print("Flask is already running.")
+#     except Exception as e:
+#         raise e
+#
+#
+# def kill_flask() -> None:
+#     """
+#     Make sure Flask server is terminated before finishing the process.
+#     @return: None
+#     """
+#     global flask_process
+#     if flask_process is not None:
+#         flask_process.terminate()  # Attempt to terminate the process
+#         try:
+#             flask_process.wait(timeout=5)  # Wait for the process to terminate
+#         except subprocess.TimeoutExpired:
+#             print("Flask process did not terminate in time, forcing kill.")
+#             flask_process.kill()  # Force kill
+#         finally:
+#             flask_process = None  # Set to None
+#     else:
+#         print("No process manager running.")
+
+
+# Fetch the plot from Flask
+@app.route('/plot', methods=['GET'])  # Use GET here
+def plot():
+    port = request.args.get('port', default=DASK_PORT, type=int)  # Get dark mode from query parameter
+    return render_template('plotly.html', port=port)
 
 
 # Thread function to run the experiment
-def start_experiment_thread() -> None:
-    check_experiment_thread()
+@app.route('/start', methods=['POST'])
+def prepare_experiment():
+    global process
+    global process_lock
 
-    if not st.session_state['experiment_running']:
+    data = request.json
 
-        if flask_process is None:
-            start_flask()
-            time.sleep(1)
+    print(data['parameters'])
+    if 'experiment' in data['parameters']:
+        if data['parameters']['experiment'] in matlab_experiments:
+            data['parameters']['experiment'] = matlab_experiments[data['parameters']['experiment']]
+        elif data['parameters']['experiment'] in python_experiments:
+            data['parameters']['experiment'] = python_experiments[data['parameters']['experiment']]
+        else:
+            raise Exception("Not simulator implemented (?)")
 
-        st.session_state['experiment_running'] = True
-
-        response = requests.post(f"{BASE_URL}/start", json=st.session_state['config'])
-        response = response.json()
-        print(response)
-        # experiment()  # Start the experiment loop
-    else:
-        print("Experiment already running")
-
-
-def check_experiment_thread() -> None:
-    if st.session_state['experiment_running']:
-        response = requests.get(f"{BASE_URL}/status")
-        response = response.json()
-        print(response)
-
-        # If process ended, set experiment_running to false
-        if response['status'] != 'running':
-            st.session_state['experiment_running'] = False
+    if data['problem'] in matlab_experiments:
+        base_command = ["python3", "online_neuro/server_side.py"]
+        connection_payload = {
+            'initiator': 'Python',
+            'target': 'MATLAB'
+        }
 
     else:
-        print("No experiment is running")
+        raise NotImplementedError
 
+    connection_payload = json.dumps(connection_payload)
+    prob_load = json.dumps(data['parameters'])
+    command = base_command + ["--problem_config", prob_load] + ["--connection_config", connection_payload]
+
+    try:
+        with process_lock:
+            if process is None:
+                process = subprocess.Popen(command)  # Start the process with the given command
+                threading.Thread(target=monitor_process, args=(process,),
+                                 daemon=True).start()  # Monitor the process
+                return jsonify({'status': 'started', 'command': command})
+            else:
+                return jsonify({'status': 'already running'})
+
+    except Exception as e:
+        # Handle exceptions
+        print(f"An unexpected error occurred: {e}")  # Optionally log the error
+        traceback.print_exec()
+        return jsonify({"status": "Unexpected error", "error": str(e)}), 500
+
+
+@app.route('/status', methods=['GET'])
+def check_experiment():
+    global process
+    try:
+        with process_lock:
+            if process is None or process.poll() is not None:
+                return jsonify({'status': 'not running'})
+            return jsonify({'status': 'running'})
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")  # Optionally log the error
+        return jsonify({"status": "Unexpected error", "error": str(e)}), 500
 
 # Function to handle stopping the experiment
-def stop_experiment_thread() -> None:
-    if st.session_state['experiment_running']:
-        response = requests.post(f"{BASE_URL}/stop")
-        response = response.json()
-        print(response)
-    else:
-        print("No experiment is running")
+@app.route('/stop', methods=['POST'])
+def stop_experiment() -> None:
+    global process
+    try:
+        with process_lock:
+            if process is not None:
+                if process.poll() is None:
+                    process.terminate()
+                    process.join()  # Ensure the process has finished
+                    process = None
+                    return jsonify({'status': 'stopped'})
+                else:
+                    process = None
+                    return jsonify({'status': 'Process had already ended'})
 
-    st.session_state['experiment_running'] = False
+            return jsonify({'status': 'not running'})
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")  # Optionally log the error
+        return jsonify({"status": "Unexpected error", "error": str(e)}), 500
 
+### TODO the plotting
 
-# Sidebar buttons to control experiment start/stop
-st.sidebar.button("Start Experiment", on_click=start_experiment_thread)
-st.sidebar.button("Check Experiment", on_click=check_experiment_thread)
-st.sidebar.button("Stop Experiment", on_click=stop_experiment_thread)
-
-
-# Poll for new data and update the plots
-def update_plots() -> None:
-    # Plot 1
-    fig1, ax1 = plt.subplots()
-    ax1.plot(st.session_state['data1'])
-    ax1.set_title("Plot 1")
-
-    # Plot 2
-    fig2, ax2 = plt.subplots()
-    ax2.plot(st.session_state['data2'])
-    ax2.set_title("Plot 2")
-
-    # Display the plots in placeholders
-    placeholder1.pyplot(fig1)
-    placeholder2.pyplot(fig2)
+@app.route('/get_data')
+def get_data():
+    global cache
+    """Return the full dataset, so it can be used for plotting."""
+    return jsonify(cache)
 
 
-# Continuously update the plots whether experiment is running or not
-update_plots()
+@app.route('/update_data')
+def update_data():
+    """Generate new data and return the updated dataset."""
+    global x_ix
+    global cache
+    new_data = dict()
+    new_data['x'] = cache['x'][x_ix:]
+    new_data['y'] = cache['y'][x_ix:]
+    x_ix = len(cache['x'])
+
+    print("pack", new_data)
+    return jsonify(new_data)
+
+
+@app.route('/add_to_cache', methods=['POST'])
+def add_to_cache():
+    """
+    Endpoint to add new data to the cache.
+    """
+    global data_cache
+    new_data = request.json.get('data',{})
+    if new_data:
+        with cache_lock:
+            data_cache = new_data
+        return jsonify({'status': 'New data added to cache'}), 200
+    return jsonify({'error': 'No data provided'}), 400
+
+if __name__ == '__main__':
+    # Start the background thread to check the cache for new data
+    parser = argparse.ArgumentParser(description="Process arguments")
+    parser.add_argument('--port', type=int, help='Flask port.')
+    args = parser.parse_args()
+
+    app.run(port=DASK_PORT, debug=False)
 

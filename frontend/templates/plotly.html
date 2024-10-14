@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Placeholder</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <div id="plotly-div" style="width: 100%; height: 300px;"></div>
+    <script>
+        // Initialize the Socket.IO connection
+        var socket = io('http://localhost:{{PORT}}'); // Adjust the port accordingly
+        var dark_mode = {{ dark_mode | tojson }}; // Pass this from Flask if needed
+
+        // Initial empty data for the plot
+        var trace = {
+            x: [],
+            y: [],
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: 'Data Points'
+        };
+
+        function updatePlotLayout() {
+            var commonLayout = {
+                title: { text: 'Dynamic Plot' },
+                margin: { l: 40, r: 40, t: 40, b: 40 },
+                font: { size: 12 }
+            };
+
+            var layout = dark_mode ? {
+                ...commonLayout,
+                title: { ...commonLayout.title, font: { color: 'white' } },
+                xaxis: {
+                    title: { text: 'X Axis', font: { color: 'white' } },
+                    gridcolor: 'gray',
+                    zerolinecolor: 'gray'
+                },
+                yaxis: {
+                    title: { text: 'Y Axis', font: { color: 'white' } },
+                    gridcolor: 'gray',
+                    zerolinecolor: 'gray'
+                },
+                paper_bgcolor: 'black',
+                plot_bgcolor: 'black',
+                font: { color: 'white' }
+            } : {
+                ...commonLayout,
+                title: { ...commonLayout.title, font: { color: 'black' } },
+                xaxis: {
+                    title: { text: 'X Axis', font: { color: 'black' } },
+                    gridcolor: 'lightgray',
+                    zerolinecolor: 'lightgray'
+                },
+                yaxis: {
+                    title: { text: 'Y Axis', font: { color: 'black' } },
+                    gridcolor: 'lightgray',
+                    zerolinecolor: 'lightgray'
+                },
+                paper_bgcolor: 'white',
+                plot_bgcolor: 'white',
+                font: { color: 'black' }
+            };
+
+            // Update the plot with the new layout
+            Plotly.update('plotly-div', {}, layout);
+        }
+
+        // Create the initial plot
+        Plotly.newPlot('plotly-div', [trace], layout);
+
+        // Listen for dark mode updates from the Flask server
+        socket.on('dark_mode_update', function(data) {
+            dark_mode = data.dark_mode;
+            updatePlotLayout();
+        });
+
+        // Handle incoming data from the server
+        socket.on('update_plot', function(data) {
+            console.log("Received data: ", data); // Debugging line to check received data
+
+            // Ensure the data.x and data.y are arrays
+            if (Array.isArray(data.x) && Array.isArray(data.y)) {
+                // Update the plot with new data
+                var update = {
+                    x: [data.x],  // No need for the spread operator here
+                    y: [data.y]
+                };
+
+                // Update the plot
+                Plotly.update('plotly-div', update);
+            } else {
+                console.error("Received data is not in the expected format: ", data);
+            }
+        });
+
+        socket.on('connect', function() {
+            console.log("Connected to the server");
+        });
+
+        socket.on('connect_error', function(error) {
+            console.error("Connection Error: ", error);
+        });
+
+        socket.on('disconnect', function() {
+            console.log("Disconnected from server");
+        });
+    </script>
+</body>
+</html>
