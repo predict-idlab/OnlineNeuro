@@ -1,0 +1,1197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Data Plots</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #121212;
+            color: #333;
+        }
+
+        h1 {
+            text-align: center;
+            color: #c02a4e;
+        }
+
+        /* Main container for content */
+        .content {
+            margin-left: 250px; /* Width of the sidebar */
+            padding: 20px;
+            transition: margin-left 0.3s ease;
+        }
+
+        /* Sidebar styling */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 250px;
+            height: 100%;
+            background-color: #0e0e0e;
+            padding: 15px;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
+            transition: width 0.3s ease;
+        }
+        .sidebar-right {
+            position: fixed;
+            top: 0;
+            right: 0; /* Changed from left: 0 to right: 0 */
+            width: 250px;
+            height: 100%;
+            background-color: #0e0e0e;
+            padding: 15px;
+            box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2); /* Adjusted the shadow to appear on the left */
+            transition: width 0.3s ease;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+        }
+
+        .sidebar h2 {
+            color: #6b6b6b;
+            margin-top: 0;
+        }
+        .sidebar experiment-box{
+            display: block;
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 10px;
+        }
+
+        .sidebar button {
+            display: block;
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 10px;
+            background-color: #333;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+
+        .sidebar button:hover {
+            background-color: #e0e0e0; /* Button hover effect */
+        }
+
+        /* Style for the select dropdown */
+        .styled-select {
+            background-color:  #333; /* Black background */
+            color: white; /* White text */
+            border: none;
+            padding: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%; /* Full width */
+            text-align: left; /* Align text to left */
+            border-radius: 5px; /* Rounded corners */
+            transition: background-color 0.3s ease;
+            appearance: none; /* Remove default select arrow for some browsers */
+            -webkit-appearance: none; /* Safari/Chrome */
+            -moz-appearance: none; /* Firefox */
+        }
+
+        /* Optional: Adding an arrow indicator to match the dropdown button feel */
+        .styled-select::after {
+            content: '▼';
+            position: absolute;
+            right: 10px;
+            pointer-events: none;
+        }
+
+        /* Hover effect to match button hover */
+        .styled-select:hover {
+            background-color: #333; /* Darker background on hover */
+        }
+        /* Show the dropdown content when the button is clicked */
+        .show {
+            display: block;
+        }
+
+        /* Toggle button for opening/closing sidebar */
+        .sidebar-frame{
+            /*margin-bottom: 10px;*/
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .toggle-btn {
+            position: absolute;
+            display: block;
+            top: 50px;
+            left: 20px;
+            font-size: 18px;
+            background-color: #c02a4e;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            padding: 10px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        /* When the sidebar is hidden */
+        .sidebar-closed {
+            width: 0;
+            overflow: hidden;
+        }
+        .content-expanded {
+            margin-left: 0;
+        }
+        iframe {
+            display: block;
+            margin: 20px auto;
+            border: none;
+            width: 100%;
+            height: 400px;
+        }
+        .parameter-container{
+            display:flex;
+            align-items:center;
+            margin-bottom: 10px;
+            width: 100%;
+        }
+        .block-title{
+            magin-bottom: 5px;
+            font-weight: bold;
+            font-size: large;
+            color: white;
+            text-overflow: ellipsis
+        }
+        .parameter-label{
+            text-align: left;
+            margin-right: 8px;
+            color: white;
+            /*white-space: nowrap;*/
+            /*width: 100px;*/
+            text-overflow: ellipsis
+        }
+        .inputs-container {
+            display: flex;               /* Use flexbox for the inputs */
+            flex-direction: column;      /* Stack input rows vertically */
+        }
+        .inputs-container input{
+            width: 50px;
+            margin-right: 8px
+        }
+        .input-row{
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .row-ix{
+            width: 40px;
+            /*text-align: left;*/
+            font-weight: normal;
+            color:white;
+            align-content: center;
+        }
+        .dim-label{
+            color:white
+        }
+        .parameter-row{
+            display: flex;
+            /*flex-wrap: wrap;*/
+            gap: 10px;
+            max-wdith: 100%;
+        }
+        .box {
+            width: 100%;
+            height: 150px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        /* Loading spinner */
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #ff3737;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            display: none;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .horizontal-line {
+            border: none; /* Remove default border */
+            height: 2px; /* Line thickness */
+            background-color: #ccc; /* Line color */
+            margin-bottom: 8px; /* Space below the line */
+        }
+
+    </style>
+    <script>
+        let globalData
+        let optimizableFeatures
+        let fixedFeatures
+        //let sortedKeys
+        function toggleSidebar() {
+            const sidebar = document.querySelector('.sidebar');
+            const content = document.querySelector('.content');
+            sidebar.classList.toggle('sidebar-closed');
+            content.classList.toggle('content-expanded');
+        }
+        function toggleSidebarRight() {
+            const sidebar = document.querySelector('.sidebar-right');
+            const content = document.querySelector('.content');
+            sidebar.classList.toggle('sidebar-closed');
+            content.classList.toggle('content-expanded');
+        }
+        function showSpinner(show) {
+            document.getElementById('spinner').style.display = show ? 'block' : 'none';
+        }
+
+        function restructureParameters(data){
+        const finalParameters = {};
+        const sortedElectrodeKeys = {};
+
+        console.log("Collected data");
+        console.log(data);
+
+        // Loop through the data to organize based on electrode number
+        Object.entries(data).forEach(([key, value]) => {
+            // Extract electrode number from the key
+            const matchNum = key.match(/_(\d+)$/);
+            const electrodeIndex = matchNum ? parseInt(matchNum[1], 10) : null;
+
+            if (electrodeIndex !== null) {
+                // Base key for globalData lookup
+                const baseKey = key.replace(/_(\d+)$/, "");
+
+                if (!sortedElectrodeKeys[baseKey]) {
+                    sortedElectrodeKeys[baseKey] = [];
+                }
+                sortedElectrodeKeys[baseKey][electrodeIndex] = value; // Store value at the corresponding index
+            } else {
+                // Handle non-electrode specific keys
+                const tempKey = key.replace("param_", "");
+                finalParameters[tempKey] = { "value" : value }; // Directly assign the value
+            }
+        });
+
+        Object.entries(sortedElectrodeKeys).forEach(([key, value]) => {
+            // Remove the 'param_' prefix and check for min/max in the name
+            let baseKey = key.replace("param_", "");
+            let isRange = baseKey.includes('_min') || baseKey.includes('_max');
+
+            // If it's a range (min or max), we extract the base key without the _min/_max suffix
+            if (isRange) {
+                baseKey = baseKey.replace(/_(min|max)$/, "");
+            }
+
+            // Now check if baseKey exists in globalData
+            let actualKey = baseKey;
+            let interleaved = false;
+            if (!globalData.hasOwnProperty(baseKey)) {
+                // If not in globalData, remove the last underscore and dimension part
+                actualKey = baseKey.replace(/_[^_]+$/, "");
+                interleaved = true;
+            }
+            if (actualKey in finalParameters){
+                console.log("Returned for key", actualKey)
+                console.log(finalParameters)
+                return;
+            }
+
+            console.log("accessing the key?", actualKey, isRange)
+            const globalInfo = globalData[actualKey];  // Get global info for this key
+
+            // If we have a range (min/max) case, store values as min and max
+            if (isRange) {
+                // Initialize the range structure if it doesn't exist
+                if (!finalParameters[actualKey]) {
+                    finalParameters[actualKey] = {
+                        min_value: [],
+                        max_value: []
+                    };
+
+                }
+                if (interleaved) {
+                    const interleavedValuesMin = [];
+                    const interleavedValuesMax = [];
+
+                    for (let i = 0; i < value.length; i++) {
+                        globalInfo.dimensions.forEach((dim, dim_ix) => {
+                            const minKey = `param_${actualKey}_${dim}_min`;
+                            const maxKey = `param_${actualKey}_${dim}_max`;
+
+                            interleavedValuesMin.push(sortedElectrodeKeys[minKey][i]);
+                            interleavedValuesMax.push(sortedElectrodeKeys[maxKey][i]);
+
+
+                        });
+                    }
+
+                    finalParameters[actualKey] = {'min_value':interleavedValuesMin,
+                                                  'max_value':interleavedValuesMax }
+
+                }
+                else{
+                    const minKey = `param_${actualKey}_min`;
+                    const maxKey = `param_${actualKey}_max`;
+
+                    finalParameters[actualKey] = {
+                        "min_value": sortedElectrodeKeys[minKey],
+                        "max_value": sortedElectrodeKeys[maxKey]
+                    }
+                }
+            } else {
+                // Otherwise, it's a simple value assignment
+                if (!finalParameters[actualKey]) {
+                    finalParameters[actualKey] = {
+                        value: [],
+                    };
+
+                }
+                if (interleaved){
+                    const dimensions = globalInfo.dimensions;
+                    const interleavedValues = [];
+                    // Interleave the values across the dimensions
+                    for (let i = 0; i < value.length; i++) {
+                        dimensions.forEach((dim) => {
+                            const specificKey = `param_${actualKey}_${dim}`;
+                            interleavedValues.push(sortedElectrodeKeys[specificKey][i]);
+                        });
+                    };
+                    // Assign the interleaved values
+                    finalParameters[actualKey] = {
+                        "value": interleavedValues
+                    };
+                } else {
+                    finalParameters[actualKey] = {
+                        "value": value
+                    }
+                };
+            }
+        });
+
+        console.log("Final")
+        console.log(finalParameters)
+
+        return finalParameters
+        }
+
+        function collectInputs(elementId){
+            const sidebarFrame = document.getElementById(elementId);
+            const inputs = sidebarFrame.querySelectorAll('input');
+
+            // Create an object to store the parameter values
+            const parameters = {};
+            inputs.forEach(input => {
+                if (input.type === 'checkbox') {
+                    // For checkboxes, store true or false depending on whether it's checked
+                    parameters[input.id] = input.checked;
+                } else {
+                    // For other inputs, store the value
+                    parameters[input.id] = input.value;
+                }
+            });
+
+            const selects = sidebarFrame.querySelectorAll('select');
+            selects.forEach(select =>{
+                const selectedValue = select.options[select.selectedIndex].value;  // Get selected option value
+                parameters[select.id] = selectedValue;
+            });
+
+            return parameters
+
+        }
+
+        async function startExperiment() {
+            showSpinner(true);
+
+            const experimentSelector = document.getElementById('experiment');
+            const selectedExperiment = experimentSelector.value;
+            // Collect all inputs from the "sidebar-frame" div
+            let parameters = collectInputs('sidebar-left')
+            parameters = restructureParameters(parameters)
+
+            console.log("Package sent")
+            console.log(parameters)
+            const bodyData = {
+                problem: selectedExperiment,  // Add the selected experiment
+                parameters: parameters            // Add the collected input
+                };
+
+            try {
+                const response = await fetch('/start', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(bodyData),
+                });
+                const data = await response.json();
+                console.log(data);
+
+            } catch(error) {
+                console.error('Error starting the experiment:', error);
+            } finally {
+                    // Hide the loading spinner
+                    showSpinner(false);
+            }
+        }
+
+        async function checkStatus() {
+            const response = await fetch('/status');
+            const data = await response.json();
+            console.log(data);
+        }
+
+        async function stopExperiment() {
+            showSpinner(true);
+            const response = await fetch('/stop', { method: 'POST' });
+            const data = await response.json();
+            console.log(data);
+            showSpinner(false);
+        }
+
+        function adjustValue(value) {
+            const input = document.getElementById('custom-input');
+             input.value = Number(input.value) + value;
+        }
+        // Function to display the selected experiment
+        async function fetchExperiments() {
+            try {
+                const response = await fetch('/experiments');  // API route that returns JSON
+                const experiments = await response.json();  // Ensure the response is parsed as JSON
+
+                const experimentSelector = document.getElementById('experiment');
+
+                // Clear existing options (if any)
+                experimentSelector.innerHTML = '<option value="">Select Experiment</option>'; // Reset to default option
+
+                // Populate the select element with the fetched experiments
+                experiments.forEach(exp => {
+                    const option = document.createElement('option');
+                    option.value = exp; // Set the value for the option
+                    option.innerText = exp; // Display the experiment name
+                    experimentSelector.appendChild(option); // Append the option to the select
+                });
+            } catch (error) {
+                console.error("Error fetching data:", error);
+            }
+        }
+        function sortFeatures(features, dataDic) {
+            return features.sort((a, b) => {
+                if (dataDic[a].type < dataDic[b].type) return -1;
+                if (dataDic[a].type > dataDic[b].type) return 1;
+
+                if (a < b) return -1;
+                if (a > b) return 1;
+
+                return 0; // if they are equal
+            });
+        }
+        async function updateParameters(){
+            await updateFixedParameters()
+            await updateVariableParameters()
+        }
+
+        async function addPlotListeners(){
+            const experimentSelect = document.getElementById('experiment');
+            const num_electrodes = document.getElementById('num_electrodes');
+
+            experimentSelect.addEventListener('change', drawPlot);
+            num_electrodes.addEventListener('input', drawPlot);
+
+            const e_pos_inputs = document.querySelectorAll('[id^="param_e_pos"]');
+            console.log("Are these added?")
+            console.log(e_pos_inputs)
+            e_pos_inputs.forEach(input => {
+                input.addEventListener('input', drawPlot);
+            });
+        }
+        async function experimentChange(){
+            loadParameters().then(addPlotListeners).then(drawPlot)
+
+        }
+        async function loadParameters() {
+            const selectedExperiment = document.getElementById('experiment').value;
+
+            if (selectedExperiment===""){
+                globalData = false
+                const container = document.getElementById('parameters-container-num');
+                const fixedTitle = document.getElementById('parameters-header-fixed');
+                const variableTitle = document.getElementById('parameters-header-rest');
+                const containerFixed = document.getElementById('parameters-container-fixed');
+                const containerVariable = document.getElementById('parameters-container-rest');
+
+                container.innerHTML = '';  // Clear existing parameters
+                fixedTitle.innerHTML = '';  // Clear existing parameters
+                variableTitle.innerHTML = '';  // Clear existing parameters
+                containerFixed.innerHTML = '';  // Clear existing parameters
+                containerVariable.innerHTML = '';  // Clear existing parameters
+
+            } else{
+                const response = await fetch('/get_parameters', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({experiment: selectedExperiment}) // Pass the experiment as JSON in the body
+                });
+
+                if (!response.ok) {
+                    console.error("Error fetching parameters:", response.statusText);
+                    return;
+                }
+
+                globalData = await response.json();
+                console.log(globalData)
+
+                optimizableFeatures = Object.keys(globalData).filter(key => globalData[key].optimizable ===true)
+                fixedFeatures = Object.keys(globalData).filter(key => globalData[key].user_fixed ===true)
+
+                optimizableFeatures = sortFeatures(optimizableFeatures, globalData);
+                fixedFeatures = sortFeatures(fixedFeatures, globalData);
+
+                const container = document.getElementById('parameters-container-num');
+                const fixedTitle = document.getElementById('parameters-header-fixed');
+                const variableTitle = document.getElementById('parameters-header-rest');
+
+                fixedTitle.innerText = '';
+                const hrFixed = document.createElement('hr');
+                hrFixed.classList.add('horizontal-line'); // Optional: Add a class for styling
+                fixedTitle.append(hrFixed)
+
+                const titleFix = document.createElement('div');
+                titleFix.classList.add('block-title');
+                titleFix.innerText = "Fixed parameters"
+                fixedTitle.append(titleFix)
+
+                variableTitle.innerText = '';
+                const hrVar = document.createElement('hr');
+                hrVar.classList.add('horizontal-line'); // Optional: Add a class for styling
+                variableTitle.append(hrVar)
+                const titleVar = document.createElement('div');
+                titleVar.classList.add('block-title');
+                titleVar.innerText = "Search space"
+                variableTitle.append(titleVar)
+
+                container.innerHTML = '';  // Clear existing parameters
+
+                if (globalData.multiple_sets) {
+                    console.log("Data has multiple sets")
+                    const row = document.createElement('div');
+                    row.classList.add('parameter-row')
+                    row.id = 'electrode-sets-row'
+
+                    const label = document.createElement('div');
+                    label.classList.add('parameter-label');
+                    label.innerText = "Num. of electrodes"
+
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.id = 'num_electrodes';
+                    input.value = globalData.num_electrodes.value;
+                    input.min = globalData.num_electrodes.min_value;
+                    input.max = globalData.num_electrodes.max_value;
+                    input.onchange = updateParameters;
+
+                    row.appendChild(label)
+                    row.appendChild(input)
+
+                    container.append(row)
+                }
+                await updateParameters()
+
+            }
+        }
+
+        async function updateFixedParameters(){
+            const container = document.getElementById('parameters-container-fixed');
+            container.innerHTML = '';  // Clear existing parameters
+
+            let array_types = ['array']
+
+            let numeric_types = ['int','float']
+            let numeric_mult_types = ['int-mult','float-mult']
+
+            let cat_types = ['cat']
+            let cat_mult_types = ['cat-mult']
+
+            let bool_types = ['boolean']
+
+            if (globalData){
+                const numColumnsInput = document.getElementById('num_electrodes');
+                const numColumnsValue = numColumnsInput ? numColumnsInput.value : 1;
+
+                for (let key of fixedFeatures){
+                    const parameterContainer = document.createElement('div');
+                    parameterContainer.classList.add('parameter-container');
+
+                    const label = document.createElement('div');
+                    label.classList.add('parameter-label');
+
+                    const inputsContainer = document.createElement('div');
+                    inputsContainer.classList.add('inputs-container');  // Container for inputs
+
+                    if (numeric_mult_types.includes(globalData[key]['type'])){
+                        label.innerText = `${key} [${globalData[key].min_value}, ${globalData[key].max_value}]`;
+
+                        for (let i=0; i<numColumnsValue; i++) {
+                            const inputRow = document.createElement('div');
+                            inputRow.classList.add('input-row');  // Row for text and inputs
+
+                            const row_ix = document.createElement('div');
+                            const valueInput = document.createElement('input');
+                            valueInput.type = 'number';
+
+                            row_ix.classList.add('row-ix')
+                            row_ix.innerText = `e_${i + 1}`
+                            valueInput.id = `param_${key}_${i}`;
+
+                            valueInput.value = globalData[key].value;
+                            valueInput.min = globalData[key].min_value;
+                            valueInput.max = globalData[key].max_value;
+
+                            inputRow.appendChild(row_ix);
+                            inputRow.appendChild(valueInput);
+
+                            inputsContainer.appendChild(inputRow);
+                        }
+                    } else if (numeric_types.includes(globalData[key]['type'])){
+                        label.innerText = `${key} [${globalData[key].min_value}, ${globalData[key].max_value}]`;
+
+                        const inputRow = document.createElement('div');
+                        inputRow.classList.add('input-row');  // Row for text and inputs
+
+                        const row_ix = document.createElement('div');
+                        const valueInput = document.createElement('input');
+                        valueInput.type = 'number';
+
+                        row_ix.classList.add('row-ix')
+                        row_ix.innerText = `value`
+                        valueInput.id = `param_${key}`;
+
+                        valueInput.value = globalData[key].value;
+                        valueInput.min = globalData[key].min_value;
+                        valueInput.max = globalData[key].max_value;
+
+                        inputRow.appendChild(row_ix);
+                        inputRow.appendChild(valueInput);
+
+                        inputsContainer.appendChild(inputRow);
+
+                    } else if (cat_mult_types.includes(globalData[key]['type'])){
+
+                        label.innerText = `${key} options`;
+
+                        for (let i = 0; i < numColumnsValue; i++) {
+                            const inputRow = document.createElement('div');
+                            inputRow.classList.add('input-row');  // Row for text and inputs
+
+                            const row_ix = document.createElement('div');
+                            row_ix.classList.add('row-ix');
+
+                            const selectInput = document.createElement('select');
+
+                            row_ix.innerText = `e_${i + 1}`;
+                            selectInput.id = `param_${key}_${i}`;
+
+                            // Create options for the select element
+                            globalData[key]['possible_values'].forEach((value) => {
+                                const option = document.createElement('option');
+                                option.value = value;
+                                option.innerText = value;
+                                selectInput.appendChild(option);
+                            });
+
+                            inputRow.appendChild(row_ix);
+                            inputRow.appendChild(selectInput);
+                            inputsContainer.appendChild(inputRow);
+                        }
+                    } else if (cat_types.includes(globalData[key]['type'])){
+                        label.innerText = `${key} options`;
+
+                        const inputRow = document.createElement('div');
+                        inputRow.classList.add('input-row');  // Row for text and inputs
+
+                        const row_ix = document.createElement('div');
+                        row_ix.classList.add('row-ix');
+                        row_ix.innerText = 'Select a category';
+
+                        const selectInput = document.createElement('select');
+                        selectInput.id = `param_${key}`;
+
+                        // Add options to the select element
+                        globalData[key]['possible_values'].forEach((value) => {
+                            const option = document.createElement('option');
+                            option.value = value;
+                            option.innerText = value;  // Display the value in the dropdown
+                            selectInput.appendChild(option);
+                        });
+                        inputRow.appendChild(row_ix);
+                        inputRow.appendChild(selectInput);
+                        inputsContainer.appendChild(inputRow);
+
+                    } else if (array_types.includes(globalData[key]['type'])) {
+                        // Number of electrodes or rows
+                        const dimensions = globalData[key]['dimensions']
+                        label.innerText = `${key}`;  // Adjust the label
+
+                        for (let i = 0; i < numColumnsValue; i++) {
+                            const inputRow = document.createElement('div');
+                            inputRow.classList.add('input-row');  // Row for text and inputs
+
+                            const row_ix = document.createElement('div');
+                            row_ix.classList.add('row-ix');
+                            row_ix.innerText = `e_${i + 1}`;
+
+                            inputRow.appendChild(row_ix);
+
+                            // Create inputs for each dimension (x, y, z, angles, etc.)
+                            dimensions.forEach((dim, dimIndex) => {
+                                const dimLabel = document.createElement('div');
+                                dimLabel.classList.add('dim-label');
+                                dimLabel.innerText = `${dim}:`;
+
+                                const valueInput = document.createElement('input');
+                                valueInput.type = 'number';
+                                valueInput.id = `param_${key}_${dim}_${i}`;
+                                valueInput.value = globalData[key]['value']?.[dimIndex] || 0;  // Access the value
+
+                                // Set default or initial value, min, max if applicable
+                                if (globalData[key]['min_value'] && globalData[key]['max_value']) {
+                                    valueInput.min = globalData[key]['min_value'][dimIndex];
+                                    valueInput.max = globalData[key]['max_value'][dimIndex];
+                                }
+
+                                inputRow.appendChild(dimLabel);
+                                inputRow.appendChild(valueInput);
+                            });
+
+                            inputsContainer.appendChild(inputRow);
+                        }
+                    } else if (bool_types.includes(globalData[key]['type'])){
+                        const inputRow = document.createElement('div');
+                        inputRow.classList.add('input-row');  // Row for text and inputs
+
+                        label.innerText =  `${key}`;
+
+                        const row_ix = document.createElement('div');
+                        row_ix.classList.add('row-ix')
+                        row_ix.innerText =  ` set (True)`
+
+                        // TODO block extra cells if balanced charges?
+                        const booleanInput = document.createElement('input')
+                        booleanInput.type = 'checkbox'
+                        booleanInput.id = `param_${key}`
+
+                        inputRow.appendChild(row_ix);
+                        inputRow.appendChild(booleanInput)
+                        inputsContainer.appendChild(inputRow);
+
+                    }
+                    parameterContainer.appendChild(label);
+                    parameterContainer.appendChild(inputsContainer);
+                    container.appendChild(parameterContainer);
+                }
+            }
+        }
+
+        async function updateVariableParameters(){
+            const container = document.getElementById('parameters-container-rest');
+            container.innerHTML = '';  // Clear existing parameters
+            let array_types = ['array']
+
+            let numeric_types = ['int','float']
+            let numeric_mult_types = ['int-mult','float-mult']
+
+            let cat_types = ['cat']
+            let cat_mult_types = ['cat-mult']
+
+            let bool_types = ['boolean']
+
+            if (globalData){
+                const numColumnsInput = document.getElementById('num_electrodes');
+                const numColumnsValue = numColumnsInput ? numColumnsInput.value : 1;
+                for (let key of optimizableFeatures){
+                    const parameterContainer = document.createElement('div');
+                    parameterContainer.classList.add('parameter-container');
+
+                    const label = document.createElement('div');
+                    label.classList.add('parameter-label');
+
+                    const inputsContainer = document.createElement('div');
+                    inputsContainer.classList.add('inputs-container');  // Container for inputs
+
+                    if (numeric_mult_types.includes(globalData[key]['type'])){
+                        for (let i=0; i<numColumnsValue; i++) {
+                            const inputRow = document.createElement('div');
+                            inputRow.classList.add('input-row');  // Row for text and inputs
+                            label.innerText = `${key}`;
+
+                            const row_ix = document.createElement('div');
+                            row_ix.classList.add('row-ix')
+                            row_ix.innerText = `e_${i + 1}`
+
+                            const valueInputMin = document.createElement('input');
+                            valueInputMin.type = 'number';
+                            valueInputMin.id = `param_${key}_min_${i}`;
+                            valueInputMin.value = globalData[key].min_value;
+                            valueInputMin.min = globalData[key].min_value;
+                            valueInputMin.max = globalData[key].max_value;
+
+                            const valueInputMax = document.createElement('input');
+                            valueInputMax.type = 'number';
+                            valueInputMax.id = `param_${key}_max_${i}`;
+                            valueInputMax.value = globalData[key].max_value;
+                            valueInputMax.min = globalData[key].min_value;
+                            valueInputMax.max = globalData[key].max_value;
+
+                            inputRow.appendChild(row_ix);
+                            inputRow.appendChild(valueInputMin);
+                            inputRow.appendChild(valueInputMax);
+
+                            inputsContainer.appendChild(inputRow);
+
+                        }
+                    } else if(numeric_types.includes(globalData[key]['type'])){
+                        const inputRow = document.createElement('div');
+                        inputRow.classList.add('input-row');  // Row for text and inputs
+                        label.innerText = `${key}`;
+
+                        const row_ix = document.createElement('div');
+                        row_ix.classList.add('row-ix')
+                        row_ix.innerText = `value`
+
+                        const valueInputMin = document.createElement('input');
+                        valueInputMin.type = 'number';
+                        valueInputMin.id = `param_${key}_min`;
+                        valueInputMin.value = globalData[key].min_value;
+                        valueInputMin.min = globalData[key].min_value;
+                        valueInputMin.max = globalData[key].max_value;
+
+                        const valueInputMax = document.createElement('input');
+                        valueInputMax.type = 'number';
+                        valueInputMax.id = `param_${key}_max`;
+                        valueInputMax.value = globalData[key].max_value;
+                        valueInputMax.min = globalData[key].min_value;
+                        valueInputMax.max = globalData[key].max_value;
+
+                        inputRow.appendChild(row_ix);
+                        inputRow.appendChild(valueInputMin);
+                        inputRow.appendChild(valueInputMax);
+
+                        inputsContainer.appendChild(inputRow);
+                    } else if (cat_mult_types.includes(globalData[key]['type'])) {
+                        // Handle multiple categorical selections
+                        for (let i = 0; i < numColumnsValue; i++) {
+                            const inputRow = document.createElement('div');
+                            inputRow.classList.add('input-row');  // Row for text and inputs
+                            label.innerText = `${key} options`;
+
+                            const row_ix = document.createElement('div');
+                            row_ix.classList.add('row-ix');
+
+                            const selectInput = document.createElement('select');
+                            selectInput.multiple = true; // Enable multiple selection
+
+                            row_ix.innerText = `e_${i + 1}`;
+                            selectInput.id = `param_${key}_${i}`;
+
+                            // Create options for the select element
+                            globalData[key]['possible_values'].forEach((value, index) => {
+                                const option = document.createElement('option');
+                                option.value = value;
+                                option.innerText = value;
+
+                                if (index ==0){
+                                    option.selected =true
+                                }
+                                selectInput.appendChild(option);
+                            });
+
+                            inputRow.appendChild(row_ix);
+                            inputRow.appendChild(selectInput);
+                            inputsContainer.appendChild(inputRow);
+                        }
+                    } else if (cat_types.includes(globalData[key]['type'])) {
+                        // Handle single categorical selection
+
+                        const inputRow = document.createElement('div');
+                        inputRow.classList.add('input-row');  // Row for text and inputs
+                        label.innerText = `${key}`;
+
+                        const row_ix = document.createElement('div');
+                        row_ix.classList.add('row-ix');
+                        row_ix.innerText = 'Select categories';
+
+                        const selectInput = document.createElement('select');
+                        selectInput.multiple = true; // Enable multiple selection
+
+                        selectInput.id = `param_${key}`;
+
+                        // Add options to the select element
+                        globalData[key]['possible_values'].forEach((value, index) => {
+                            const option = document.createElement('option');
+                            option.value = value;
+                            option.innerText = value;  // Display the value in the dropdown
+                            if (index === 0) {
+                                option.selected = true;
+                            }
+                            selectInput.appendChild(option);
+
+                        });
+
+                        inputRow.appendChild(row_ix);
+                        inputRow.appendChild(selectInput);
+                        inputsContainer.appendChild(inputRow);
+                    } else if (array_types.includes(globalData[key]['type'])) {
+                        const dimensions = globalData[key]['dimensions'];
+                        label.innerText = `${key}`;  // Adjust the label
+                        for (let i = 0; i < numColumnsValue; i++) {
+                            const inputRow = document.createElement('div');
+                            inputRow.classList.add('input-row');  // Row for text and inputs
+
+                            const row_ix = document.createElement('div');
+                            row_ix.classList.add('row-ix');
+                            row_ix.innerText = `e_${i + 1}`;
+
+                            inputRow.appendChild(row_ix);
+
+                            // Create inputs for each dimension (x, y, z, angles, etc.)
+                            dimensions.forEach((dim, dimIndex) => {
+                                const dimLabel = document.createElement('div');
+                                dimLabel.classList.add('dim-label');
+                                dimLabel.innerText = `${dim}:`;
+
+                                // Create min input
+                                const valueInputMin = document.createElement('input');
+                                valueInputMin.type = 'number';
+                                valueInputMin.id = `param_${key}_${dim}_min_${i}`;
+                                valueInputMin.value = globalData[key]['min_value']?.[dimIndex] || 0; // Access the min value
+                                valueInputMin.min = globalData[key]['min_value']?.[dimIndex];
+                                valueInputMin.max = globalData[key]['max_value']?.[dimIndex];
+
+                                // Create max input
+                                const valueInputMax = document.createElement('input');
+                                valueInputMax.type = 'number';
+                                valueInputMax.id = `param_${key}_${dim}_max_${i}`;
+                                valueInputMax.value = globalData[key]['max_value']?.[dimIndex] || 0; // Access the max value
+                                valueInputMax.min = globalData[key]['min_value']?.[dimIndex];
+                                valueInputMax.max = globalData[key]['max_value']?.[dimIndex];
+
+                                // Append dimension label and inputs to the row
+                                inputRow.appendChild(dimLabel);
+                                inputRow.appendChild(valueInputMin);
+                                inputRow.appendChild(valueInputMax);
+                            });
+
+                            inputsContainer.appendChild(inputRow);
+                        }
+                    }else if (bool_types.includes(globalData[key]['type'])){
+                        const inputRow = document.createElement('div');
+                        inputRow.classList.add('input-row');  // Row for text and inputs
+                        label.innerText = `${key}`;
+
+                        const row_ix = document.createElement('div');
+                        row_ix.classList.add('row-ix')
+                        row_ix.innerText =  `set (True)`
+
+                        const booleanInput = document.createElement('input')
+                        booleanInput.type = 'checkbox'
+                        booleanInput.id = `param_${key}`
+                        booleanInput.value = ''
+
+                        inputRow.appendChild(row_ix);
+                        inputRow.appendChild(booleanInput)
+
+                        inputsContainer.appendChild(inputRow);
+
+                    }
+
+                    parameterContainer.appendChild(label);
+                    parameterContainer.appendChild(inputsContainer);
+                    container.appendChild(parameterContainer);
+                }
+            }
+        }
+                // Function to draw the plot
+        function drawPlot() {
+            console.log("Plot called")
+            const centerX = 110
+            const canvas = document.getElementById('plotCanvas');
+            const height = parseFloat(document.getElementById('param_dia').value);
+            const num_el = parseInt(document.getElementById('num_electrodes').value, 10);
+            const dims = globalData['e_pos']['dimensions']
+
+            const ctx = canvas.getContext('2d');
+            console.log("height", height)
+            // Clear the canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw the x and y axes
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height / 2); // X axis
+            ctx.lineTo(canvas.width, canvas.height / 2);
+            ctx.moveTo(canvas.width / 2, 0); // Y axis
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+
+            // Draw the rectangle
+
+            const rectWidth = 250; // Adjust rectangle width
+            const rectX = centerX - rectWidth / 2;
+            const rectY = (canvas.height / 2) - (height / 2); // Centered vertically
+
+            ctx.fillStyle = 'rgba(100, 150, 200, 0.5)'; // Rectangle color
+            ctx.fillRect(rectX, rectY, rectWidth, height);
+            console.log(rectX, rectY, rectWidth, height, num_el)
+            ctx.fillStyle = 'red'; // Electrode marker color
+
+            // Plot electrode positions
+            for (let n=0; n<=num_el-1; n++){
+                let pos = []
+                for (let dim in dims) {
+                    const el = document.getElementById(`param_e_pos_${dims[dim]}_${n}`);
+                    pos.push(parseFloat(el.value))
+                }
+                console.log(pos)
+                const markerX = 10*pos[0] + (canvas.width / 2); // Center the electrodes
+                const markerY = 10*pos[1] + (canvas.height/2);
+                ctx.fillText('x', markerX, markerY); // Place above rectangle
+            }
+
+        }
+
+
+        function renderJSON(container, data) {
+            for (const [key, value] of Object.entries(data)) {
+                const keyElement = document.createElement('div');
+                keyElement.className = 'json-key';
+                keyElement.textContent = `${key}: `;
+
+                const valueElement = document.createElement('span');
+                valueElement.className = 'json-value';
+                renderJSON(valueElement, value); // Recursive call
+                keyElement.appendChild(valueElement);
+                div.appendChild(keyElement);
+
+            }
+        }
+        function updateJSONDisplay() {
+            const parameters = collectInputs('sidebar-left');
+            const structuredData = restructureParameters(parameters);
+            const jsonDisplay = document.getElementById('jsonDisplay');
+            jsonDisplay.innerHTML = ''; // Clear previous content
+            renderJSON(jsonDisplay, structuredData);
+        }
+    </script>
+    <script>
+        document.addEventListener('DOMContentLoaded', fetchExperiments)
+        const experimentSelect = document.getElementById('experiment');
+        console.log("Experiment select")
+        console.log(experimentSelect)
+        experimentSelect.addEventListener('change', function() {
+            console.log("Adding events")
+
+
+            const num_electrodes = document.getElementById('num_electrodes');
+            console.log("num el ids")
+            console.log(num_electrodes)
+
+            num_electrodes.addEventListener('input', drawPlot)
+            const e_pos_inputs = document.querySelectorAll('[id^="param_e_pos"]');
+            console.log("Epos ids")
+            console.log(e_pos_inputs)
+            e_pos_inputs.forEach(input => {
+                input.addEventListener('input', drawPlot);
+            });
+
+            drawPlot(); // Call drawPlot once the DOM is fully loaded
+
+        })
+
+
+
+
+        const jsonInputs = document.querySelectorAll('#sidebar-left input');
+        jsonInputs.forEach(input => {
+            input.addEventListener('input', updateJSONDisplay);
+        });
+
+        //
+        // plotInputs.forEach(input => {
+        //     input.addEventListener('input', drawPlot);
+        // });
+
+    </script>
+
+</head>
+<body>
+
+    <!-- Sidebar -->
+    <div class="sidebar" id="sidebar-left">
+        <div class="header">
+            <h2>Configuration</h2>
+        </div>
+        <div class="sidebar-frame", id="toggle-btn">
+            <button class="toggle-btn" onclick="toggleSidebar()">☰</button>
+        </div>
+
+        <!-- Toggle button for the sidebar -->
+        <!-- Dropdown for selecting experiments -->
+        <div class="sidebar-frame", id="exp-selector">
+            <select id="experiment" class="styled-select" onchange="experimentChange()">
+            <option value="">Select Experiment...</option>
+            <!-- Options generated dynamically -->
+            </select>
+        </div>
+
+        <div id="parameters-header-fixed"></div>
+        <div id="parameters-container-num"></div>
+        <div id="parameters-container-fixed"></div>
+        <div id="parameters-header-rest"></div>
+        <div id="parameters-container-rest"></div>
+
+        <div class="experiments-box">
+
+        <button onclick="startExperiment()">Start Experiment</button>
+        <button onclick="checkStatus()">Check Status</button>
+        <button onclick="stopExperiment()">Stop Experiment</button>
+
+        </div>
+        <canvas id="plotCanvas" width="220" height="150"></canvas>
+
+
+
+        <div id="json-view" ></div>
+
+    </div>
+
+    <!-- Main content -->
+    <div class="content">
+        <h1>Live Data Plots</h1>
+
+        <!-- Loading spinner -->
+        <div id="spinner" class="spinner"></div>
+
+        <!-- Embedded plot in iframe -->
+        <iframe src="http://localhost:{{ port }}/plot" scrolling="no"></iframe>
+    </div>
+
+    <div class="sidebar-right" id="sidebar-model">
+        <div class="header">
+            <h2>Problem config</h2>
+        </div>
+        <div class="sidebar-frame", id="toggle-btn-right">
+            <button class="toggle-btn" onclick="toggleSidebarRight()">☰</button>
+        </div>
+    </div>
+
+</body>
+</html>
