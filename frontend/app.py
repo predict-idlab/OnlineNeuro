@@ -1,5 +1,7 @@
 # frontend/app.py
 import json
+import os
+
 import numpy as np
 from common.utils import load_json
 from flask import Flask, request, jsonify, render_template
@@ -19,8 +21,7 @@ socketio = SocketIO(app, async_mode='eventlet')  # Initialize SocketIO
 
 #CORS(app)  # This will allow CORS for all routes and origins
 
-DASK_PORT = 9000
-DASK_URL = f"http://localhost:{DASK_PORT}"
+FLASK_PORT = 9000
 
 process = None
 data_cache = None
@@ -90,7 +91,7 @@ def monitor_process(proc):
 
 @app.route('/')
 def index():
-    return render_template('frontend.html', port=DASK_PORT)
+    return render_template('frontend.html', port=FLASK_PORT)
 
 
 @app.route('/experiments', methods=['GET'])
@@ -131,7 +132,7 @@ def get_parameters():
 # Fetch the plot from Flask
 @app.route('/plot', methods=['GET'])  # Use GET here
 def plot():
-    port = request.args.get('port', default=DASK_PORT, type=int)
+    port = request.args.get('port', default=FLASK_PORT, type=int)
     return render_template('plotly.html', port=port)
 
 
@@ -159,7 +160,7 @@ def prepare_experiment():
         connection_payload = {
             'initiator': 'Python',
             'target': 'MATLAB',
-            'port_flask': str(DASK_PORT)
+            'port_flask': str(FLASK_PORT)
         }
     else:
         raise NotImplementedError
@@ -262,8 +263,9 @@ def update_data():
 if __name__ == '__main__':
     # Start the background thread to check the cache for new data
     parser = argparse.ArgumentParser(description="Process arguments")
-    parser.add_argument('--port', type=int, help='Flask port.')
+    parser.add_argument('--port', type=int, default=9000, help='Flask port.')
     args = parser.parse_args()
 
-    socketio.run(app, port=DASK_PORT, debug=False)
+    print(f"http://localhost:{args.port}")
+    socketio.run(app, port=args.port, debug=False)
 

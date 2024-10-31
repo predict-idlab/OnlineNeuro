@@ -46,11 +46,13 @@ For more information: https://pypi.org/project/matlabengine/
 TBD
 ```
 
+### Using the graphic user interface.
+ The bash scripts takes care of adding the required folders to PYTHONPATH and calls /frontend/app.py
 ```bash
-$ python3 ./server_side.py --matlab_call
-#or
-# $ matlab main 
+$ sh run.sh
 ```
+Then open within a browser 
+[https:localhost:9000](https:localhost:9000)
 
 ## Configuration
 
@@ -59,20 +61,36 @@ All parameters (connection and optimization) are selected in the config.json
 
 ```json
 {
-  "ip":"127.0.0.1",
-  "port":55131,
-  "Timeout":20,
-  "ConnectTimeout":30,
-  "save_path": "./results",
-  "problem": "rose",
-  "experiment": {
-    "classification": false,
+  "connection_config": {
+    "ip": "127.0.0.0",
+    "port": 10000,
+    "Timeout": 20,
+    "ConnectTimeout": 30,
+    "initiator": "Python",
+    "target": "MATLAB"
+  },
+  "problem_config": {
+    "name": "axonsim_nerve_block",
+    "type": "classification",
+    "config_path": "/config/experiment_axonsim_nerve_block.json"
+  },
+  "model_config": {
+    "type": "GP",
+    "classification": true,
+    "scale_inputs": true,
+    "constrains": false,
     "sparse": false,
     "variational": true,
-    "init_samples":5,
     "noise_free": true,
+    "trainable_likelihood": false,
+    "init_samples":15,
     "batch_sampling": false,
-    "trainable_likelihood": false
+    "num_query_points": 1
+  },
+  "path_config": {
+    "save_path": "./simulations",
+    "benchmark_path": "./benchmarks",
+    "axonsim_path": "/$YOUR_PATH$/AxonSim/"
   }
 }
 ```
