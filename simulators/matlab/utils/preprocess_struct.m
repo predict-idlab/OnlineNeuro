@@ -1,75 +1,51 @@
-function new_struct = preprocess_struct(old_struct)
-    %Current convention makes features from axonsim take the name
-    %%{name}_%{number} format so that they can be correctly handled from
-    %%Pythons end. This function reconverts these features into the correct
-    %%array.
-    % First find features that have the pattern, then concatenate them in
-    % the correct order.
-
-    % Initialize the new structure
-    new_struct = struct();
+function feat_struct = preprocess_struct(feat_struct)
+    % TODO this could be done in the loading of defaults rather than
+    % here
+    funTypes = feat_struct.fun_type;
+    j = 1;
+    k = 1;
     
-    % Get all field names of the input struct
-    field_names = fieldnames(old_struct);
-    
-    % Use a container to group fields with numbers
-    grouped_fields = containers.Map('KeyType', 'char', 'ValueType', 'any');
-    grouped_indices = containers.Map('KeyType', 'char', 'ValueType', 'any');
+    feat_struct.custom_fun = strings(numel(funTypes),1);
+    original_currents = feat_struct.I;
+    original_pulse_dur = feat_struct.pulse_dur;
+    feat_struct.I = zeros(numel(funTypes), 1);
+    feat_struct.pulse_dur = zeros(numel(funTypes), 1);
 
-    for i = 1:length(field_names)
-        fn = field_names{i};
-        
-        % Use regex to extract the base name and number if present
-        tokens = regexp(fn, '^(.*)_(\d+)$', 'tokens');
+    for i = 1:numel(funTypes)
+        currentType = feat_struct.fun_type(i);
+        if ismember(currentType, {'single_pulse','double_pulse'})
+           feat_struct.custom_fun(i) = currentType;
+           feat_struct.I(i) = original_currents(k);
+           feat_struct.pulse_dur(i) = original_pulse_dur(k);
 
-        if ~isempty(tokens)
-            base_name = tokens{1}{1};
-            number = str2double(tokens{1}{2});
-
-            % Add this field's value to the appropriate group
-            if isKey(grouped_fields, base_name)
-                grouped_fields(base_name) = [grouped_fields(base_name); old_struct.(fn)];
-                grouped_indices(base_name) = [grouped_indices(base_name), number];
-            else
-                grouped_fields(base_name) = old_struct.(fn);
-                grouped_indices(base_name) = number;
-
-            end
+           k = k+1;
+        elseif ismember(currentType, {'pulse_ramp'})
+            functionName = sprintf('temp_ramp_%s(t)',num2str(j));
+            %functionKey = sprintf('custom_params_%s',i);
+            write_ramp_fun(feat_struct.delay(j), ...
+                feat_struct.amplitude(j), ...
+                feat_struct.pulse_width(j), ...
+                feat_struct.interphase_gap(j), ...
+                feat_struct.decay_width(j), ...
+                feat_struct.k(j), ...
+                feat_struct.ramp_width(j), ...
+                num2str(j))
+            feat_struct.custom_fun(i) = functionName;
+            feat_struct.I(i) = 1;%Writing current as 1, actual amplitude is generated in the function
+            feat_struct.pulse_dur(i) = 0;%It is not used
+            j = j+1;
         else
-            % Copy the field to the new struct if it doesn't match the pattern
-            new_struct.(fn) = old_struct.(fn);
+            error("Not implemented Error")
         end
     end
     
-    % Add the grouped fields to the new struct
-    keys = grouped_fields.keys();
-    for i = 1:length(keys)
-        base_name = keys{i};
-        [sorted_indices, sort_order] = sort(grouped_indices(base_name));
-        sorted_values = grouped_fields(base_name);
-        sorted_values = sorted_values(sort_order);
-        new_struct.(base_name) = [sorted_values];
-        %new_struct.(base_name) = grouped_fields(keys{i});
+    if feat_struct.('e_offset') ~= 0
+        for i =1:numel(funTypes)
+            feat_struct.('e_pos')(2*i-1) = feat_struct.('e_pos')(2*i-1) + feat_struct.('e_offset');
+        end
     end
 
-    %Convert electrode pulses to multiple array
-    % num_pulses = size(old_struct.('fun_type'),1);
-    % if all(strcmp(old_struct.('fun_type'),'single pulse'))
-    %     if num_pulses==2
-    %         new_struct.("I") = new_struct.("I")*[1, -1];
-    %     elseif num_pulses ==3
-    %         new_struct.("I") = new_struct.("I")*[-0.5, 1, -0.5];
-    %     end
-    % 
-    % end
-
-    % Adjust electrode shift
-    if isfield('electrode_shift',new_struct)
-        new_struct.('e_pos')(1) = new_struct.('e_pos')(1) + new_struct('electrode_shift');
-        new_struct.('e_pos')(3) = new_struct.('e_pos')(1) + new_struct('electrode_shift');
-    end
-
-    % Adjust I sign(?) TODO verify this
-    new_struct.("I") = new_struct.("I")*[1, -1];
+    %new_struct.("I") = new_struct.("I")*[1, -1];
+    %new_struct.('e_pos')(1) = new_struct.('e_pos')(1) + new_struct('electrode_shift');
 
 end

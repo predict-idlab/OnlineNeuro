@@ -1,7 +1,10 @@
-{
+{   "balance_charge":
+      { "optimizable": false,
+        "default": true
+    },
     "e_pos":
       { "optimizable": true,
-        "default":[-4, 1, 4, 1],
+        "default":[0, 1, 1, 1],
         "type": "array",
         "max_dimensions": 4,
         "min_dimensions": 2,

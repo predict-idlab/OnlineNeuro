@@ -1,0 +1,34 @@
+{
+  "a":
+    {"optimizable": false,
+      "user_fixed": true,
+      "value": 1,
+      "min_value": 0,
+      "max_value": 10,
+      "type": "float"
+    },
+  "b" :
+  { "optimizable": false,
+    "user_fixed" : true,
+    "value": 100,
+    "min_value": 0,
+    "max_value": 200,
+    "type": "float"
+  },
+  "x0" :
+  { "optimizable": true,
+    "user_fixed" : false,
+    "value": 0,
+    "min_value": -5,
+    "max_value": 5,
+    "type": "float"
+  },
+  "x1" :
+  { "optimizable": true,
+    "user_fixed" : false,
+    "value": 0,
+    "min_value": -5,
+    "max_value": 5,
+    "type": "float"
+  }
+}

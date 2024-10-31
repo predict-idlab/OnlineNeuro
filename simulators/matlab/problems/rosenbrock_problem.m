@@ -5,23 +5,56 @@ function [eval_fun, features, n_targets] = rosenbrock_problem(varargin)
 
     % Define the parameters and their default values
     addOptional(p, 'plot', false, @(x) islogical(x) || isnumeric(x));
+    addOptional(p, 'problem_setting', false, @(x) isstruct(x));
 
     % Parse the input arguments
     parse(p, varargin{:});
-    plot_bool = p.Results.plot_bool;
+    plot_bool = p.Results.plot;
+    problem_setting = p.Results.problem_setting;
 
-    n_targets = ['y'];
+    n_targets = 'y';
+    %Default values
+    a = 1;
+    b = 100;
+    x0 = [-5, 5];
+    x1 = [-5, 5];
+    
+    missing_vars = [];
+    spec_vars = {'a','b','x0','x1'};
+    
+    if problem_setting
+       for i = 1:length(spec_vars)
+           if ~isfield(problem_setting, spec_vars{i})
+               missing_vars = [missing_vars, spec_vars{i}];
+           end
+       end
+       if ~isempty(missing_vars)
+           warning(['The following variables are missing: ', strjoin(missing_vars, ', '), '. Using default values.']);
+       end
 
-    %a =1 , b=100
-    eval_fun =  @(x) (1 - x(:,1)).^2 + 100 * (x(:,2) - x(:,1).^2).^2;
-
-    features = struct('x0',[-5, 10],'x1',[-5, 10]);
+       if isfield(problem_setting, 'a')
+           a = problem_setting.a;
+       end
+       if isfield(problem_setting, 'b')
+           b = problem_setting.b;
+       end
+       if isfield(problem_setting, 'x0')
+           x0 = problem_setting.x0;
+       end
+       if isfield(problem_setting, 'x1')
+           x0 = problem_setting.x1;
+       end
+    else
+        warning('No problem configuration was passed, using default values');
+    end
+    features = struct('x0',x0,'x1',x1);
+    eval_fun =  @(x) rosenbrock_fun(x, a, b);
 
     % Plot the function surface
     if plot_bool
         % Define the range for plotting
-        x1_range = linspace(-5, 10, 100);
-        x2_range = linspace(-5, 10, 100);
+        x1_range = linspace(-5, 5, 100);
+        x2_range = linspace(-5, 5, 100);
         
         % Generate a grid of points for plotting
         [X1, X2] = meshgrid(x1_range, x2_range);
@@ -34,7 +67,6 @@ function [eval_fun, features, n_targets] = rosenbrock_problem(varargin)
             end
         end
     
-
         figure;
         surf(X1, X2, Z);
         xlabel('x1');
@@ -43,5 +75,13 @@ function [eval_fun, features, n_targets] = rosenbrock_problem(varargin)
         title('Rosenbrock Function');
         drawnow;
     end
+
+end
+
+function result = rosenbrock_fun(x, a, b)
+    if isstruct(x)
+        x = [x.x0, x.x1];
+    end
+    result = (a - x(:,1)).^2 + b * (x(:,2) - x(:,1).^2).^2;
 
 end

@@ -1,48 +1,40 @@
-function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator, channel, full_response)
+function y = fun_wrapper(fun, qp,  feat_struct, operator, channel, custom_fun_file, full_response)
     % TODO. handle putting multi-input vectors in the correct struct 
     if nargin < 2
         error('Fun Wrapper requires at least two input arguments.');
     end
 
-    if nargin == 2
-        num_targets = 1;
-    end
     % Toy problems
-    if nargin <= 3
-        if num_targets == 1
-            y = fun(qp);
-        elseif num_targets ==2
-            [y0, y1] = fun(qp);
-            y = [y0; y1];
-        else
-            error("More than 2 targets not implemented!")
-        end
-
+    if nargin <= 2
+        y = fun(qp); 
+        
+    elseif nargin <3
+            error(" A feature structure needs to be provided")
     else
-        % Default values
-        if nargin <5
-            error("If using feat_names, a feat_struct is required")
-        end
-
-        if nargin < 6
+        if nargin < 4
             operator = 'default';
         end
 
-        if nargin < 7
+        if nargin < 5
             channel = 8;
         end
 
-        if nargin < 8
+        if nargin < 6
             full_response = false;
         end
-
-        for i=1:length(feat_names)
-            feat_struct.(string(feat_names(i))) = qp(i);
+        
+        fieldNames = fieldnames(qp);
+        for i=1:length(fieldNames)
+            fN = fieldNames{i};
+            feat_struct.(fN) = qp.(fN);
         end
-
+        
+        
         feat_struct = preprocess_struct(feat_struct);
+        
         y = fun(feat_struct);
-
+        
+        display(y)
         % Operator applied to only a node 
         % TODO, extend what else to do here. 
         switch operator
@@ -64,13 +56,21 @@ function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator
                 end
             case 'nerve_block' %Seen as classification atm
                 %TODO save the entire pulses.
-                ch_1 = y.Yp(:,1); % Verify this?
-                ch_2 = y.Yp(:,18);
+                % Verify this?
+                threshold_ap = 15;
+                ncols = size(y.Yp,2);
+                up_to = floor(ncols /2);
+
+                ch_1 = y.Yp(:,1:up_to); % we try to detect an AP here
+                ch_2 = y.Yp(:,up_to+1:ncols); % We try to detect a block here
                 
-                ch_1_min = min(ch_1);
-                ch_1_max = max(ch_1);
-                ch_2_min = min(ch_2);
-                ch_2_max = max(ch_2);
+                ap_generated = any(ch_1(:)>threshold_ap);
+                effective_block = ap_generated && any(ch_2(:) < threshold_ap);
+                if effective_block
+                    y=1;
+                else
+                    y=0;
+                end
 
                 % figure(1)
                 % plot(ch_1)
@@ -81,28 +81,29 @@ function y = fun_wrapper(fun, qp, num_targets, feat_names, feat_struct, operator
                 % save_figure_counter(fig, './figures/nerve_block/caps/', 'caps_first_last')
                 % 
                 % figure(2)
-                % plot(y.Yp(:,1:18)+ (-9:8)*40)
+                % figure()
+                % plot(y.Yp + (1:ncols)*40)
                 % fig = gca;
-                % save_figure_counter(fig, './figures/nerve_block/caps/', 'caps_all')
+                % save_figure_counter(fig, '../../figures/nerve_block/caps/', 'caps_all')
 
-                if ((ch_1_max - ch_1_min) > 80) && (ch_1_max > 0)
-                    ap_1 = 1;
-                else
-                    ap_1 = 0;
-                end
-                
-                if ((ch_2_max - ch_2_min) > 80) && (ch_2_max > 0)
-                    ap_2 = 1;
-                else
-                    ap_2 = 0;
-                end
-                
-                if ((ap_1 == 1) & (ap_2 == 0)) | ((ap_1 == 0) & (ap_2 == 1))
-                    y = 1;
-
-                else
-                    y = 0;
-                end
+                % if ((ch_1_max - ch_1_min) > 80) && (ch_1_max > 0)
+                %     ap_1 = 1;
+                % else
+                %     ap_1 = 0;
+                % end
+                % 
+                % if ((ch_2_max - ch_2_min) > 80) && (ch_2_max > 0)
+                %     ap_2 = 1;
+                % else
+                %     ap_2 = 0;
+                % end
+                % 
+                % if ((ap_1 == 1) & (ap_2 == 0)) | ((ap_1 == 0) & (ap_2 == 1))
+                %     y = 1;
+                % 
+                % else
+                %     y = 0;
+                % end
                 
             otherwise
                 y_min = min(y.Yp(:,channel));

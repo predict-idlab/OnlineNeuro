@@ -1,0 +1,23 @@
+{
+  "parameter1": {
+    "value":10,
+    "possible_values":[10, 20, 30, 40],
+    "type": "cat"
+  },
+
+  "parameter2": {"value":true,
+    "optimizable": false,
+    "user_fixed": true,
+    "type": "boolean"},
+
+  "parameter3": {"value": "default text",
+    "type": "complex"},
+
+  "parameter4": {"value":5,
+    "type": "int"},
+
+  "parameter5": {"value": 0.5,
+    "optimizable": false,
+    "user_fixed": true,
+    "type": "float"}
+}

@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-# Closely equivalent problems to the ones in Matlb, but here the python versions of them.
+# Closely equivalent problems to the ones in Matlab, but here the python versions of them.
 # Can be handy for writing code in Notebooks.
 
 
@@ -25,3 +25,21 @@ def toy_feasbility(x, ymax=1, noise=0):
     term2 = 0.04 * (1 - 1 / (5 * np.pi)) * np.cos(x) * np.cos(ymax)
     term3 = 0.05 * np.log(x ** 2 + ymax ** 2 + 1)
     return term1 + term2 + term3 + 1 + 0.3
+
+
+def vlmop2(x):
+    transl = 1/np.sqrt(2)
+    # Compute part1 and part2
+    part1 = (x[:, 0] - transl) ** 2 + (x[:, 1] - transl) ** 2
+    part2 = (x[:, 0] + transl) ** 2 + (x[:, 1] + transl) ** 2
+
+    # Calculate y0 and y1
+    y0 = 1 - np.exp(-part1)
+    y1 = 1 - np.exp(-part2)
+
+    return [y0, y1]
+
+
+def rosenbrock(x):
+    #TODO implement
+    return NotImplementedError

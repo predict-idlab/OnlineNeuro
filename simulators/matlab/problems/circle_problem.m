@@ -4,21 +4,56 @@ function [eval_fun, features, n_targets] = circle_problem(varargin)
     
     % Define the parameters and their default values
     addOptional(p, 'plot', false, @(x) islogical(x) || isnumeric(x));
-    addOptional(p, 'radius', 0.5, @(x) isnumeric(x) && x > 0);
-    addOptional(p, 'noise', 0, @(x) isnumeric(x) && x >= 0);
-    addOptional(p, 'center', [0, 0], @(x) isnumeric(x) && numel(x) == 2);
-    
+    addOptional(p, 'problem_setting', false, @(x) isstruct(x));
+
     % Parse the input arguments
     parse(p, varargin{:});
     
     % Retrieve values after parsing
-    plot_bool = p.Results.plot_bool;
-    radius = p.Results.radius;
-    noise = p.Results.noise;
-    center = p.Results.center;
+    plot_bool = p.Results.plot;
+    problem_setting = p.Results.problem_setting;
 
-    n_targets = ['y'];
-    features = struct('x0',[-1, 1], 'x1',[-1, 1])
+    n_targets = 'y';
+    %Default values
+    
+    x0=[-1,1];
+    x1=[-1,1];
+    radius=0.5;
+    noise=0.1;
+    center= [0,0];
+    
+    missing_vars = [];
+    spec_vars = {'x0','x1','radius','noise','center'};
+    
+    if problem_setting
+        for i = 1:length(spec_vars)
+            if ~isfield(problem_setting, spec_vars{i})
+                missing_vars = [missing_vars, spec_vars{i}];
+            end
+        end
+        if ~isempty(missing_vars)
+            warning(['The following variables are missing: ', strjoin(missing_vars, ', '), '. Using default values.']);
+        end
+        if isfield(problem_setting, 'x0')
+            x0 = problem_setting.x0;
+        end
+        if isfield(problem_setting, 'x1')
+            x1 = problem_setting.x1;
+        end
+        if isfield(problem_setting, 'radius')
+            radius = problem_setting.radius;
+        end
+        if isfield(problem_setting, 'noise')
+            noise = problem_setting.noise;
+        end
+        if isfield(problem_setting, 'center')
+            center = problem_setting.center;
+        end
+    else
+        warning('No problem configuration was passed, using default values');        
+    end
+
+    features = struct('x0',x0, 'x1',x1);
 
     % Define the objective function (Rosenbrock function)
     eval_fun = @(x) calculateCircle(x, radius, noise, center);
@@ -52,6 +87,9 @@ function [eval_fun, features, n_targets] = circle_problem(varargin)
 end
 
 function result = calculateCircle(x, radius, noise, center)
+    if isstruct(x)
+        x = [x(:).x0, x(:),x1];
+    end
     x_centered = x - center;
     radii = sqrt(sum(x_centered.^2, 2));
     if noise > 0

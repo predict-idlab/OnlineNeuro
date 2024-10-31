@@ -1,20 +1,35 @@
 {
-  "ip":"127.0.0.1",
-  "port":10000,
-  "Timeout":20,
-  "ConnectTimeout":30,
-  "save_path": "./simulations",
-  "benchmark_path": "./benchmarks",
-  "axonsim_path": "/home/idlab398/AxonSim-r1-main/",
-  "problem": "nerve_block",
-  "experiment": {
+  "connection_config": {
+    "ip": "127.0.0.0",
+    "port": 10000,
+    "Timeout": 20,
+    "ConnectTimeout": 30,
+    "initiator": "Python",
+    "target": "MATLAB"
+  },
+  "problem_config": {
+    "experiment": {
+      "name": "EXPERIMENT",
+      "type": "classification/regression",
+      "config_path": "PATH"
+    }
+  },
+  "model_config": {
+    "type": "GP",
     "classification": true,
     "scale_inputs": true,
+    "constrains": false,
     "sparse": false,
     "variational": true,
-    "init_samples":15,
     "noise_free": true,
+    "trainable_likelihood": false,
+    "init_samples":15,
     "batch_sampling": false,
-    "trainable_likelihood": false
+    "num_query_points": 1
+  },
+  "path_config": {
+    "save_path": "./simulations",
+    "benchmark_path": "./benchmarks",
+    "axonsim_path": "/home/idlab398/AxonSim-r1-main/"
   }
 }

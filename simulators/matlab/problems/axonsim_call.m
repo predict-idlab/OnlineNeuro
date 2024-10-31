@@ -86,12 +86,21 @@ function result = axonsim_call(varin)
     fun_type = varin.fun_type;
     model_type = varin.model_type;
     custom_fun = varin.custom_fun;
+
+    % x = 2;
+    % dummy_fun = @(t) sin(t) + x;
+    % custom_fun{1} = "dummy_fun(t)";
+    % fun_type{1} = "custom";
     I = varin.I;
 
-    n_sources = length(fun_type);
+    
+    %params = varin.custom_fun_params;
+    
+    %
+    n_sources = varin.num_electrodes;
 
     e_sep = e_sep*1000;
-    switch model_type
+    switch string(model_type)
         case "MRG"
             model_nr = 1;
         case "CRRSS"
@@ -105,6 +114,7 @@ function result = axonsim_call(varin)
     e_type_array = double.empty;
     fun_type_array = double.empty;
     for i=1:n_sources
+
         switch string(e_type(i))
             case "single"
                 e_type_array(i) = 1;
@@ -115,25 +125,25 @@ function result = axonsim_call(varin)
             case "intracellular"
                 e_type_array(i) = 4;
         end
-
+        
         switch string(fun_type(i))
-            case "single pulse"
+            case {"single_pulse", "single pulse"}
                 fun_type_array(i) = 1;
-            case "double pulse"
+            case {"double_pulse", "double pulse"}
                 fun_type_array(i) = 2;
             case "custom"
                 fun_type_array(i) = 3;
+            otherwise
+                fun_type_array(i) = 3;
         end
     end
-    
     %e_type = str2double(e_type);
     %fun_type = str2double(fun_type);
     e_type = e_type_array;
     fun_type = fun_type_array;
-
     e_pos = e_pos * 1000;  %um
     phi = phi*100000; % ohm um
-
+    
     for i=1:n_sources
         if e_type(i) ~= 4
             I(i) = I(i) /1000; %A
@@ -225,6 +235,7 @@ function result = axonsim_call(varin)
     tosave.ts = ts;
 
     result = tosave;
+    
     %currentFolder = pwd;
     %fname = sprintf('%s/results/simulation_%s.mat',currentFolder, datestr(now,'mm-dd-yyyy HH-MM'));
     %save(fname,'tosave');

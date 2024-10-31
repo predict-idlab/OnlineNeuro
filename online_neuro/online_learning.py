@@ -191,17 +191,13 @@ def build_model(init_dataset, search_space, config):
                                       #noise_free=config['experiment']['noise_free'],
                                       trainable_likelihood=config['trainable_likelihood'],
                                       )
-            model = VariationalGaussianProcess(
-                gpflow_model
-            )
+            model = VariationalGaussianProcess(gpflow_model)
         elif config['variational'] and ~config['sparse']:
             gpflow_model = build_vgp_classifier(init_dataset, search_space,
                                                 noise_free=config['noise_free']
                                                 )
 
-            model = VariationalGaussianProcess(
-                gpflow_model
-            )
+            model = VariationalGaussianProcess(gpflow_model)
         else:
             raise Exception("Classification not implemented with non variational GPs")
     else:
@@ -228,9 +224,7 @@ def build_model(init_dataset, search_space, config):
                                      trainable_likelihood=config['trainable_likelihood'],
                                      )
 
-            model = VariationalGaussianProcess(
-                gpflow_model
-            )
+            model = VariationalGaussianProcess(gpflow_model)
         elif ~config['variational'] and config['sparse']:
             gpflow_model = build_sgpr(init_dataset, search_space,
                                       likelihood_variance=config['kernel_variance'],

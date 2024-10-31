@@ -16,177 +16,52 @@
 This module contains the :class:`BayesianOptimizer` class, used to perform Bayesian optimization.
 
 @Author Diego Nieves
-Modified version of Trieste's GitHub.
--Remove requirements and links to ~Observer~ Class.
+Modified version of Trieste's BayesianOptimizer.
+- Remove requirements and links to ~Observer~ Class.
+- Input processing (scaling) done within bo data consumption.
 - Explicit optimization.
-- Request of datapoints is done in an outer loop.
+- Request of datapoints and early stopping is done in an outer loop.
+- Other changes concerning what information is saved on records.
+
 
 """
-
-from __future__ import annotations
-
-import copy
-import traceback
-from collections import Counter
-from dataclasses import dataclass
-from pathlib import Path
-from typing import (
-    Any,
-    Callable,
-    ClassVar,
-    Dict,
-    Generic,
-    Mapping,
-    MutableMapping,
-    Optional,
-    TypeVar,
-    cast,
-    overload,
-)
-
 import absl
-import dill
-import numpy as np
-import pandas as pd
-import seaborn as sns
-
-import tensorflow as tf
-from scipy.spatial.distance import pdist
-
-from trieste.acquisition.multi_objective import non_dominated
-from trieste.models.utils import optimize_model_and_save_result
-
-from trieste import logging
-from trieste.acquisition.rule import (
-    AcquisitionRule,
-    EfficientGlobalOptimization,
-    LocalDatasetsAcquisitionRule,
-)
-from trieste.acquisition.utils import with_local_datasets
+from trieste.bayesian_optimizer import *
 from trieste.acquisition.rule import ResultType
-from trieste.data import Dataset
-from trieste.models import (
-    ProbabilisticModel,
-    SupportsCovarianceWithTopFidelity,
-    TrainableProbabilisticModel,
-)
-from trieste.observer import OBJECTIVE, Observer
-from trieste.space import SearchSpace
-from trieste.types import State, Tag, TensorType
-from trieste.utils import Err, Ok, Result, Timer
-from trieste.utils.misc import LocalizedTag, get_value_for_tag, ignoring_local_tags
-
-import utils
-from utils import customMinMaxScaler
-
 import warnings
-StateType = TypeVar("StateType")
-""" Unbound type variable. """
-
-SearchSpaceType = TypeVar("SearchSpaceType", bound=SearchSpace)
-""" Type variable bound to :class:`SearchSpace`. """
-
-ProbabilisticModelType = TypeVar(
-    "ProbabilisticModelType",
-    bound=ProbabilisticModel,
-    covariant=True,
-)
-""" Covariant type variable bound to :class:`ProbabilisticModel`. """
-
-TrainableProbabilisticModelType = TypeVar(
-    "TrainableProbabilisticModelType", bound=TrainableProbabilisticModel, contravariant=True
-)
-""" Contravariant type variable bound to :class:`TrainableProbabilisticModel`. """
-
-EarlyStopCallback = Callable[
-    [Mapping[Tag, Dataset], Mapping[Tag, TrainableProbabilisticModelType], Optional[StateType]],
-    bool,
-]
-""" Early stop callback type, generic in the model and state types. """
+from .utils import customMinMaxScaler
+import numpy as np
 
 
-@dataclass(frozen=True)
-class Record(Generic[StateType, ProbabilisticModelType]):
-    """Container to record the state of each step of the optimization process."""
-
-    datasets: Mapping[Tag, Dataset]
-    """ The known data from the observer. """
-
-    models: Mapping[Tag, ProbabilisticModelType]
-    """ The models over the :attr:`datasets`. """
-
-    acquisition_state: StateType | None
-    """ The acquisition state. """
-
-    @property
-    def dataset(self) -> Dataset:
-        """The dataset when there is just one dataset."""
-        # Ignore local datasets.
-        datasets: Mapping[Tag, Dataset] = ignoring_local_tags(self.datasets)
-        if len(datasets) == 1:
-            return next(iter(datasets.values()))
-        else:
-            raise ValueError(f"Expected a single dataset, found {len(datasets)}")
-
-    @property
-    def model(self) -> ProbabilisticModelType:
-        """The model when there is just one dataset."""
-        # Ignore local models.
-        models: Mapping[Tag, ProbabilisticModelType] = ignoring_local_tags(self.models)
-        if len(models) == 1:
-            return next(iter(models.values()))
-        else:
-            raise ValueError(f"Expected a single model, found {len(models)}")
-
-    def save(self, path: Path | str) -> FrozenRecord[StateType, ProbabilisticModelType]:
-        """Save the record to disk. Will overwrite any existing file at the same path."""
-        Path(path).parent.mkdir(exist_ok=True, parents=True)
-        with open(path, "wb") as f:
-            dill.dump(self, f, dill.HIGHEST_PROTOCOL)
-        return FrozenRecord(Path(path))
-
-
-@dataclass(frozen=True)
-class FrozenRecord(Generic[StateType, ProbabilisticModelType]):
-    """
-    A Record container saved on disk.
-
-    Note that records are saved via pickling and are therefore neither portable nor secure.
-    Only open frozen records generated on the same system.
+def write_summary_init(
+    observer: Observer,
+    search_space: SearchSpace,
+    feature_names: Optional[np.ndarray | list],
+    acquisition_rule: AcquisitionRule[
+        TensorType | State[StateType | None, TensorType],
+        SearchSpaceType,
+        TrainableProbabilisticModelType,
+    ],
+    datasets: Mapping[Tag, Dataset],
+    models: Mapping[Tag, TrainableProbabilisticModel]
+) -> None:
+    """Write initial BO loop TensorBoard summary.
+    Modified version from Trieste, it doesn't save the number of steps as we assume
+    1 step at a time.
     """
 
-    path: Path
-    """ The path to the pickled Record. """
-
-    def load(self) -> Record[StateType, ProbabilisticModelType]:
-        """Load the record into memory."""
-        with open(self.path, "rb") as f:
-            return dill.load(f)
-
-    @property
-    def datasets(self) -> Mapping[Tag, Dataset]:
-        """The known data from the observer."""
-        return self.load().datasets
-
-    @property
-    def models(self) -> Mapping[Tag, ProbabilisticModelType]:
-        """The models over the :attr:`datasets`."""
-        return self.load().models
-
-    @property
-    def acquisition_state(self) -> StateType | None:
-        """The acquisition state."""
-        return self.load().acquisition_state
-
-    @property
-    def dataset(self) -> Dataset:
-        """The dataset when there is just one dataset."""
-        return self.load().dataset
-
-    @property
-    def model(self) -> ProbabilisticModelType:
-        """The model when there is just one dataset."""
-        return self.load().model
+    devices = tf.config.list_logical_devices()
+    logging.text(
+        "metadata",
+        f"Observer: `{observer}`\n\n"
+        f"Number of initial points: "
+        f"`{dict((k, len(v)) for k, v in datasets.items())}`\n\n"
+        f"Search Space: `{search_space}`\n\n"
+        f"Features: `{feature_names}`\n\n"
+        f"Acquisition rule:\n\n    {acquisition_rule}\n\n"
+        f"Models:\n\n    {models}\n\n"
+        f"Available devices: `{dict(Counter(d.device_type for d in devices))}`",
+    )
 
 
 # this should be a generic NamedTuple, but mypy doesn't support them
@@ -356,12 +231,11 @@ class OptimizationResult(Generic[StateType, ProbabilisticModelType]):
 class BayesianOptimizer(Generic[SearchSpaceType]):
     """
     This class performs Bayesian optimization, the data-efficient optimization of an expensive
-    black-box *objective function* over some *search space*. Since we may not have access to the
-    objective function itself, we speak instead of an *observer* that observes it.
+    black-box *objective function* over some *search space*.
     """
 
     def __init__(self, observer: str, search_space: SearchSpaceType,
-                 feature_names: Optional[np.array | list] = None,
+                 feature_names: Optional[np.ndarray | list] = None,
                  scaler: customMinMaxScaler = None,
                  track_state: bool = True,
                  track_path: Optional[Path | str] = None,
@@ -383,11 +257,9 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                  ):
         """
         :param observer: The name of the function ~observer~ (kept just so structure is similar to Trieste's)
-
         :param search_space: The space over which to search. Must be a
             :class:`~trieste.space.SearchSpace`.
-        :param scale_inputs: Whether inputs should be scaled or not. It uses the search_space to define MinMax values
-            by default this is True
+        :param scaler: customMinMaxScaler object or none. Whether inputs should be scaled or not.
         :param track_state: If `True`, this method saves the optimization state at the start of each
             step. Models and acquisition state are copied using `copy.deepcopy`.
         :param track_path: If set, the optimization state is saved to disk at this path,
@@ -451,10 +323,10 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
           ``acquisition_rule``'s :meth:`acquire` method, passing it the ``search_space``,
           ``datasets``, ``models``, and current acquisition state.
 
-        Pass the gien points to the boserver.
+        Pass the given points to the bo-object.
         - Queries the ``observer`` *once* at those points.
 
-        Use the opitmize method to
+        Use the optimize method to
         - Update the dataset(s) and model(s) with the data from the ``observer``.
 
         If any errors are raised during the request, this method will catch and return
@@ -469,9 +341,6 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         :param fit_initial_model: If `False` then we assume that the initial models have
             already been optimized on the datasets and so do not require optimization before
             the first optimization step.
-
-        :param early_stop_callback: (Removed, this is handled now from outside loop).
-
         :return: A :class:`OptimizationResult`. The :attr:`final_result` element contains either
             the final optimization data, models and acquisition state, or, if an exception was
             raised while executing the optimization loop, it contains the exception raised. In
@@ -515,14 +384,13 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         summary_writer = logging.get_tensorboard_writer()
         if summary_writer:
             with summary_writer.as_default(step=0):
-                write_summary_init(
-                    self._observer,
-                    self._search_space,
-                    self._feature_names,
-                    self._acquisition_rule,
-                    self._datasets,
-                    self._models
-                )
+                write_summary_init(self._observer,
+                                   self._search_space,
+                                   self._feature_names,
+                                   self._acquisition_rule,
+                                   self._datasets,
+                                   self._models
+                                )
 
         self._steps += 1
         logging.set_step_number(self._steps)
@@ -550,7 +418,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                 except Exception as e:
                     raise NotImplementedError(
                         "Failed to save the optimization state. Some models do not support "
-                        "deecopying or serialization and cannot be saved. "
+                        "deep-copying or serialization and cannot be saved. "
                         "(This is particularly common for deep neural network models, though "
                         "some of the model wrappers accept a model closure as a workaround.) "
                         "For these models, the `track_state`` argument of the "
@@ -625,7 +493,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                 f"\n{traceback.format_exc()}"
                 f"\nTerminating querying and storing the optimization history in self._crash_result. You may "
                 f"be able to use the history to restart the process from a previous successful "
-                f"retreive via method retrieve_result()"
+                f"retrieve via method retrieve_result()"
                 f"optimization step.\n",
                 output_stream=absl.logging.ERROR,
             )
@@ -641,7 +509,6 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
             if self._track_state and self._track_path is not None:
                 result.save_result(Path(self._track_path) / OptimizationResult.RESULTS_FILENAME)
             self._crash_result = result
-
 
     def retrieve_result(self) -> ResultType:
         if self._crash_result is not None:
@@ -778,279 +645,3 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
             *args,
             **kwargs,
         )
-
-
-def write_summary_init(
-    observer: Observer,
-    search_space: SearchSpace,
-    feature_names: Optional[np.array|list],
-    acquisition_rule: AcquisitionRule[
-        TensorType | State[StateType | None, TensorType],
-        SearchSpaceType,
-        TrainableProbabilisticModelType,
-    ],
-    datasets: Mapping[Tag, Dataset],
-    models: Mapping[Tag, TrainableProbabilisticModel]
-) -> None:
-    """Write initial BO loop TensorBoard summary."""
-    devices = tf.config.list_logical_devices()
-    logging.text(
-        "metadata",
-        f"Observer: `{observer}`\n\n"
-        f"Number of initial points: "
-        f"`{dict((k, len(v)) for k, v in datasets.items())}`\n\n"
-        f"Search Space: `{search_space}`\n\n"
-        f"Features: `{feature_names}`\n\n"
-        f"Acquisition rule:\n\n    {acquisition_rule}\n\n"
-        f"Models:\n\n    {models}\n\n"
-        f"Available devices: `{dict(Counter(d.device_type for d in devices))}`",
-    )
-
-
-def write_summary_initial_model_fit(
-    datasets: Mapping[Tag, Dataset],
-    models: Mapping[Tag, ProbabilisticModel],
-    model_fitting_timer: Timer,
-) -> None:
-    """Write TensorBoard summary for the model fitting to the initial data."""
-    for tag, model in models.items():
-        with tf.name_scope(f"{tag}.model"):
-            # Prefer local dataset if available.
-            tags = [tag, LocalizedTag.from_tag(tag).global_tag]
-            _, dataset = get_value_for_tag(datasets, *tags)
-            assert dataset is not None
-            model.log(dataset)
-    logging.scalar(
-        "wallclock/model_fitting",
-        model_fitting_timer.time,
-    )
-
-
-def observation_plot_init(
-    datasets: Mapping[Tag, Dataset],
-) -> dict[Tag, pd.DataFrame]:
-    """Initialise query point pairplot dataframes with initial observations.
-    Also logs warnings if pairplot dependencies are not installed."""
-    observation_plot_dfs: dict[Tag, pd.DataFrame] = {}
-    if logging.get_tensorboard_writer():
-        seaborn_warning = False
-        if logging.include_summary("query_points/_pairplot") and not (pd and sns):
-            seaborn_warning = True
-        for tag in datasets:
-            if logging.include_summary(f"{tag}.observations/_pairplot"):
-                output_dim = tf.shape(datasets[tag].observations)[-1]
-                if output_dim >= 2:
-                    if not (pd and sns):
-                        seaborn_warning = True
-                    else:
-                        columns = [f"x{i}" for i in range(output_dim)]
-                        observation_plot_dfs[tag] = pd.DataFrame(
-                            datasets[tag].observations, columns=columns
-                        ).applymap(float)
-                        observation_plot_dfs[tag]["observations"] = "initial"
-
-        if seaborn_warning:
-            tf.print(
-                "\nPairplot TensorBoard summaries require seaborn to be installed."
-                "\nOne way to do this is to install 'trieste[plotting]'.",
-                output_stream=absl.logging.INFO,
-            )
-    return observation_plot_dfs
-
-
-def write_summary_observations(
-    datasets: Mapping[Tag, Dataset],
-    models: Mapping[Tag, ProbabilisticModel],
-    tagged_output: Mapping[Tag, TensorType],
-    model_fitting_timer: Timer,
-    observation_plot_dfs: MutableMapping[Tag, pd.DataFrame],
-) -> None:
-    """Write TensorBoard summary for the current step observations."""
-    for tag in models:
-        with tf.name_scope(f"{tag}.model"):
-            models[tag].log(datasets[tag])
-
-        output_dim = tf.shape(tagged_output[tag].observations)[-1]
-        for i in tf.range(output_dim):
-            suffix = f"[{i}]" if output_dim > 1 else ""
-            if tf.size(tagged_output[tag].observations) > 0:
-                logging.histogram(
-                    f"{tag}.observation{suffix}/new_observations",
-                    tagged_output[tag].observations[..., i],
-                )
-                logging.scalar(
-                    f"{tag}.observation{suffix}/best_new_observation",
-                    np.min(tagged_output[tag].observations[..., i]),
-                )
-            if tf.size(datasets[tag].observations) > 0:
-                logging.scalar(
-                    f"{tag}.observation{suffix}/best_overall",
-                    np.min(datasets[tag].observations[..., i]),
-                )
-
-        if logging.include_summary(f"{tag}.observations/_pairplot") and (
-            pd and sns and output_dim >= 2
-        ):
-            columns = [f"x{i}" for i in range(output_dim)]
-            observation_new_df = pd.DataFrame(
-                tagged_output[tag].observations, columns=columns
-            ).applymap(float)
-            observation_new_df["observations"] = "new"
-            observation_plot_df = pd.concat(
-                (observation_plot_dfs.get(tag), observation_new_df),
-                copy=False,
-                ignore_index=True,
-            )
-
-            hue_order = ["initial", "old", "new"]
-            palette = {"initial": "tab:green", "old": "tab:green", "new": "tab:orange"}
-            markers = {"initial": "X", "old": "o", "new": "o"}
-
-            # assume that any OBJECTIVE- or single-tagged multi-output dataset => multi-objective
-            # more complex scenarios (e.g. constrained data) need to be plotted by the acq function
-            if len(datasets) > 1 and tag != OBJECTIVE:
-                observation_plot_df["observation type"] = observation_plot_df.apply(
-                    lambda x: x["observations"],
-                    axis=1,
-                )
-            else:
-                observation_plot_df["pareto"] = non_dominated(datasets[tag].observations)[1]
-                observation_plot_df["observation type"] = observation_plot_df.apply(
-                    lambda x: x["observations"] + x["pareto"] * " (non-dominated)",
-                    axis=1,
-                )
-                hue_order += [hue + " (non-dominated)" for hue in hue_order]
-                palette.update(
-                    {
-                        "initial (non-dominated)": "tab:purple",
-                        "old (non-dominated)": "tab:purple",
-                        "new (non-dominated)": "tab:red",
-                    }
-                )
-                markers.update(
-                    {
-                        "initial (non-dominated)": "X",
-                        "old (non-dominated)": "o",
-                        "new (non-dominated)": "o",
-                    }
-                )
-
-            pairplot = sns.pairplot(
-                observation_plot_df,
-                vars=columns,
-                hue="observation type",
-                hue_order=hue_order,
-                palette=palette,
-                markers=markers,
-            )
-            logging.pyplot(f"{tag}.observations/_pairplot", pairplot.fig)
-            observation_plot_df.loc[
-                observation_plot_df["observations"] == "new", "observations"
-            ] = "old"
-            observation_plot_dfs[tag] = observation_plot_df
-
-    logging.scalar(
-        "wallclock/model_fitting",
-        model_fitting_timer.time,
-    )
-
-
-def write_summary_query_points(
-    datasets: Mapping[Tag, Dataset],
-    models: Mapping[Tag, ProbabilisticModel],
-    search_space: SearchSpace,
-    query_points: TensorType,
-    query_point_generation_timer: Timer,
-    query_plot_dfs: MutableMapping[int, pd.DataFrame],
-) -> None:
-    """Write TensorBoard summary for the current step query points."""
-
-    if tf.rank(query_points) == 2:
-        for i in tf.range(tf.shape(query_points)[1]):
-            if len(query_points) == 1:
-                logging.scalar(f"query_point/[{i}]", float(query_points[0, i]))
-            else:
-                logging.histogram(f"query_points/[{i}]", query_points[:, i])
-        logging.histogram("query_points/euclidean_distances", lambda: pdist(query_points))
-
-    if pd and sns and logging.include_summary("query_points/_pairplot"):
-        columns = [f"x{i}" for i in range(tf.shape(query_points)[1])]
-        qp_preds = query_points
-        for tag in datasets:
-            pred = models[tag].predict(query_points)[0]
-            qp_preds = tf.concat([qp_preds, tf.cast(pred, query_points.dtype)], 1)
-            output_dim = tf.shape(pred)[-1]
-            for i in range(output_dim):
-                columns.append(f"{tag}{i if (output_dim > 1) else ''} predicted")
-        query_new_df = pd.DataFrame(qp_preds, columns=columns).applymap(float)
-        query_new_df["query points"] = "new"
-        query_plot_df = pd.concat(
-            (query_plot_dfs.get(0), query_new_df), copy=False, ignore_index=True
-        )
-        pairplot = sns.pairplot(
-            query_plot_df, hue="query points", hue_order=["old", "new"], height=2.25
-        )
-        padding = 0.025 * (search_space.upper - search_space.lower)
-        upper_limits = search_space.upper + padding
-        lower_limits = search_space.lower - padding
-        for i in range(search_space.dimension):
-            pairplot.axes[0, i].set_xlim((lower_limits[i], upper_limits[i]))
-            pairplot.axes[i, 0].set_ylim((lower_limits[i], upper_limits[i]))
-        logging.pyplot("query_points/_pairplot", pairplot.fig)
-        query_plot_df["query points"] = "old"
-        query_plot_dfs[0] = query_plot_df
-
-    logging.scalar(
-        "wallclock/query_point_generation",
-        query_point_generation_timer.time,
-    )
-
-
-def stop_at_minimum(
-    minimum: Optional[tf.Tensor] = None,
-    minimizers: Optional[tf.Tensor] = None,
-    minimum_atol: float = 0,
-    minimum_rtol: float = 0.05,
-    minimizers_atol: float = 0,
-    minimizers_rtol: float = 0.05,
-    objective_tag: Tag = OBJECTIVE,
-    minimum_step_number: Optional[int] = None,
-) -> EarlyStopCallback[TrainableProbabilisticModel, object]:
-    """
-    Generate an early stop function that terminates a BO loop when it gets close enough to the
-    given objective minimum and/or minimizer points.
-
-    :param minimum: Optional minimum to stop at, with shape [1].
-    :param minimizers: Optional minimizer points to stop at, with shape [N, D].
-    :param minimum_atol: Absolute tolerance for minimum.
-    :param minimum_rtol: Relative tolerance for minimum.
-    :param minimizers_atol: Absolute tolerance for minimizer point.
-    :param minimizers_rtol: Relative tolerance for minimizer point.
-    :param objective_tag: The tag for the objective data.
-    :param minimum_step_number: Minimum step number to stop at.
-    :return: An early stop function that terminates if we get close enough to both the minimum
-        and any of the minimizer points.
-    """
-
-    def early_stop_callback(
-        datasets: Mapping[Tag, Dataset],
-        _models: Mapping[Tag, TrainableProbabilisticModel],
-        _acquisition_state: object,
-    ) -> bool:
-        if minimum_step_number is not None and logging.get_step_number() < minimum_step_number:
-            return False
-        dataset = datasets[objective_tag]
-        arg_min_idx = tf.squeeze(tf.argmin(dataset.observations, axis=0))
-        if minimum is not None:
-            best_y = dataset.observations[arg_min_idx]
-            close_y = np.isclose(best_y, minimum, atol=minimum_atol, rtol=minimum_rtol)
-            if not tf.reduce_all(close_y):
-                return False
-        if minimizers is not None:
-            best_x = dataset.query_points[arg_min_idx]
-            close_x = np.isclose(best_x, minimizers, atol=minimizers_atol, rtol=minimizers_rtol)
-            if not tf.reduce_any(tf.reduce_all(close_x, axis=-1), axis=0):
-                return False
-        return True
-
-    return early_stop_callback

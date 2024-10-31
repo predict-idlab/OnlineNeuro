@@ -443,6 +443,7 @@ def plot_nerve_block(model, initial_data, search_space, scaler=None,
         plt.savefig(f'{save_dir}/plot_{count:02}.png')
     plt.close()
 
+
 def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, plot_ground_truth=None, ground_truth_function=None,
                 count=0, *args, **vargs):
     """
@@ -481,7 +482,7 @@ def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, plot_g
     plot_functions = {
         'log_reg': plot_model,
         'circle': plot_circle,
-        'nerve_block': plot_nerve_block,
+        'axonsim_nerve_block': plot_nerve_block,
         'rosenbruck': plot_surface,
         'axon_single': plot_surface,
         'axon_double': plot_surface,

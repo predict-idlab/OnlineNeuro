@@ -13,31 +13,6 @@
     "max_value": 3,
     "type": "int"
   },
-  "I" :
-    { "optimizable": true,
-      "user_fixed" : false,
-      "value": 0.0,
-      "min_value": -3.0,
-      "max_value": 3.0,
-      "type": "float-mult"
-    },
-  "pulse_dur":
-    {
-      "optimizable": true,
-      "user_fixed": false,
-      "value": 0.25,
-      "min_value": 0.25,
-      "max_value": 2.0,
-      "type": "float-mult"
-  },
-  "frq":
-    { "optimizable": true,
-      "user_fixed": false,
-      "value": 1.0,
-      "min_value": 0.0,
-      "max_value": 100.0,
-      "type": "float-mult"
-    },
   "e_pos":
       { "optimizable": false,
         "user_fixed": true,
@@ -46,6 +21,14 @@
         "max_value" : [3, 3],
         "dimensions" : ["x", "y"],
         "type": "array"
+    },
+  "e_offset":
+      { "optimizable": false,
+        "user_fixed": true,
+        "value": 0,
+        "min_value" : -2,
+        "max_value" : 2,
+        "type": "float"
     },
   "c" :
     { "optimizable": false,
@@ -66,7 +49,7 @@
   "dia":
     { "optimizable": false,
       "user_fixed": true,
-      "value":10.0,
+      "value":1.0,
       "min_value": 1.0,
       "max_value": 10.0,
       "type": "float"
@@ -80,7 +63,7 @@
   "e_sep" :
       { "optimizable": false,
         "user_fixed" : false,
-        "value":[0.5, 0.5],
+        "value": 0.5,
         "type": "float"
   },
   "e_type":
@@ -93,26 +76,26 @@
   "accuracy" :
       { "optimizable": false,
         "user_fixed" : false,
-      "value":0.01,
-      "type": "float"
+        "value":0.01,
+        "type": "float"
   },
   "length" :
       { "optimizable": false,
         "user_fixed" : false,
-      "value":20000,
-      "type": "float"
+        "value":20000,
+        "type": "float"
   },
   "calc_thr" :
       { "optimizable": false,
         "user_fixed" : false,
-      "value":0,
-      "type": "float"
+        "value":0,
+        "type": "float"
   },
   "fun_type" :
       { "optimizable": false,
         "user_fixed" : true,
         "value": "single pulse",
-        "possible_values": ["single_pulse", "double pulse", "custom"],
+        "possible_values": ["single_pulse", "double_pulse", "pulse_ramp", "custom"],
         "type": "cat-mult"
   },
   "model_type" :
@@ -124,8 +107,8 @@
   },
   "custom_fun" :
       { "optimizable": false,
-        "user_fixed" : true,
-        "value":["stim_sin(t, 20000, 1)","stim_sin(t, 20000, 1)"],
+        "user_fixed" : false,
+        "value":"stim_sin(t, 20000, 1)",
         "type": "complex"
  }
 }
