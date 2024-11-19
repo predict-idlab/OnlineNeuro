@@ -44,9 +44,15 @@ For more information: https://pypi.org/project/matlabengine/
 
 ### GUI
 
+In Linux
 ```shell
 sh run.sh
 ```
+In Windows open the file directly or from terminal:
+```bash
+.\run.bat
+```
+
 - The bash script takes care of adding the required folders to PYTHONPATH and calls /frontend/app.py
 - Open the interface within a browser per default: [https:localhost:9000](https:localhost:9000)
 
