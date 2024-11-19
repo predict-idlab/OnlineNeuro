@@ -53,7 +53,7 @@ function [eval_fun, features, n_targets] = circle_problem(varargin)
         warning('No problem configuration was passed, using default values');        
     end
 
-    features = struct('x0',x0, 'x1',x1);
+    features = struct('x0', x0, 'x1', x1);
 
     % Define the objective function (Rosenbrock function)
     eval_fun = @(x) calculateCircle(x, radius, noise, center);
@@ -88,14 +88,15 @@ end
 
 function result = calculateCircle(x, radius, noise, center)
     if isstruct(x)
-        x = [x(:).x0, x(:),x1];
+        x = [x(:).x0, x(:).x1];
     end
     x_centered = x - center;
     radii = sqrt(sum(x_centered.^2, 2));
     if noise > 0
-        result = double(radii - radius > 0);
-    else
         noise_vector = noise * randn(size(radii));
-        result = double(radii - radius + noise_vector > 0);
+        result = double(radii + noise_vector > radius);
+    else
+        result = double(radii > radius);
+
     end
 end

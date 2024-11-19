@@ -17,8 +17,8 @@ function feat_struct = preprocess_struct(feat_struct)
            feat_struct.custom_fun(i) = currentType;
            feat_struct.I(i) = original_currents(k);
            feat_struct.pulse_dur(i) = original_pulse_dur(k);
-
            k = k+1;
+
         elseif ismember(currentType, {'pulse_ramp'})
             functionName = sprintf('temp_ramp_%s(t)',num2str(j));
             %functionKey = sprintf('custom_params_%s',i);
@@ -34,6 +34,7 @@ function feat_struct = preprocess_struct(feat_struct)
             feat_struct.I(i) = 1;%Writing current as 1, actual amplitude is generated in the function
             feat_struct.pulse_dur(i) = 0;%It is not used
             j = j+1;
+            
         else
             error("Not implemented Error")
         end

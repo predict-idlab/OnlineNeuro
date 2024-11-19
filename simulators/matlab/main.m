@@ -30,7 +30,6 @@ function main(json_data)
             problem_config = jsondecode(fileread(file_path));
         end
 
-        default_config = jsondecode(fileread('../../config_experiments/axonsim_template.json'));
         fprintf("Verifying port is open \n");
         % IMPORTANT
         % Matlab comes with its on C++ libraries which are used Python.
@@ -42,6 +41,7 @@ function main(json_data)
         tcpipClient = tcpclient(connection_config.ip, connection_config.port, ...
             "Timeout",connection_config.Timeout, "ConnectTimeout",connection_config.ConnectTimeout, "EnableTransferDelay",false);
         
+        SizeLimit = connection_config.SizeLimit;
         pause(1);
 
         % Send handshake
@@ -71,6 +71,8 @@ function main(json_data)
             %TODO fix this
             [eval_fun, eval_dict] = multiobjective_problem('plot',true);
         case {'axonsim_single', 'axonsim_double', 'axonsim_regression','axon_threshold','axonsim_nerve_block'}
+            default_config = jsondecode(fileread('../../config/experiments/axonsim_template.json'));
+
             [eval_fun, eval_dict] = axon_problem(problem_config,'plot', false, 'default_setting', default_config);
             n_features = fieldnames(eval_dict);
         otherwise
@@ -115,9 +117,8 @@ function main(json_data)
             
             query_points{n} = sample;  % Assign the sample struct to the query_points array
         end
-        %query_points = query_points{1};  % Access the first struct if it is a single element
-        %query_points = cell2struct(query_points)
     else
+
         jsonData = jsonencode(exp_summary);
         write(tcpipClient, jsonData, 'char');
         fprintf("Data sent \n") 
@@ -126,7 +127,6 @@ function main(json_data)
         receivedData = readData(tcpipClient);        
         query_points = receivedData.query_points;
     end
-    
     
     num_points = length(query_points);
     fvalues = cell(1,length(query_points));
@@ -139,7 +139,7 @@ function main(json_data)
             qp = query_points{i};
         end
         switch problem_name
-            case {'axonsim','axonsim_single','axonsim_double'}
+            case {'axonsim','axonsim_single','axonsim_double','axonsim_regression'}
                 fvalues{i} = fun_wrapper(eval_fun, qp, eval_dict);
             case {'axonsim_threshold','axonsim_nerve_block'}
                 fvalues{i} = fun_wrapper(eval_fun, qp, eval_dict, 'nerve_block');
@@ -151,30 +151,13 @@ function main(json_data)
     %Sending first (large batch)
     if nargin == 0
         quit()
-    else
-        dataToSend = struct('init_response', fvalues);
-        jsonData = jsonencode(dataToSend);
-        
-        size_lim = 1024;
     end
 
-    if length(jsonData)>size_lim 
-        fprintf("breaking down message")
-        pckgs = floor(length(jsonData)/size_lim) + 1;
-        row_per_pckg = ceil(length(fvalues)/pckgs);
-
-        for i=1:pckgs
-            start_ix = (i-1)*row_per_pckg + 1;
-            end_ix = min(i*row_per_pckg , length(fvalues));
-            chunk = struct();
-            chunk.('data') = dataToSend(start_ix:end_ix);
-            chunk.('tot_pckgs') = pckgs;
-            jsonChunk = jsonencode(chunk);
-            write(tcpipClient, jsonChunk, 'char');
-        end
-    else
-        write(tcpipClient, jsonData, 'char');
+    display("Sending data to Python ...")
+    for i =1:num_points
+        display(fvalues{i})
     end
+    sendData(fvalues, tcpipClient, SizeLimit);
 
     % Read values sent from Python 
     fprintf("Beginning loop now \n")
@@ -202,7 +185,7 @@ function main(json_data)
             fprintf("requested query points \n")
             fvalues = cell(num_points, 1);
             switch problem_name
-                case {'axonsim','axonsim_single','axonsim_double'}
+                case {'axonsim','axonsim_single','axonsim_double','axonsim_regression'}
                     for i = 1:num_points
                         fvalues{i} = fun_wrapper(eval_fun, query_points(i), eval_dict);
                     end
@@ -217,9 +200,7 @@ function main(json_data)
                         fvalues{i} = fun_wrapper(eval_fun, query_points(i));
                     end
             end
-            dataToSend = struct('observations', fvalues);
-            sendData = jsonencode(dataToSend);
-            write(tcpipClient, sendData,"char");
+            sendData(fvalues, tcpipClient, SizeLimit);
         end
     end
     % Close connection
@@ -227,9 +208,4 @@ function main(json_data)
     clear tcpipClient;
 
 end
-
-
-
-
-
 
