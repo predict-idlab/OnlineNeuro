@@ -231,6 +231,9 @@
             background-color: #ccc; /* Line color */
             margin-bottom: 8px; /* Space below the line */
         }
+        .white-text {
+            color: white;
+        }
 
     </style>
     <script>
@@ -641,12 +644,17 @@
                 const variableTitle = document.getElementById('parameters-header-rest');
                 const containerFixed = document.getElementById('parameters-container-fixed');
                 const containerVariable = document.getElementById('parameters-container-rest');
+                const containerFixedPulse = document.getElementById('parameters-container-fixed-pulse');
+                const containerVariablePulse = document.getElementById('parameters-container-variable-pulse');
+
 
                 container.innerHTML = '';  // Clear existing parameters
                 fixedTitle.innerHTML = '';  // Clear existing parameters
                 variableTitle.innerHTML = '';  // Clear existing parameters
                 containerFixed.innerHTML = '';  // Clear existing parameters
                 containerVariable.innerHTML = '';  // Clear existing parameters
+                containerFixedPulse.innerHTML = ''; //Clear existing parameters
+                containerVariablePulse.innerHTML = ''; //Clear existing parameters
 
             } else{
                 const response = await fetch('/get_parameters', {
@@ -670,8 +678,12 @@
                 optimizableFeatures = sortFeatures(optimizableFeatures, globalData);
                 fixedFeatures = sortFeatures(fixedFeatures, globalData);
 
-
                 const container = document.getElementById('parameters-container-num');
+                const containerFixed = document.getElementById('parameters-container-fixed');
+                const containerVariable = document.getElementById('parameters-container-rest');
+                const containerFixedPulse = document.getElementById('parameters-container-fixed-pulse');
+                const containerVariablePulse = document.getElementById('parameters-container-variable-pulse');
+
                 const fixedTitle = document.getElementById('parameters-header-fixed');
                 const variableTitle = document.getElementById('parameters-header-rest');
 
@@ -689,12 +701,17 @@
                 const hrVar = document.createElement('hr');
                 hrVar.classList.add('horizontal-line'); // Optional: Add a class for styling
                 variableTitle.append(hrVar)
+
                 const titleVar = document.createElement('div');
                 titleVar.classList.add('block-title');
                 titleVar.innerText = "Search space"
                 variableTitle.append(titleVar)
 
-                container.innerHTML = '';  // Clear existing parameters
+                if (container) container.innerHTML = '';  // Clear existing parameters
+                if (containerFixed) containerFixed.innerHTML = '';
+                if (containerVariable) containerVariable.innerHTML = '';
+                if (containerFixedPulse) containerFixedPulse.innerHTML = '';
+                if (containerVariablePulse) containerVariablePulse.innerHTML = '';
 
                 if (globalData.multiple_sets) { //Extend this so not only num_electrodes?
                     // TODO This would be a hard requirements and needs to be documented.
@@ -1075,6 +1092,8 @@
                 const toggleContainer = document.createElement('div');
                 const toggleLabel = document.createElement('label');
                 toggleLabel.textContent = "Fix value";
+                toggleLabel.classList.add('white-text');
+
                 const toggleCheckbox = document.createElement('input');
                 toggleCheckbox.type = 'checkbox';
                 toggleCheckbox.id = `toggle_${key}`;

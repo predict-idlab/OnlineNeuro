@@ -23,6 +23,7 @@ GRID_RESOLUTION = 0.02
 
 plt.style.use('ggplot')
 
+
 # TODO HV calculation so that previously calculated values are cached
 def custom_cmap():
     colors = ['C1', 'C0']
@@ -31,11 +32,10 @@ def custom_cmap():
     return cmap
 
 
-def plot_model(model, initial_data, search_space=None, scaler=None, test_data=None, sampled_data=None,
+def plot_log_reg(model, initial_data, search_space_pipe, test_data=None, sampled_data=None,
                plot_ground_truth=None, ground_truth_function=None, save_dir=None, count=0):
     """
     Plot a two feature 1 output model
-    @param scaler:
     @param model: Trieste model
     @param initial_data: Trieste Dataset
     @param search_space: Trieste search space
@@ -49,29 +49,25 @@ def plot_model(model, initial_data, search_space=None, scaler=None, test_data=No
     """
     if plot_ground_truth:
         assert ground_truth_function is not None
-        assert search_space is not None
+
+    search_space = search_space_pipe.search_space
+    scaler = search_space_pipe.scaler
 
     plt.figure(figsize=(6, 3))
-    plt.plot(initial_data[0][:, 0],
-             initial_data[1][:, 0],
-             'ro', mew=2,
-             label='Initial samples')
+    plt.plot(initial_data[0].values[:, 0],
+             initial_data[1].values[:, 0],
+             'ro', mew=2, label='Initial samples')
 
     if plot_ground_truth:
         x_min = search_space._lower.numpy()
         x_max = search_space._upper.numpy()
         x = np.linspace(x_min, x_max, num=50)
         mean = ground_truth_function(x, noise=0)
-        plt.plot(x,
-                 mean,
-                 color='k', linestyle='--',
-                 label='Ground truth')
+        plt.plot(x, mean, color='k', linestyle='--', label='Ground truth')
 
     if sampled_data:
         mean, var = model.predict(sampled_data[0])
-        plt.plot(sampled_data[0][:, 0],
-                 mean,
-                 'rx', mew=2, label='Sampled datapoints')
+        plt.plot(sampled_data[0][:, 0], mean, 'rx', mew=2, label='Sampled datapoints')
 
     if test_data:
         mean, var = model.predict_y(test_data[0])
@@ -92,83 +88,107 @@ def plot_model(model, initial_data, search_space=None, scaler=None, test_data=No
     plt.legend()
     plt.title('Online \n Logistic regression')
     if save_dir is None:
-        plt.savefig(f'./figures/plot_{count:02}.png')
+        plt.savefig(f'figures/plot_{count:02}.png')
     else:
         plt.savefig(f'{save_dir}/plot_{count:02}.png')
     plt.close()
 
 
-def plot_circle(model, initial_data, search_space=None, scaler=None, test_data=None, sampled_data=None, plot_ground_truth=None,
+def plot_circle(model, initial_data, search_space_pipe, test_data=None, sampled_data=None, plot_ground_truth=None,
                 ground_truth_function=None, save_dir=None, count=0):
+    """
+    @param model:
+    @param initial_data:
+    @param search_space_pipe:
+    @param test_data:
+    @param sampled_data:
+    @param plot_ground_truth:
+    @param ground_truth_function:
+    @param save_dir:
+    @param count:
+    @return:
+    """
+
     if plot_ground_truth:
         assert callable(ground_truth_function)
-        assert search_space is not None
+
+    search_space = search_space_pipe.search_space
+    scaler = search_space_pipe.scaler
+
     fig = plt.figure(figsize=(6, 6))
     ax = fig.add_subplot(111, projection='3d')
 
-    if search_space:
-        x_min, y_min = search_space._lower.numpy()
-        x_max, y_max = search_space._upper.numpy()
-        xx, yy = np.meshgrid(np.arange(x_min, x_max+GRID_RESOLUTION, GRID_RESOLUTION),
-                             np.arange(y_min, y_max+GRID_RESOLUTION, GRID_RESOLUTION))
+    x_min = search_space._lower.numpy()
+    x_max = search_space._upper.numpy()
 
-        Z, Zvar = model.predict_y(np.c_[xx.ravel(), yy.ravel()])
-        Z = gpflow.likelihoods.Bernoulli().invlink(Z).numpy().squeeze()
-        Z = Z.reshape(xx.shape)
+    xx, yy = np.meshgrid(np.arange(x_min[0], x_max[0]+GRID_RESOLUTION, GRID_RESOLUTION),
+                         np.arange(x_min[1], x_max[1]+GRID_RESOLUTION, GRID_RESOLUTION))
+
+    if scaler:
+        xx_unscaled = scaler.inverse_transform_mat(xx, 0)
+        yy_unscaled = scaler.inverse_transform_mat(yy, 1)
+
+    Z, Zvar = model.predict_y(np.c_[xx.ravel(), yy.ravel()])
+    Z = gpflow.likelihoods.Bernoulli().invlink(Z).numpy().squeeze()
+    Z = Z.reshape(xx.shape)
+
+    if scaler:
+        ax.plot_surface(xx_unscaled, yy_unscaled, Z, cmap=cm.coolwarm)
+    else:
         ax.plot_surface(xx, yy, Z, cmap=cm.coolwarm)
 
-    x = initial_data[0].numpy()
-    locs = (initial_data[1] == 1).numpy().squeeze()
+    # Highlighting initial data points
+    x = initial_data[0].values
+    locs = (initial_data[1] == 1).values.squeeze()
 
     ax.scatter(x[locs, 0], x[locs, 1], marker='o', c='k', label='Train-pos')
     ax.scatter(x[~locs, 0], x[~locs, 1], marker='x', c='k', label='Train-neg')
 
-    if plot_ground_truth:
-        x_min, y_min = search_space._lower.numpy()
-        x_max, y_max = search_space._upper.numpy()
-        xx, yy = np.meshgrid(np.arange(x_min, x_max+GRID_RESOLUTION, GRID_RESOLUTION),
-                             np.arange(y_min, y_max+GRID_RESOLUTION, GRID_RESOLUTION))
+    # Plotting the data that has been sampled ~ Without the "observed" labels
 
-        Z = model.predict_y(np.c_[xx.ravel(), yy.ravel()])
-        Z = tf.math.round(Z[0]).numpy().squeeze()
+    if len(sampled_data)>0:
+        ax.scatter(sampled_data[0].values[:, 0], sampled_data[0].values[:, 1],
+                   marker='x', c='r', label='Sampled datapoints')
+
+    #Plotting the ground truth
+    if plot_ground_truth:
+        if scaler:
+            Z = ground_truth_function(np.c_[xx_unscaled.ravel(), yy_unscaled.ravel()])
+        else:
+            Z = ground_truth_function(np.c_[xx.ravel(), yy.ravel()])
+
         Z = Z.reshape(xx.shape)
         ax.contour(xx, yy, Z, colors='k', linestyles='solid', linewidths=1)
 
-    if sampled_data:
-        ax.scatter(sampled_data[0][:, 0], sampled_data[0][:, 1],
-                   marker='x', c='r', label='Sampled datapoints')
-
+    #Plotting test samples
     if test_data:
         mean, var = model.predict_y(test_data[0])
         mean = gpflow.likelihoods.Bernoulli().invlink(mean).numpy().squeeze()
         preds = tf.math.round(mean).numpy()
-        corr_bool = (preds > 0).squeeze()
+        bool_ix = (preds > 0).squeeze()
+        col_0 = test_data.columns[0]
+        col_1 = test_data.columns[1]
 
-        ax.scatter(test_data[0].numpy()[corr_bool, 0], test_data[0].numpy()[corr_bool, 1], c='C0', marker='o',
-                   label='Pos-test')
-        ax.scatter(test_data[0].numpy()[~corr_bool, 0], test_data[0].numpy()[~corr_bool, 1], c='C1', marker='x',
-                   label='Neg-test')
+        ax.scatter(test_data[0].loc[bool_ix, col_0], test_data[0].loc[bool_ix, col_1],
+                   c='C0', marker='o', label='Pos-test')
+        ax.scatter(test_data[0].loc[~bool_ix, col_0], test_data[0].loc[~bool_ix, col_1],
+                   c='C1', marker='x', label='Neg-test')
 
     ax.legend()
-    # ax.set_xlim(-1, 1)
-    # ax.set_ylim(-1, 1)
+
     if save_dir is None:
-        plt.savefig(f'./figures/plot_{count:02}.png')
+        plt.savefig(f'figures/plot_{count:02}.png')
     else:
         plt.savefig(f'{save_dir}/plot_{count:02}.png')
     plt.close()
 
 
-def plot_surface(model, initial_data, search_space=None, scaler=None,
-                 test_data=None, sampled_data=None, plot_ground_truth=None,
+def plot_surface(model, initial_data, search_space_pipe, test_data=None, sampled_data=None, plot_ground_truth=None,
                  ground_truth_function=None, feasible_region=None, save_dir=None, count=0):
     """
-
-    @param scaler:
     @param model: Model from Trieste. TODO in some cases this may be a list with single output.
     @param initial_data:
-    @param search_space:
-    @param scaler:
+    @param search_space_pipe:
     @param test_data:
     @param sampled_data:
     @param plot_ground_truth:
@@ -180,7 +200,9 @@ def plot_surface(model, initial_data, search_space=None, scaler=None,
     """
     if plot_ground_truth:
         assert callable(ground_truth_function)
-        assert search_space is not None
+
+    search_space = search_space_pipe.search_space
+    scaler = search_space_pipe.scaler
 
     fig = plt.figure()
     ax1 = fig.add_subplot(111, projection='3d')
@@ -221,12 +243,16 @@ def plot_surface(model, initial_data, search_space=None, scaler=None,
 
     ax[0].legend()
     if save_dir is None:
-        plt.savefig(f'./figures/plot_{count:02}.png')
+        plt.savefig(f'figures/plot_{count:02}.png')
     else:
         plt.savefig(f'{save_dir}/plot_{count:02}.png')
     plt.close()
 
 def calculate_reference_point(observations):
+    """
+    @param observations:
+    @return:
+    """
     pareto_obj = Pareto(observations)
     front = pareto_obj.front
     f = tf.math.reduce_max(front, axis=-2) - tf.math.reduce_min(front, axis=-2)
@@ -234,16 +260,35 @@ def calculate_reference_point(observations):
     return ref
 
 def log_hv(obs, ref_point):
+    """
+    @param obs:
+    @param ref_point:
+    @return:
+    """
     obs_hv = Pareto(obs).hypervolume_indicator(ref_point)
     return np.log10(obs_hv)
 
-def plot_pareto_2d(model, initial_data, search_space=None,
-                   scaler=None, test_data=None, sampled_data=None, plot_ground_truth=None,
+def plot_pareto_2d(model, search_space_pipe, initial_data, test_data=None, sampled_data=None,
+                   plot_ground_truth=None,
                    ground_truth_function=None, save_dir=None, count=0):
+    """
+    @param model:
+    @param search_space_pipe:
+    @param initial_data:
+    @param test_data:
+    @param sampled_data:
+    @param plot_ground_truth:
+    @param ground_truth_function:
+    @param save_dir:
+    @param count:
+    @return:
+    """
 
     if plot_ground_truth:
         assert callable(ground_truth_function)
-        assert search_space is not None
+
+    search_space = search_space_pipe.search_space
+    scaler = search_space_pipe.scaler
 
     fig, ax = plt.subplots(figsize=(10, 10), ncols=2, nrows=2)
     ax = ax.ravel()
@@ -309,7 +354,7 @@ def plot_pareto_2d(model, initial_data, search_space=None,
     ax[2].set_xlabel("Objective #1")
     ax[2].set_xlabel("Objective #2")
 
-    ref_point = calculate_reference_point(initial_data[1].numpy())
+    ref_point = calculate_reference_point(initial_data[1].values)
 
     _idxs = np.arange(1, len(Z_stack) + 1)
     log_vol = [log_hv(Z_stack[:i, :], ref_point) for i in _idxs]
@@ -338,21 +383,32 @@ def plot_pareto_2d(model, initial_data, search_space=None,
         plt.savefig(f'{save_dir}/plot_{count:02}.png')
     plt.close()
 
-def plot_nerve_block(model, initial_data, search_space, scaler=None,
-                     test_data=None, sampled_data=None, plot_ground_truth=None,
+
+def plot_nerve_block(model, initial_data, search_space_pipe, sampled_data=None, plot_ground_truth=None,
                      ground_truth_function=None, save_dir=None, count=0):
     """
     Nerve_block is a binary output but has more inputs.
-    Here I implement a simple 2 inputs 1 output plot (similar to circle), in which the first 2 variables
+    I implement a simple 2 inputs 1 output plot (similar to circle), in which the first 2 variables
     are plotted and for the rest the central value of the search_space is taken for the rest of the features.
 
     As a side plot, a PCA is included.
-    @param scaler:
+
+    @param model:
+    @param initial_data:
+    @param search_space_pipe:
+    @param sampled_data:
+    @param plot_ground_truth:
+    @param ground_truth_function:
+    @param save_dir:
+    @param count:
+    @return:
     """
 
     if plot_ground_truth:
         assert callable(ground_truth_function)
-        assert search_space is not None
+
+    search_space = search_space_pipe.search_space
+    scaler = search_space_pipe.scaler
 
     num_vars = len(search_space._lower.numpy())
     counts = np.arange(num_vars)
@@ -404,8 +460,8 @@ def plot_nerve_block(model, initial_data, search_space, scaler=None,
         ax[i].set_xlabel(f"feat_{x_ix}")
         ax[i].set_title(f"{i}")
 
-    x = initial_data[0].numpy()
-    y = initial_data[1].numpy()
+    x = initial_data[0].values
+    y = initial_data[1].values
 
     if scaler:
         x = scaler.inverse_transform(x)
@@ -417,7 +473,8 @@ def plot_nerve_block(model, initial_data, search_space, scaler=None,
 
     if plot_ground_truth:
         #TBD
-        raise Exception("Ground truth not implemented for Nerve block (yet). This may work as a precomputed result")
+        msg = "Ground truth not implemented for Nerve block (yet). This may work as a precomputed result"
+        warnings.warn(msg)
 
     if sampled_data:
         samp_data = sampled_data[0]
@@ -438,13 +495,14 @@ def plot_nerve_block(model, initial_data, search_space, scaler=None,
     fig.tight_layout()
 
     if save_dir is None:
-        plt.savefig(f'./figures/plot_{count:02}.png')
+        plt.savefig(f'figures/plot_{count:02}.png')
     else:
         plt.savefig(f'{save_dir}/plot_{count:02}.png')
     plt.close()
 
 
-def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, plot_ground_truth=None, ground_truth_function=None,
+def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, plot_ground_truth=None,
+                ground_truth_function=None,
                 count=0, *args, **vargs):
     """
     @param bo: BayesianOptimizer object
@@ -470,9 +528,7 @@ def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, plot_g
     common_args = {
         'model': bo._models[OBJECTIVE],
         'initial_data': initial_data,
-        'search_space': bo._search_space,
-        'scaler': bo._scaler,
-        'test_data': test_data,
+        'search_space_pipe': bo._search_space_pipe,
         'sampled_data': sampled_data,
         'plot_ground_truth': plot_ground_truth,
         'ground_truth_function': ground_truth_function,
@@ -480,8 +536,8 @@ def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, plot_g
         'count': count
     }
     plot_functions = {
-        'log_reg': plot_model,
-        'circle': plot_circle,
+        'log_reg': plot_log_reg,
+        'circle_classification': plot_circle,
         'axonsim_nerve_block': plot_nerve_block,
         'rosenbruck': plot_surface,
         'axon_single': plot_surface,

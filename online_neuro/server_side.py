@@ -1,6 +1,8 @@
+#online_neuro/server_side.py
 import argparse
 import json
 import os
+import threading
 from pathlib import Path
 import socket
 import sys
@@ -22,9 +24,10 @@ from common.utils import load_json
 # https://github.com/secondmind-labs/trieste/blob/c6a039aa9ecf413c7bcb400ff565cd283c5a16f5/trieste/acquisition/function/__init__.py
 from online_learning import build_model
 from online_neuro.bayessian_optimizer import BayesianOptimizer
-from online_neuro.utils import customMinMaxScaler, SearchSpacePipeline, run_matlab, fetch_data
+from online_neuro.utils import CustomMinMaxScaler, SearchSpacePipeline, run_matlab, run_python_script, fetch_data
 from common.plotting import update_plot
 import requests
+
 # AugmentedExpectedImprovement
 # ExpectedImprovement
 # ProbabilityOfImprovement
@@ -41,11 +44,10 @@ import requests
 # MultipleOptimismNegativeLowerConfidenceBound
 
 #
-def start_connection(connection_config, problem_config, debug_matlab=False):
+def start_connection(connection_config, problem_config):
     """
     @param connection_config:
-    @param initiator:
-    @param target:
+    @param problem_config:
     @return:
     """
     # Create a TCP/IP socket
@@ -60,44 +62,58 @@ def start_connection(connection_config, problem_config, debug_matlab=False):
     print("Waiting for a connection...")
     # Start Matlab process via engine and threading
 
-    if connection_config['initiator'] == "Python":
-        if connection_config['target'] == "MATLAB":
-            if not debug_matlab:
-                # Flag to allow for manually launching Matlab and debugging its end
-                # If threading, Python launches the Matlab main, else, main needs to be manually launched
-                matlab_payload = dict()
-                matlab_payload['connection_config'] = connection_config.copy()
-                matlab_payload['problem_name'] = problem_config['experiment']['name']
-                matlab_payload['problem_type'] = problem_config['experiment']['type']
-                #TODO, improve this
-                omit_keys = ['name', 'type']
-                other_keys = [k for k in problem_config.keys() if k not in omit_keys]
-                if len(other_keys) > 0:
-                    matlab_payload['problem_config'] = {k: problem_config[k] for k in other_keys}
-                else:
-                    raise Exception("Problem configuration contains no features to optimize")
-
-                print('Starting Matlab with Payload:')
-                print(matlab_payload)
-                matlab_payload['matlab_initiates'] = False
-                # TODO, needs to be specified somewhere else
-                matlab_payload['script_path'] = "simulators/matlab/"
-                t = Thread(target=run_matlab, kwargs={"matlab_script_path": matlab_payload['script_path'],
-                                                      "matlab_function_name": "main",
-                                                      **matlab_payload
-                                                      })
-                t.start()
-            else:
-                print("You are in debug mode, start Matlab manually")
-        elif connection_config['target'] == "Python":
-            msg = f"No implementation available for target {connection_config['target']}"
-            raise NotImplementedError(msg)
+    if connection_config['target'] == "MATLAB":
+        #TODO, improve this
+        matlab_payload = dict()
+        matlab_payload['connection_config'] = connection_config.copy()
+        matlab_payload['problem_name'] = problem_config['experiment']['name']
+        matlab_payload['problem_type'] = problem_config['experiment']['type']
+        omit_keys = ['name', 'type']
+        other_keys = [k for k in problem_config.keys() if k not in omit_keys]
+        if len(other_keys) > 0:
+            matlab_payload['problem_config'] = {k: problem_config[k] for k in other_keys}
         else:
-            msg = f"No implementation available for target {connection_config['initiator']}"
-            raise NotImplementedError(msg)
+            raise Exception("Problem configuration contains no features to optimize")
+
+        print('Starting Matlab with Payload:')
+        print(matlab_payload)
+        matlab_payload['script_path'] = "simulators/matlab/"
+        t = Thread(target=run_matlab, kwargs={"matlab_script_path": matlab_payload['script_path'],
+                                              "matlab_function_name": "main",
+                                              **matlab_payload
+                                              })
+        t.start()
+
+    elif connection_config['target'] == "Python":
+        python_payload = dict()
+        python_payload['connection_config'] = connection_config.copy()
+        python_payload['problem_name'] = problem_config['experiment']['name']
+        python_payload['problem_type'] = problem_config['experiment']['type']
+
+        omit_keys = ['name', 'type']
+        other_keys = [k for k in problem_config.keys() if k not in omit_keys]
+        if len(other_keys) > 0:
+            python_payload['problem_config'] = {k: problem_config[k] for k in other_keys}
+        else:
+            raise Exception("Problem configuration contains no features to optimize")
+
+        #python_payload['script_path'] = "simulators/python/"
+        print("Starting Python with Payload:")
+        print(python_payload)
+
+        process = run_python_script(script_path="simulators/python/",
+                                    function_name='main.py',
+                                    **python_payload)
+
+        def lock_process(proc):
+            lock = threading.Lock()
+            with lock:
+                proc.wait()
+
+        Thread(target=lock_process, args=(process,), daemon=True).start()
 
     else:
-        msg = f"No implementation available for initiator {connection_config['initiator']}. {connection_config['initiator']} has no optimization routines."
+        msg = f"No implementation available for simulator: {connection_config['target']}"
         raise NotImplementedError(msg)
 
     # Accept a connection
@@ -132,22 +148,17 @@ def handshake_check(client_socket):
     return None
 
 
-def define_search_space(problem_config, scale_inputs: bool = True, scaler: str= 'minmax'):
+def define_search_space(problem_config, scale_inputs: bool = True, scaler: str = 'minmax') -> SearchSpacePipeline:
     """
-    @param scale_inputs: bool, I don't see a scenario where this wouldn't be the case.
-    @param default_config: Information concerning the problem. More specifically, the upper and lower boundary
-            for normalization purposes.
     @param problem_config: Information concerning the search space as defined by the user.
                 The gui boundaries should be within the problem_config range.
                 If not the case, these are ignored.
-    @param scaler : string to specify the scaling type(Probably Sklearn can be used here instead)
-    @return: Tuple (Trieste Search Space, scaler)
-
+    @param scale_inputs: bool, I don't see a scenario where this wouldn't be the case.
+    @param scaler : string to specify the scaling type
+    @return: instance : SearchSpacePipeline
     """
     # TODO extend to handle categorical and boolean features (i.e. they have to bypass the feature normalization
     filtered_feats = [k for k in problem_config.keys() if (('min_value' in problem_config[k]) and ('max_value' in problem_config[k]))]
-
-    # TODO bypass fixed features (when min_value == max_value, the feature is fixed)
 
     lower_bound = []
     upper_bound = []
@@ -157,7 +168,6 @@ def define_search_space(problem_config, scale_inputs: bool = True, scaler: str= 
     counter = 0
     for i, key in enumerate(filtered_feats):
         feature_names.append(key)
-
         feature_map[key] = np.arange(counter, counter + len(problem_config[key]['min_value']))
         counter += len(problem_config[key]['min_value'])
 
@@ -170,22 +180,19 @@ def define_search_space(problem_config, scale_inputs: bool = True, scaler: str= 
 
         # TODO, implement other types of normalization
         if scaler == 'minmax':
-
             output_range = (-1, 1)
-
             lb = num_features * [output_range[0]]
             ub = num_features * [output_range[1]]
 
             search_space = trieste.space.Box(lower=lb,
                                              upper=ub)
 
-            scaler = customMinMaxScaler(feature_min=lower_bound,
+            scaler = CustomMinMaxScaler(feature_min=lower_bound,
                                         feature_max=upper_bound,
                                         output_range=output_range)
         else:
             raise NotImplementedError(f"{scaler} has not been implemented")
     else:
-
         search_space = trieste.space.Box(lower=lower_bound,
                                          upper=upper_bound)
         scaler = None
@@ -196,6 +203,12 @@ def define_search_space(problem_config, scale_inputs: bool = True, scaler: str= 
                                    scaler=scaler)
 
     return pipeline
+
+def list_dict_process(some_list):
+    new_list = []
+    for element in some_list:
+        new_list.append({k: v.tolist() for k, v in element.items()})
+    return new_list
 
 
 def main(connection_config: dict, model_config: dict, path_config: dict,
@@ -231,18 +244,18 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     # i.e. prevent multiobjective/regression to be solved with classification, etc...
 
     server_socket, client_socket = start_connection(connection_config=connection_config,
-                                                    problem_config=problem_config,
-                                                    debug_matlab=False)
+                                                    problem_config=problem_config)
 
     handshake_check(client_socket=client_socket)
+    package_size = connection_config['SizeLimit']
 
+    received_data = client_socket.recv(package_size).decode()
+    # TODO this line won't be needed anymore, as search space is now defined from the UI/terminal and not the problem config
     ## First message
     # Receives feature names, target_names(?), Upper and lower_boundaries.
-    # This should probably also pass constraints, although this needs to be thought still.
-    # TODO this line won't be needed anymore, as search space is now defined from the UI and not the problem config
-    received_data = client_socket.recv(1024).decode()
-    problem_specs = json.loads(received_data)
+    # This should probably also pass constraints.
 
+    problem_specs = json.loads(received_data)
 
     print("Loaded problem config")
     print(problem_config)
@@ -250,31 +263,26 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     search_space_pipe = define_search_space(problem_config=problem_config,
                                             scale_inputs=model_config["scale_inputs"])
 
-    ## First batch requested to the simulator.
-    # Initialize GP and search strategy with first batch of data.
-
     # TODO Optional. Add other sampling methods such as LHS (Halton is in Trieste but not needed).
     qp_dict, qp_array = search_space_pipe.sample(model_config['init_samples'],
                                                  sample_method='sobol')
-
-    def list_dict_process(some_list):
-        new_list = []
-        for element in some_list:
-            new_list.append({k:v.tolist() for k,v in element.items()})
-        return new_list
+    print("Search space defined")
+    print("First batch")
+    print(qp_dict)
 
     qp_json = list_dict_process(qp_dict)
-
     response = {'message': 'first queried points using Sobol method',
                 'query_points': qp_json}
 
     response_json = json.dumps(response) + "\n"
+
     client_socket.sendall(response_json.encode())
-    received_data = fetch_data(client_socket)
+    received_data = fetch_data(client_socket, size=package_size)
 
     print("First data package:", received_data)
+
     received_data = pd.DataFrame(received_data)
-    observations = received_data['init_response'].values
+    observations = received_data['observations'].values
 
     if isinstance(observations[0], list):
         observations = np.vstack(observations)
@@ -282,14 +290,17 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     observations = np.atleast_2d(observations).T
 
     init_data_size = len(qp_array)
-    column_names = search_space_pipe.feature_names_ixs()
-    results_df = pd.DataFrame(qp_array, columns=column_names)
+    feat_cols = search_space_pipe.feature_names_ixs()
+    results_df = pd.DataFrame(qp_array, columns=feat_cols)
 
     if observations.shape[1] > 1:
+        response_cols = []
         for i in range(observations.shape[1]):
             results_df[f'response_{i}'] = observations[:, i]
+            response_cols.append(f'response_{i}')
     else:
         results_df['response'] = observations
+        response_cols = ['response']
 
     if port_flask:
         json_data = results_df.to_json(orient='records')
@@ -304,9 +315,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     os.makedirs(f"{path_config['save_path']}/{problem_config['experiment']['name']}/", exist_ok=True)
     results_df.to_csv(f"{path_config['save_path']}/{problem_config['experiment']['name']}/results.csv", index=False)
 
-    # Important note. For some tensorflow reason observations need to be float even for classification problems.
-    # Additional note. Tf variance can only accept real numbers
-
+    # @Note. For some tensorflow reason observations need to be float even for classification problems.
     init_dataset = Dataset(query_points=tf.cast(qp_array, tf.float64),
                            observations=tf.cast(observations, tf.float64))
 
@@ -326,10 +335,9 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
                 warnings.warn(f"Batch querying was specified, but config specifies only 1 sample")
         else:
             warnings.warn(
-                f"Batch querying was specified, but config filed does not specify batch size, defaulting to three")
+                f"Batch querying was specified, but config file does not specify batch size, defaulting to three")
             model_config['num_query_points'] = 3
 
-    #Todo
     if problem_config['experiment']['type'] in ['multiobjective', 'moo']:
         acq = ExpectedHypervolumeImprovement()
         print("Multiobjective model using HyperVolumes")
@@ -367,28 +375,24 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
                                        num_query_points=model_config['num_query_points']
                                        )
     bo = BayesianOptimizer(observer=problem_config['experiment']['name'],
-                           search_space=search_space_pipe.search_space,
-                           scaler=search_space_pipe.scaler,
+                           search_space_pipe=search_space_pipe,
                            track_state=True,
                            track_path=f"{path_config['save_path']}/{problem_config['experiment']['name']}/",
                            acquisition_rule=rule)
 
-    qp = bo.request_query_points(datasets=init_dataset,
-                                 models=model,
-                                 fit_initial_model=True,
-                                 fit_model=True)
+    print("Init dataset")
+    print(init_dataset)
 
-    qp_dict, qp_array = search_space_pipe.inverse_transform(qp, with_array=True)
-    print("First qp")
-
+    qp_dict, qp_array = bo.request_query_points(datasets=init_dataset,
+                                                models=model,
+                                                fit_initial_model=True,
+                                                fit_model=True)
+    # print("First qp")
     print(qp_dict)
 
     terminate_flag = False
     if qp_dict is None:
         raise Exception("Terminated before optimization started \n no query points were retrieved")
-
-    with_plots = True
-    count = 0
 
     # TODO send stop signals from both ends upon certain conditions (i.e. no improvement, reached goal,
     # buget limit, etc...)
@@ -400,57 +404,61 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     # generate example figures of online learning efficiency
 
     # TODO, plotting functions for Pareto
-
     # TODO, plotting functions for 3D search shapes (see Notebook in NeuroAAA repo)
+
+    with_plots = True
+    count = 0
+    exit_message = None
 
     while not terminate_flag:
         # Counter is used to save figures with different names. If kept constant it overwrites the figure.
         count += 1
-
-        # Check if termination signal received from MATLAB
         # Respond back
         qp_json = list_dict_process(qp_dict)
         message = {"query_points": qp_json,
                    "terminate_flag": terminate_flag}
-
+        print(f"Count {count}")
         print(message)
         response_json = json.dumps(message) + "\n"
         client_socket.sendall(response_json.encode())
 
+        # Check if termination signal received from MATLAB
         if "terminate_flag" in received_data:
             terminate_flag = received_data['terminate_flag']
-            print("Termination signal received from MATLAB \n Saving results... \n Closing connection...")
+            exit_message = "Termination signal received from MATLAB \n Saving results... \n Closing connection..."
 
-        received_data = client_socket.recv(1024).decode()
-        received_data = json.loads(received_data)
+        received_data = fetch_data(client_socket, size=package_size)
 
-        # TODO, this routine may be combined or redundant if plot-flask?
-        if with_plots:
-            plot_data = bo.result.try_get_final_datasets()[OBJECTIVE]
-            update_plot(bo,
-                        initial_data=(plot_data.query_points[:init_data_size],
-                                      plot_data.observations[:init_data_size]),
-                        sampled_data=(plot_data.query_points[init_data_size:],
-                                      plot_data.observations[init_data_size:]),
-                        plot_ground_truth=None, ground_truth_function=None,
-                        count=count)
-            time.sleep(0.5)
-
-        observations = np.array([received_data['observations']])
+        # If the result is a string, parse it again to get a dictionary
+        observations = [r['observations'] for r in received_data]
+        observations = np.array(observations)
         observations = np.atleast_2d(observations).T
 
         # Save results
-        new_sample = pd.DataFrame(qp_array, columns=column_names)
+        print("Feat Cols: ", feat_cols)
+        new_sample = pd.DataFrame(qp_array, columns=feat_cols)
 
         if observations.shape[1] > 1:
             for i in range(observations.shape[1]):
-                new_sample[f'response_{i}'] = observations[:, i]
+                new_sample[response_cols[i]] = observations[:, i]
         else:
-            new_sample['response'] = observations
+            new_sample[response_cols] = observations
 
+        print(results_df)
         results_df = pd.concat([results_df, new_sample], ignore_index=True)
+        print(results_df)
         # TODO, a line by line write to csv is more efficient than rewriting the whole file
         results_df.to_csv(f"{path_config['save_path']}/{problem_config['experiment']['name']}/results.csv", index=False)
+        # TODO, this routine may be combined or redundant if plot-flask?
+        if with_plots:
+            update_plot(bo,
+                        initial_data=(results_df.iloc[:init_data_size][feat_cols],
+                                      results_df.iloc[:init_data_size][response_cols]),
+                        sampled_data=(results_df.iloc[init_data_size:][feat_cols],
+                                      results_df.iloc[init_data_size:][response_cols]),
+                        plot_ground_truth=None, ground_truth_function=None,
+                        count=count)
+            time.sleep(0.5)
 
         if port_flask:
             json_data = new_sample.to_json(orient='records')
@@ -461,22 +469,19 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
             else:
                 print("Error updating data:", response.status_code, response.text)
 
-        print(qp_array.shape, observations.shape)
-        print(qp_array)
-
-        print(observations)
         bo.optimize_step(query_points=qp_array,
                          observer_output=observations)
 
         final_data = bo.result.try_get_final_datasets()[OBJECTIVE]
         final_models = bo.result.try_get_final_models()[OBJECTIVE]
 
-        qp = bo.request_query_points(datasets=final_data,
-                                     models=final_models,
-                                     fit_initial_model=False,
-                                     fit_model=True)
+        qp_dict, qp_array = bo.request_query_points(datasets=final_data,
+                                                    models=final_models,
+                                                    fit_initial_model=False,
+                                                    fit_model=True)
 
-        qp_dict, qp_array = search_space_pipe.inverse_transform(qp, with_array=True)
+
+    print(exit_message)
 
     # Close the connection
     client_socket.close()
@@ -588,7 +593,7 @@ def process_args(args, unknown_args):
         path_config = dict()
         other_params = dict()
 
-        for k in ['initiator', 'target']:
+        for k in ['target']:
             if k in args_dict:
                 connection_config[k] = args_dict[k]
 
@@ -619,7 +624,7 @@ def process_args(args, unknown_args):
 
 
 if __name__ == "__main__":
-
+    print("PYTHONPATH:", sys.path)
     parser = argparse.ArgumentParser(description="Controller to start Python or MATLAB process.")
 
     group1 = parser.add_argument_group('Global configuration')
@@ -632,10 +637,8 @@ if __name__ == "__main__":
     group2.add_argument('--problem_config', type=str, help="Path to or json of the problems's configuration file")
     group2.add_argument('--path_config', type=str, help="Path to or json of paths's configuration file")
 
-    parser.add_argument('--initiator', choices=['Python'], required=False,
-                        help="Specify the initiator process: 'Python'. 'Matlab has been deprecated'")
     parser.add_argument('--target', choices=['Python', 'MATLAB'], required=False,
-                        help="Specify the target process to control: 'Python' or 'MATLAB'")
+                        help="Specify the target simulator: 'Python' or 'MATLAB'")
     parser.add_argument('--flask_port', required=False,
                         help="If provided, partial results are sent to the flask server for plotting and reporting")
 

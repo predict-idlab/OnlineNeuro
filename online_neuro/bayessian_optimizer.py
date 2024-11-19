@@ -29,7 +29,7 @@ import absl
 from trieste.bayesian_optimizer import *
 from trieste.acquisition.rule import ResultType
 import warnings
-from .utils import customMinMaxScaler
+from .utils import CustomMinMaxScaler, SearchSpacePipeline
 import numpy as np
 
 
@@ -234,9 +234,8 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
     black-box *objective function* over some *search space*.
     """
 
-    def __init__(self, observer: str, search_space: SearchSpaceType,
+    def __init__(self, observer: str, search_space_pipe: SearchSpacePipeline,
                  feature_names: Optional[np.ndarray | list] = None,
-                 scaler: customMinMaxScaler = None,
                  track_state: bool = True,
                  track_path: Optional[Path | str] = None,
                  acquisition_rule: AcquisitionRule[
@@ -280,9 +279,11 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         self._observer = observer
         self.result: OptimizationResult = None
 
-        self._search_space = search_space
+        self._search_space_pipe = search_space_pipe
+        self._search_space = search_space_pipe.search_space
+        self._scaler = search_space_pipe.scaler
+
         self._feature_names = feature_names
-        self._scaler = scaler
 
         self._steps = 0
 
@@ -469,10 +470,17 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                 else:
                     query_points = points_or_stateful
 
-            if self._scaler:
-                query_points = self._scaler.inverse_transform(query_points)
-            else:
-                query_points = query_points.numpy()
+            #TODO improve this
+            print("Before it goes quack")
+            print(query_points)
+            try:
+                if self._scaler:
+                    qp_dict, qp_array = self._search_space_pipe.inverse_transform(query_points.numpy(), with_array=True)
+                else:
+                    qp_array = query_points.numpy()
+                    qp_dict = qp_array
+            except Exception as e:
+                raise BaseException(e)
 
             if summary_writer:
                 with summary_writer.as_default(step=self._steps):
@@ -480,12 +488,12 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                         self._datasets,
                         self._models,
                         self._search_space,
-                        query_points,
+                        qp_array,
                         query_point_generation_timer,
                         self.query_plot_dfs,
                     )
-
-            return query_points
+            print("Summary written")
+            return qp_dict, qp_array
 
         except Exception as error:  # pylint: disable=broad-except
             tf.print(
@@ -529,6 +537,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         # if tf.rank(query_points) == 3:
         #     observer = mk_batch_observer(observer)
         # observer_output = observer(query_points)
+
         if self._scaler:
             #TODO, check this is valid for batch samples(?)
             query_points = self._scaler.transform(query_points)
