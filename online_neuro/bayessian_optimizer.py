@@ -29,7 +29,7 @@ import absl
 from trieste.bayesian_optimizer import *
 from trieste.acquisition.rule import ResultType
 import warnings
-from .utils import CustomMinMaxScaler, SearchSpacePipeline
+from .utils import SearchSpacePipeline
 import numpy as np
 
 
@@ -429,7 +429,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                     ) from e
 
             if self._steps == 1:
-                #Fit can only occur while querying during the first iteration!
+                #Fit should only occur while querying during the first iteration!
                 
                 # See explanation in AskTellOptimizer.__init__().
                 if isinstance(self._acquisition_rule, LocalDatasetsAcquisitionRule):
@@ -471,8 +471,6 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                     query_points = points_or_stateful
 
             #TODO improve this
-            print("Before it goes quack")
-            print(query_points)
             try:
                 if self._scaler:
                     qp_dict, qp_array = self._search_space_pipe.inverse_transform(query_points.numpy(), with_array=True)
@@ -492,7 +490,6 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                         query_point_generation_timer,
                         self.query_plot_dfs,
                     )
-            print("Summary written")
             return qp_dict, qp_array
 
         except Exception as error:  # pylint: disable=broad-except
@@ -526,7 +523,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
             warnings.warn(msg)
             return None
 
-    def optimize_step(self, query_points, observer_output, fit_model: bool = True) -> None:
+    def optimize_step(self, query_points, observer_output, verbose=False) -> None:
         """
         If ``track_state`` is enabled, then in addition to the final result, the history of the
         optimization process will also be returned. If ``track_path`` is also set, then
@@ -561,31 +558,30 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
 
             filtered_sample = self._acquisition_rule.filter_datasets(self._models, new_sample)
 
-            if fit_model:
-                with Timer() as model_fitting_timer:
-                    for tag, model in self._models.items():
-                        # Prefer local dataset if available.
-                        tags = [tag, LocalizedTag.from_tag(tag).global_tag]
-                        _, sample = get_value_for_tag(filtered_sample, *tags)
-                        assert sample is not None
-                        self._datasets[tag] += sample
+            with Timer() as model_fitting_timer:
+                for tag, model in self._models.items():
+                    # Prefer local dataset if available.
+                    tags = [tag, LocalizedTag.from_tag(tag).global_tag]
+                    _, sample = get_value_for_tag(filtered_sample, *tags)
+                    assert sample is not None
+                    self._datasets[tag] += sample
 
-                        model.update(self._datasets[tag])
-                        optimize_model_and_save_result(model, self._datasets[tag])
+                    model.update(self._datasets[tag])
+                    optimize_model_and_save_result(model, self._datasets[tag])
 
-                if summary_writer:
-                    logging.set_step_number(0)
-                    with summary_writer.as_default(step=self._steps):
-                        write_summary_observations(
-                            self._datasets,
-                            self._models,
-                            new_sample,
-                            model_fitting_timer,
-                            self.observation_plot_dfs,
-                        )
-                    logging.set_step_number(self._steps)
-
-            tf.print("Optimization completed without errors", output_stream=absl.logging.INFO)
+            if summary_writer:
+                logging.set_step_number(0)
+                with summary_writer.as_default(step=self._steps):
+                    write_summary_observations(
+                        self._datasets,
+                        self._models,
+                        new_sample,
+                        model_fitting_timer,
+                        self.observation_plot_dfs,
+                    )
+                logging.set_step_number(self._steps)
+            if verbose:
+                tf.print("Optimization completed without errors", output_stream=absl.logging.INFO)
 
         except Exception as error:  # pylint: disable=broad-except
             tf.print(

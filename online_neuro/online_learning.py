@@ -176,7 +176,7 @@ def build_vgp(data: Dataset,
     return model
 
 
-def build_model(init_dataset, search_space, config):
+def build_model(init_dataset, search_space, config, **kwargs):
     """
     @param init_dataset:
     @param search_space:
@@ -186,7 +186,9 @@ def build_model(init_dataset, search_space, config):
     if config['classification']:
         if config['variational'] and config['sparse']:
             # TODO
-            # build_svgp by Trieste does not have a noisy version, need to rewrite this function but low priority
+            if config['noise_free']:
+                msg = "build_svgp by Trieste does not have a noisy version, need to rewrite this function(TODO)"
+                warnings.warn(msg)
             gpflow_model = build_svgp(init_dataset, search_space, classification=True,
                                       #noise_free=config['experiment']['noise_free'],
                                       trainable_likelihood=config['trainable_likelihood'],

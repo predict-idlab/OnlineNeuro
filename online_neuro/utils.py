@@ -4,11 +4,16 @@ import matlab.engine
 import json
 from trieste.space import SearchSpaceType
 from typing import List, Optional, Sequence, Callable, Hashable, Tuple, TypeVar, Union
+import subprocess
+import threading
+import queue
+
 
 class SearchSpacePipeline:
-    def __init__(self, search_space: SearchSpaceType, mapping: dict, feature_names: Union[List, np.ndarray], scaler=None):
+    def __init__(self, search_space: SearchSpaceType,
+                 mapping: dict, feature_names: Union[List, np.ndarray],
+                 scaler=None):
         """
-
         @param search_space:
         @param mapping:
         @param feature_names:
@@ -35,23 +40,23 @@ class SearchSpacePipeline:
         @return:
         """
         if self.scaler:
-            scaled_samples = self.scaler.inverse_transform(x)
-        reconstructed_list = []
+            x = self.scaler.inverse_transform(x)
 
+        as_list = []
         for sample_idx in range(x.shape[0]):
             sample_dict = {k: None for k in self.feature_names}
             for k in self.feature_names:
                 sample_dict[k] = x[sample_idx, self.mapping[k]]
 
-            reconstructed_list.append(sample_dict)
+            as_list.append(sample_dict)
 
         if with_array:
-            return reconstructed_list, scaled_samples
+            return as_list, x
         else:
-            return reconstructed_list
+            return as_list
 
     def feature_names(self):
-        return self.feature_names()
+        return self.feature_names
 
     def feature_names_ixs(self):
         feature_names_ixs = []
@@ -62,7 +67,7 @@ class SearchSpacePipeline:
         return feature_names_ixs
 
 
-class customMinMaxScaler:
+class CustomMinMaxScaler:
     def __init__(self, feature_min, feature_max, output_range=(0, 1)):
         """
         Initialize the scaler with min and max bounds for each feature.
@@ -71,7 +76,8 @@ class customMinMaxScaler:
         - feature_min: Array-like of minimum values for each feature.
         - feature_max: Array-like of maximum values for each feature.
         - output_range: Range to scale outputs.
-        @note This function does not raise warnings if future samples are above or bellow the expected min, maxs
+        @note This function does not raise warnings if future samples are above or bellow
+               the expected min, maxs
 
         # Example usage
         feature_min = [0, 10, -1]  # Min bounds for each feature
@@ -93,16 +99,16 @@ class customMinMaxScaler:
         self.feature_range = self.feature_max - self.feature_min
         self.output_min, self.output_max = output_range
         self.output_range = self.output_max - self.output_min
+        self.scale_ = self.output_range/self.feature_range
+
         if len(self.feature_min) != len(self.feature_max):
             raise ValueError("feature_min and feature_max must have the same length.")
 
     def transform(self, x):
         """
         Transform the input data to the range [-1, 1].
-
         Parameters:
         - x: Array-like, shape (n_samples, n_features), input data to transform.
-
         Returns:
         - x_transformed: Transformed data with values in the range [-1, 1].
         """
@@ -110,29 +116,25 @@ class customMinMaxScaler:
             raise ValueError(f"Expected input with {len(self.feature_min)} features, but got {x.shape[1]} features.")
 
         x = np.array(x)
-        x_scaled = (x - self.feature_min) / self.feature_range
-        x_transformed = x_scaled * (self.output_max - self.output_min) + self.output_min
-        return x_transformed
+        x = (x - self.feature_min) * self.scale_ + self.output_min
+        return x
 
-    def inverse_transform(self, x_scaled):
+    def inverse_transform(self, x):
         """
         Inverse transform the scaled data back to the original range.
-
         Parameters:
         - x_scaled: Array-like, shape (n_samples, n_features), scaled data to inverse transform.
-
         Returns:
         - x_original: Data transformed back to the original feature range.
         """
-        if x_scaled.shape[1] != len(self.feature_min):
+        if x.shape[1] != len(self.feature_min):
             raise ValueError(f"Expected input with {len(self.feature_min)} features, but got {x.shape[1]} features.")
 
-        x_scaled = np.array(x_scaled)
-        x_original = (x_scaled - self.output_min) / (self.output_max - self.output_min)
-        x_original = x_original * self.feature_range + self.feature_min
-        return x_original
+        x = np.array(x)
+        x = (x - self.output_min) / self.scale_ + self.feature_min
+        return x
 
-    def inverse_transform_ix(self, x_scaled, ix):
+    def inverse_transform_ix(self, x, ix):
         """
         Inverse transform the scaled data back to the original range.
         This method applies the scaling to the indicated dimension only.
@@ -145,15 +147,13 @@ class customMinMaxScaler:
         """
         if ix >= len(self.feature_min):
             raise IndexError("Index out of bounds for feature dimension.")
-        if len(x_scaled.shape) != 2:
+        if len(x.shape) != 2:
             raise ValueError("Expected 2D array for x_scaled.")
 
-        x_scaled = np.array(x_scaled)
-        x_original = (x_scaled[:, ix] - self.output_min) / self.output_range  # scale to [0, 1]
-        x_original = x_original * self.feature_range[ix] + self.feature_min[ix]  # scale to original feature range
-        return x_original
+        x[:, ix] = (x[:, ix] - self.output_min) / self.scale_[ix] + self.feature_min[ix]
+        return x
 
-    def inverse_transform_mat(self, x_scaled, ix):
+    def inverse_transform_mat(self, x, ix):
         """
         Inverse transform the scaled data back to the original range (of ix column).
         This works for an array of any dimensionality or shape.
@@ -164,10 +164,8 @@ class customMinMaxScaler:
         Returns:
         - x_original: Data transformed back to the original feature range.
         """
-        x_scaled = np.array(x_scaled)
-        x_original = (x_scaled - self.output_min) / self.output_range  # scale to [0, 1]
-        x_original = x_original * self.feature_range[ix] + self.feature_min[ix]  # scale to original feature range
-        return x_original
+        x = (x - self.output_min) / self.scale_[ix] + self.feature_min[ix]
+        return x
 
 
 def run_matlab(matlab_script_path, matlab_function_name='main', **kwargs):
@@ -200,13 +198,64 @@ def run_matlab(matlab_script_path, matlab_function_name='main', **kwargs):
     # Call MATLAB function main
     matlab_args = json.dumps(kwargs)
 
-    print(matlab_args)
     try:
         eng.feval(matlab_function_name, matlab_args, nargout=0)
         eng.quit()
 
     except Exception as e:
         print(f"Error starting MATLAB: {e}")
+
+
+def read_output(process, output_queue):
+    """Reads the output of the process and places it in a queue."""
+    for line in iter(process.stdout.readline, ''):
+        output_queue.put(line)  # Place each line of output in the queue
+    process.stdout.close()
+
+
+def run_python_script(script_path, function_name='main.py', **kwargs):
+    """
+    @param script_path:
+    @param function_name:
+    @param kwargs:
+    @return:
+    """
+    print("Calling Python script from within Python")
+    current_directory = os.path.dirname(os.path.abspath(__file__))
+    parent_directory = os.path.dirname(current_directory)
+
+    if not os.path.isabs(script_path):
+        script_full_path = script_path
+    else:
+        script_full_path = os.path.join(parent_directory, script_path)
+
+    if not os.path.exists(script_full_path):
+        raise FileNotFoundError(f"The Python script does not exist: {script_full_path}")
+
+    command = ["python3", os.path.join(script_full_path, function_name)]
+    for key, value in kwargs.items():
+        command.append(f"--{key}")
+        if isinstance(value, dict):
+            command.append(json.dumps(value))
+        else:
+            command.append(str(value))
+
+    try:
+        process = subprocess.Popen(command)
+        return process
+
+    except Exception as e:
+        print(f"Error starting Python (process): {e}")
+
+
+def monitor_output(output_queue):
+    """Continuously reads from the output queue and prints lines as they come in."""
+    while True:
+        try:
+            line = output_queue.get(timeout=1)  # Timeout to allow for graceful shutdown
+            print(line, end='')  # Print each line from the queue
+        except queue.Empty:
+            continue  # No output available, keep checking
 
 
 def generate_grids(n, num_points):
@@ -242,20 +291,34 @@ def generate_grids(n, num_points):
 
     return grid, midpoints_grid
 
-def fetch_data(client_socket):
-    received_data = client_socket.recv(1024).decode()
+
+def fetch_data(client_socket, size=1024):
+    received_data = client_socket.recv(size).decode()
     received_data = json.loads(received_data)
+    print(received_data)
     if 'tot_pckgs' in received_data:
         tot_packages = received_data['tot_pckgs']
-        all_data = []
-        all_data.append(received_data['data'])
+        all_data = [received_data['data']]
         for _ in range(tot_packages - 1):
-            msg = client_socket.recv(1024).decode()
+            msg = client_socket.recv(size).decode()
             msg = json.loads(msg)
             all_data.append(msg['data'])
 
-        #Flatten
+        # Flatten
         all_data = [x for xs in all_data for x in xs]
         return all_data
     else:
+        if isinstance(received_data, str):
+            received_data = json.loads(received_data)
+
+        if isinstance(received_data, dict):
+            received_data = [received_data]
+
         return received_data
+
+
+def list_dict_process(some_list):
+    new_list = []
+    for element in some_list:
+        new_list.append({k: v.tolist() for k, v in element.items()})
+    return new_list
