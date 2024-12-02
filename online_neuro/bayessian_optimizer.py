@@ -27,11 +27,15 @@ Modified version of Trieste's BayesianOptimizer.
 """
 import absl
 from trieste.bayesian_optimizer import *
+from trieste.ask_tell_optimization import AskTellOptimizer
 from trieste.acquisition.rule import ResultType
 import warnings
 from .utils import SearchSpacePipeline
 import numpy as np
+import pickle
+from typing import Type
 
+AskTellOptimizerType = TypeVar("AskTellOptimizerType")
 
 def write_summary_init(
     observer: Observer,
@@ -430,11 +434,11 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
 
             if self._steps == 1:
                 #Fit should only occur while querying during the first iteration!
-                
+
                 # See explanation in AskTellOptimizer.__init__().
                 if isinstance(self._acquisition_rule, LocalDatasetsAcquisitionRule):
                     self._datasets = with_local_datasets(self._datasets, self._acquisition_rule.num_local_datasets)
-                    
+
                 filtered_datasets = self._acquisition_rule.filter_datasets(self._models, self._datasets)
                 if fit_model and fit_initial_model:
                     with Timer() as initial_model_fitting_timer:
@@ -539,7 +543,8 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
             #TODO, check this is valid for batch samples(?)
             query_points = self._scaler.transform(query_points)
 
-        new_sample = Dataset(query_points=query_points, observations=observer_output)
+        new_sample = Dataset(query_points=query_points,
+                             observations=observer_output)
 
         if isinstance(new_sample, Dataset):
             new_sample = {OBJECTIVE: new_sample}
@@ -547,8 +552,8 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         # reassure the type checker that everything is tagged
         new_sample = cast(Dict[Tag, Dataset], new_sample)
 
-        # Get set of dataset and model keys, ignoring any local tag index. That is, only the
-        # global tag part is considered.
+        # Get set of dataset and model keys, ignoring any local tag index.
+        # That is, only the global tag part is considered.
         summary_writer = logging.get_tensorboard_writer()
 
         try:
@@ -650,3 +655,109 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
             *args,
             **kwargs,
         )
+
+
+class AskTellOptimizerHistory(AskTellOptimizer):
+    def __init__(self, track_path: Optional[Path | str] = None, overwrite : bool=False,
+                 *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.history: list[FrozenRecord[StateType, TrainableProbabilisticModelType]
+                           | Record[StateType, TrainableProbabilisticModelType]] = []
+        self.steps = 0
+        if track_path:
+            self.track_path = Path(track_path)
+        else:
+            self.track_path = None
+
+        self.overwrite = overwrite
+
+
+    def ask_and_save(self, save_acq_fn=False, *args, **kwargs):
+        """
+        Single method to request samples, but also backup state, acquisition_function
+        """
+        query_points = self.ask(*args, **kwargs)
+        record = self.to_record()
+        self.history.append(record)
+
+        if self.track_path:
+            filename = f"state_step_{self.steps}.pickle"
+            record.save(self.track_path / filename)
+
+        if save_acq_fn:
+            acq_fn = self._acquisition_rule.acquisition_function
+            if acq_fn is not None:
+                filename = f"acq_fn_step_{self.steps}.pickle"
+                with open(self.track_path / filename, "wb") as f:
+                    pickle.dump(acq_fn, f)
+
+        if not self.overwrite:
+            self.steps += 1
+        return query_points
+
+    def save(self, save_acq_fn=False):
+        state = self.to_record()
+        state.save(self.track_path / f'state_final.pickle')
+        if save_acq_fn:
+            acq_fn = self._acquisition_rule.acquisition_function
+            if acq_fn is not None:
+                filename = f"acq_fn_final.pickle"
+                with open(self.track_path / filename, "wb") as f:
+                    pickle.dump(acq_fn, f)
+
+    @classmethod
+    def from_record(
+        cls: Type[AskTellOptimizerType],
+        record: Record[StateType, ProbabilisticModelType]
+        | FrozenRecord[StateType, ProbabilisticModelType],
+        search_space: SearchSpaceType,
+        acquisition_rule: AcquisitionRule[
+            TensorType | State[StateType | None, TensorType],
+            SearchSpaceType,
+            ProbabilisticModelType,
+        ]
+        | None = None,
+        track_path: Optional[Path | str] = None,
+            overwrite: bool = False,
+    ) -> AskTellOptimizerType:
+        """Creates new :class:`~AskTellOptimizer` instance from provided optimization state.
+        Model training isn't triggered upon creation of the instance.
+
+        :param record: Optimization state record.
+        :param search_space: The space over which to search for the next query point.
+        :param acquisition_rule: The acquisition rule, which defines how to search for a new point
+            on each optimization step. Defaults to
+            :class:`~trieste.acquisition.rule.EfficientGlobalOptimization` with default
+            arguments.
+        :return: New instance of :class:`~AskTellOptimizer`.
+        # TODO We currently don't load the history, but doe actually need it?
+
+        """
+        # we are recovering previously saved optimization state
+        # so the model was already trained
+        # thus there is no need to train it again
+
+        # type ignore below is because this relies on subclasses not overriding __init__
+        # ones that do may also need to override this to get it to work
+        return cls(  # type: ignore
+            track_path=track_path,
+            search_space=search_space,
+            datasets=record.datasets,
+            models=record.models,
+            acquisition_rule=acquisition_rule,
+            acquisition_state=record.acquisition_state,
+            fit_model=False,
+        )
+
+    # def __init__(self, track_path: Optional[Path | str] = None, overwrite : bool=False,
+    #              *args, **kwargs):
+    #     super().__init__(*args, **kwargs)
+    #     self.history: list[FrozenRecord[StateType, TrainableProbabilisticModelType]
+    #                        | Record[StateType, TrainableProbabilisticModelType]] = []
+    #     self.steps = 0
+    #     if track_path:
+    #         self.track_path = Path(track_path)
+    #     else:
+    #         self.track_path = None
+    #
+    #     self.overwrite = overwrite
