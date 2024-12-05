@@ -16,6 +16,7 @@ import traceback
 import pandas as pd
 from frontend.components.config_forms import config_problem, config_function
 from flask_socketio import SocketIO
+from pathlib import Path
 
 app = Flask(__name__)
 socketio = SocketIO(app, async_mode='eventlet')  # Initialize SocketIO
@@ -165,15 +166,16 @@ def prepare_experiment():
         else:
             raise Exception("Not simulator implemented (?)")
 
+    main_path = str(Path("online_neuro") / "server_side.py")
+    base_command = ["python3", main_path]
+
     if data['problem'] in matlab_experiments:
-        base_command = ["python3", "online_neuro/server_side.py"]
         connection_payload = {
             'initiator': 'Python',
             'target': 'MATLAB',
             'port_flask': str(FLASK_PORT)
         }
     elif data['problem'] in python_experiments:
-        base_command = ["python3", "online_neuro/server_side.py"]
         connection_payload = {
             'initiator': 'Python',
             'target': 'Python',

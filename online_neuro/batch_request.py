@@ -1,4 +1,4 @@
-import os
+# online_neuro/batch_requests.py
 import socket
 import json
 import sys
@@ -7,17 +7,19 @@ import numpy as np
 
 import warnings
 import time
-
 from threading import Thread
+from pathlib import Path
 from utils import run_matlab, generate_grids, fetch_data
-
+from common.utils import load_json
 NUM_POINTS = 3
 
+
+# TODO time this for the evaluation
 def main(matlab_call=True, *args, **kwargs) -> None:
     # Load port configuration
     print(f"matlab_call flag: {matlab_call}")
-    with open('../config.json', 'r') as f:
-        config = json.load(f)
+    config_file = Path(__file__).parent / "config.json"
+    config = load_json(config_file)
 
     # Create a TCP/IP socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -29,7 +31,7 @@ def main(matlab_call=True, *args, **kwargs) -> None:
     server_socket.listen(1)
     print("Waiting for a connection...")
 
-    #Start Matlab process via engine and threading
+    # Start Matlab process via engine and threading
     if matlab_call:
         t = Thread(target=run_matlab, kwargs={"matlab_initiate": False})
         t.start()
@@ -93,10 +95,10 @@ def main(matlab_call=True, *args, **kwargs) -> None:
     train_df = save_df.iloc[:len(train_grid), :]
     test_df = save_df.iloc[len(train_grid):, :]
 
-    with open(f"./config_experiments/experiment_{exp_config['name']}.json","r") as f:
-        carried_exp = json.load(f)
-    with open(f"./config_experiments/parameter_spec_{exp_config['name']}.json", "r") as f:
-        default_exp = json.load(f)
+    exp_config_file = Path("config_experiments") / f"experiment_{exp_config['name']}.json"
+    carried_exp = load_json(exp_config_file)
+    default_config_file = Path("config_experiments") / f"parameter_spec_{exp_config['name']}.json"
+    default_exp = load_json(default_config_file)
 
     for k, v in default_exp.items():
         if k not in carried_exp:
@@ -104,13 +106,14 @@ def main(matlab_call=True, *args, **kwargs) -> None:
 
     diam = carried_exp['dia']['value']
     dip_dis = abs(carried_exp['e_pos']['value'][0] - carried_exp['e_pos']['value'][2])
-    save_path = f"{config['benchmark_path']}/{exp_config['name']}/fib_dia_{diam}mm_dip_dis{dip_dis}mm_{NUM_POINTS}/"
-    os.makedirs(save_path, exist_ok=True)
-    train_df.to_csv(save_path + "train_df.csv", index=False)
-    test_df.to_csv(save_path + "test_df.csv", index=False)
 
+    save_path = Path(f"{config['benchmark_path']}") / f"{exp_config['name']}" / f"fib_dia_{diam}mm_dip_dis{dip_dis}mm_{NUM_POINTS}/"
+    save_path.mkdir(parents=True, exist_ok=True)
 
-    with open(save_path + "metadata.json", 'w') as output_file:
+    train_df.to_csv(save_path / "train_df.csv", index=False)
+    test_df.to_csv(save_path / "test_df.csv", index=False)
+
+    with open(save_path / "metadata.json", 'w') as output_file:
         json.dump(carried_exp, output_file, indent=4)
     print(f"Results saved to {save_path}")
 

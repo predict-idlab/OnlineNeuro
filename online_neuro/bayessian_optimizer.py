@@ -658,9 +658,12 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
 
 
 class AskTellOptimizerHistory(AskTellOptimizer):
-    def __init__(self, track_path: Optional[Path | str] = None, overwrite : bool=False,
+    def __init__(self, observer: str = "default",
+                 track_path: Optional[Path | str] = None,
+                 overwrite: bool=False,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._observer = observer
         self.history: list[FrozenRecord[StateType, TrainableProbabilisticModelType]
                            | Record[StateType, TrainableProbabilisticModelType]] = []
         self.steps = 0

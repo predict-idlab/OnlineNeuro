@@ -22,7 +22,6 @@ from trieste.acquisition.rule import OBJECTIVE
 from trieste.data import Dataset
 
 from common.utils import load_json
-# https://github.com/secondmind-labs/trieste/blob/c6a039aa9ecf413c7bcb400ff565cd283c5a16f5/trieste/acquisition/function/__init__.py
 from online_learning import build_model
 from online_neuro.bayessian_optimizer import BayesianOptimizer, AskTellOptimizerHistory
 from trieste.ask_tell_optimization import (
@@ -89,7 +88,8 @@ def start_connection(connection_config, problem_config):
 
         print('Starting Matlab with Payload:')
         print(matlab_payload)
-        matlab_payload['script_path'] = "simulators/matlab/"
+        matlab_payload['script_path'] = Path("simulators") / "matlab"
+
         t = Thread(target=run_matlab, kwargs={"matlab_script_path": matlab_payload['script_path'],
                                               "matlab_function_name": "main",
                                               **matlab_payload
@@ -109,11 +109,10 @@ def start_connection(connection_config, problem_config):
         else:
             raise Exception("Problem configuration contains no features to optimize")
 
-        #python_payload['script_path'] = "simulators/python/"
         print("Starting Python with Payload:")
         print(python_payload)
-
-        process = run_python_script(script_path="simulators/python/",
+        python_script_path = Path("simulators") / "python"
+        process = run_python_script(script_path=python_script_path,
                                     function_name='main.py',
                                     **python_payload)
 
@@ -256,7 +255,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     #  - verify here that the problem can be solved by the simulator (target)
     # i.e. matlab, axonsim, neuron, python, each need to have a simulator file for the given problem.
     #  - verify that the model type can solve the problem type
-    # i.e. prevent multiobjective/regression to be solved with classification, etc...
+    # i.e. prevent multiobjective or regression to be solved with classification, etc...
 
     server_socket, client_socket = start_connection(connection_config=connection_config,
                                                     problem_config=problem_config)
@@ -267,7 +266,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     package_size = connection_config['SizeLimit']
 
     received_data = client_socket.recv(package_size).decode()
-    # TODO this line won't be needed anymore, as search space is now defined from the UI/terminal and not the problem config
+    # TODO this line won't be needed anymore, as search space is now defined from the UI & terminal and not the problem config
     ## First message
     # Receives feature names, target_names(?), Upper and lower_boundaries.
     # This should probably also pass constraints.
@@ -331,9 +330,14 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
         results_df['response'] = observations
         response_cols = ['response']
 
-    # TODO Complete file naming
-    os.makedirs(f"{path_config['save_path']}/{problem_config['experiment']['name']}/", exist_ok=True)
-    results_df.to_csv(f"{path_config['save_path']}/{problem_config['experiment']['name']}/results.csv", index=False)
+    save_path = Path(f"{path_config['save_path']}") / f"{problem_config['experiment']['name']}"
+    csv_path = Path(save_path) / "results.csv"
+    model_store_path = Path(save_path) / "models"
+
+    save_path.mkdir(parents=True, exist_ok=True)
+    model_store_path.mkdir(parents=True, exist_ok=True)
+
+    results_df.to_csv(csv_path, index=False)
 
     # @Note. For some tensorflow reason observations need to be float even for classification problems.
     init_dataset = Dataset(query_points=tf.cast(qp_orig, tf.float64),
@@ -375,11 +379,11 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
                 warnings.warn(msg)
                 acq = PredictiveVariance()
         else:
-            msg = f"No Acquisition specified in the problem configuration / --flags. Default is minimizing Predictive Variance"
+            msg = f"No Acquisition specified in the problem configuration --flags. Default is minimizing Predictive Variance"
             warnings.warn(msg)
             acq = PredictiveVariance()
     else:
-        msg = f"No Acquisition specified in the problem configuration / --flags. Default is minimizing Predictive Variance"
+        msg = f"No Acquisition specified in the problem configuration --flags. Default is minimizing Predictive Variance"
         warnings.warn(msg)
         acq = PredictiveVariance()
 
@@ -401,7 +405,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
                                  acquisition_rule=rule,
                                  fit_model=True,
                                  overwrite=True,
-                                 track_path=f"{path_config['save_path']}/{problem_config['experiment']['name']}/"
+                                 track_path=model_store_path
                                  )
 
     if port_flask:
@@ -505,7 +509,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
         results_df = pd.concat([results_df, new_sample], ignore_index=True)
         print(results_df)
         # TODO, a line by line write to csv is more efficient than rewriting the whole file
-        results_df.to_csv(f"{path_config['save_path']}/{problem_config['experiment']['name']}/results.csv", index=False)
+        results_df.to_csv(csv_path, index=False)
 
         # TODO, this routine may be combined or redundant if plot-flask?
         if with_plots:

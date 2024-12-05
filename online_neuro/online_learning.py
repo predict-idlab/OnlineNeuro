@@ -7,11 +7,8 @@ from trieste.models.optimizer import BatchOptimizer
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from functools import partial
-from sklearn.preprocessing import StandardScaler
 import math
 import warnings
-import matplotlib.pyplot as plt
 import gpflow
 from gpflow.models import GPR, SGPR, SVGP, VGP, GPModel
 from trieste.data import Dataset
@@ -184,8 +181,8 @@ def build_model(init_dataset, search_space, config, **kwargs):
     @return:
     """
     if config['classification']:
+        # TODO extend models!
         if config['variational'] and config['sparse']:
-            # TODO
             if config['noise_free']:
                 msg = "build_svgp by Trieste does not have a noisy version, need to rewrite this function(TODO)"
                 warnings.warn(msg)

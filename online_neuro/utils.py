@@ -1,13 +1,36 @@
-import os
+#/online_neuro/utils.py
 import numpy as np
 import matlab.engine
 import json
 from trieste.space import SearchSpaceType
-from typing import List, Optional, Sequence, Callable, Hashable, Tuple, TypeVar, Union
+from typing import List, Optional, Union
 import subprocess
-import threading
 import queue
+from trieste.space import Box
+from pathlib import Path
+class CustomBox(Box):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
+    def sample_method(self, num_samples: int,
+                      seed: Optional[int] = None,
+                      skip: Optional[int] = None,
+                      max_tries: int = 100,
+                      sampling_method: str='sobol'):
+        if sampling_method == 'random':
+            return self.sample(num_samples, seed)
+        elif sampling_method == 'halton':
+            return self.sample_halton(num_samples, seed)
+        elif sampling_method == 'sobol':
+            return self.sample_sobol(num_samples, skip)
+        elif sampling_method == 'random_feasible':
+            return self.sample_feasible(num_samples, seed, max_tries)
+        elif sampling_method == 'halton_feasible':
+            return self.sample_feasible(num_samples, seed, max_tries)
+        elif sampling_method == 'sobol_feasible':
+            return self.sample_feasible(num_samples, skip, max_tries)
+        else:
+            raise ValueError(f"Unsupported sampling method: {sampling_method}")
 
 class SearchSpacePipeline:
     def __init__(self, search_space: SearchSpaceType,
@@ -176,19 +199,20 @@ def run_matlab(matlab_script_path, matlab_function_name='main', **kwargs):
     @return:
 
     """
-    current_directory = os.path.dirname(os.path.abspath(__file__))
-    parent_directory = os.path.dirname(current_directory)
+    current_directory = Path(__file__).resolve().parent
+    parent_directory = current_directory.parent
 
-    if os.path.isabs(matlab_script_path):
-        matlab_script_full_path = matlab_script_path
+    if Path(matlab_script_path).is_absolute():
+        matlab_script_full_path = Path(matlab_script_path)
     else:
         # If it's a relative path, join with current_directory
         # Here we assume that problems will be stored at ./simulators/matlab/problems
-        matlab_script_full_path = os.path.join(parent_directory, matlab_script_path)
+        matlab_script_full_path = parent_directory / matlab_script_path
 
-    if not os.path.exists(matlab_script_full_path):
+    if not Path.exists():
         raise FileNotFoundError(f"The MATLAB folder does not exist: {matlab_script_full_path}")
 
+    matlab_script_full_path = str(matlab_script_full_path)
     # Start MATLAB engine
     print("Calling Matlab from Python engine")
 
@@ -221,18 +245,19 @@ def run_python_script(script_path, function_name='main.py', **kwargs):
     @return:
     """
     print("Calling Python script from within Python")
-    current_directory = os.path.dirname(os.path.abspath(__file__))
-    parent_directory = os.path.dirname(current_directory)
+    current_directory = Path(__file__).resolve().parent
+    parent_directory = current_directory.parent
 
-    if not os.path.isabs(script_path):
+    sript_path = Path(script_path)
+    if sript_path.is_absolute():
         script_full_path = script_path
     else:
-        script_full_path = os.path.join(parent_directory, script_path)
+        script_full_path = parent_directory / script_path
 
-    if not os.path.exists(script_full_path):
+    if not script_full_path.exists():
         raise FileNotFoundError(f"The Python script does not exist: {script_full_path}")
 
-    command = ["python3", os.path.join(script_full_path, function_name)]
+    command = ["python3", str(script_full_path / function_name)]
     for key, value in kwargs.items():
         command.append(f"--{key}")
         if isinstance(value, dict):
@@ -317,8 +342,14 @@ def fetch_data(client_socket, size=1024):
         return received_data
 
 
-def list_dict_process(some_list):
-    new_list = []
-    for element in some_list:
-        new_list.append({k: v.tolist() for k, v in element.items()})
-    return new_list
+def array_to_list_of_dicts(array, column_names):
+    """
+    Convert a numypy array into a list of dictionaries
+    @param array:
+    @param column_names:
+    @return:
+    """
+    if array.shape[1] != len(column_names):
+        raise ValueError("Number of columns in array must match the number of column names.")
+
+    return [dict(zip(column_names, row)) for row in array]

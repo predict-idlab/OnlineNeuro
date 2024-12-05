@@ -1,27 +1,28 @@
 # frontend/components/config_forms.py
 import warnings
 from common.utils import load_json
+from pathlib import Path
 # May need some rework or such, as it may lead to a very long list
 # # or require to constantly update this dictionary
 
 template_map = {
-    "axonsim_nerve_block": "config/experiments/axonsim_template.json",
-    "axonsim_regression": "config/experiments/axonsim_template.json",
-    "rose_regression": "config/experiments/rose_template.json",
-    "circle_classification": "config/experiments/circle_template.json",
-    "vlmop2": "config/experiments/vlmop2_template.json"
+    "axonsim_nerve_block": Path("config") / "experiments" / "axonsim_template.json",
+    "axonsim_regression": Path("config") / "experiments" / "axonsim_template.json",
+    "rose_regression": Path("config") / "experiments" / "rose_template.json",
+    "circle_classification": Path("config") / "experiments" / "circle_template.json",
+    "vlmop2": Path("config") / "experiments" / "vlmop2_template.json"
 }
 
 function_map = {
-    'pulse_ramp': "config/custom_pulses/pulse_ramp.json",
-    'default': 'config/custom_pulses/axonsim_default.json'
+    'pulse_ramp': Path("config") / "custom_pulses" / "pulse_ramp.json",
+    'default': Path("config") / "custom_pulses" / "axonsim_default.json"
 }
 
 #Dictionary to validate model problem and model type.
-VALID_PROBLEMS={
+VALID_PROBLEMS = {
     'axonsim_nerve_block': ['classification', 'regression', 'moo'],
     'axonsim_regression': ['regression', 'moo'],
-    'todo' :['placeholder']
+    'todo': ['placeholder']
 }
 
 
@@ -47,7 +48,7 @@ def config_function(function: str) -> dict:
     return config
 
 
-def config_problem(problem: str='axonsim') -> dict:
+def config_problem(problem: str = 'axonsim') -> dict:
     """
     @param problem: String, to define the type of problem that will be solved (examples or simulators)
     @return: config: dict containing the selected parameters
