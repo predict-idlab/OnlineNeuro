@@ -9,6 +9,7 @@ import sys
 import time
 import warnings
 from threading import Thread
+import timeit
 
 import numpy as np
 import pandas as pd
@@ -23,11 +24,22 @@ from trieste.data import Dataset
 from common.utils import load_json
 # https://github.com/secondmind-labs/trieste/blob/c6a039aa9ecf413c7bcb400ff565cd283c5a16f5/trieste/acquisition/function/__init__.py
 from online_learning import build_model
-from online_neuro.bayessian_optimizer import BayesianOptimizer
-from online_neuro.utils import CustomMinMaxScaler, SearchSpacePipeline, run_matlab, run_python_script, fetch_data
+from online_neuro.bayessian_optimizer import BayesianOptimizer, AskTellOptimizerHistory
+from trieste.ask_tell_optimization import (
+    AskTellOptimizer,
+    AskTellOptimizerNoTraining,
+)
+from online_neuro.utils import CustomMinMaxScaler, run_matlab, run_python_script, fetch_data, array_to_list_of_dicts
+from online_neuro.utils import CustomBox
+
 from common.plotting import update_plot
 import requests
 
+from gpflow.likelihoods import Bernoulli as bern
+
+import atexit
+
+GRID_POINTS = 10
 # AugmentedExpectedImprovement
 # ExpectedImprovement
 # ProbabilityOfImprovement
@@ -148,13 +160,27 @@ def handshake_check(client_socket):
     return None
 
 
-def define_search_space(problem_config, scale_inputs: bool = True, scaler: str = 'minmax') -> SearchSpacePipeline:
+def cleanup_server_socket(client_sock, server_sock):
+    print("Cleaning up server socket...")
+    try:
+        client_sock.close()
+        server_sock.close()
+        print("Server socket closed.")
+    except Exception as e:
+        print(f"Error closing server socket: {e}")
+
+
+def define_scaler_search_space(problem_config,
+                               scale_inputs: bool = True,
+                               scaler: str = 'minmax',
+                               output_range: tuple = (-1, 1)):
     """
     @param problem_config: Information concerning the search space as defined by the user.
                 The gui boundaries should be within the problem_config range.
                 If not the case, these are ignored.
     @param scale_inputs: bool, I don't see a scenario where this wouldn't be the case.
     @param scaler : string to specify the scaling type
+    @param output_range : tuple indicating min and max value in the output
     @return: instance : SearchSpacePipeline
     """
     # TODO extend to handle categorical and boolean features (i.e. they have to bypass the feature normalization
@@ -180,12 +206,11 @@ def define_search_space(problem_config, scale_inputs: bool = True, scaler: str =
 
         # TODO, implement other types of normalization
         if scaler == 'minmax':
-            output_range = (-1, 1)
             lb = num_features * [output_range[0]]
             ub = num_features * [output_range[1]]
 
-            search_space = trieste.space.Box(lower=lb,
-                                             upper=ub)
+            search_space = CustomBox(lower=lb,
+                                     upper=ub)
 
             scaler = CustomMinMaxScaler(feature_min=lower_bound,
                                         feature_max=upper_bound,
@@ -193,22 +218,11 @@ def define_search_space(problem_config, scale_inputs: bool = True, scaler: str =
         else:
             raise NotImplementedError(f"{scaler} has not been implemented")
     else:
-        search_space = trieste.space.Box(lower=lower_bound,
-                                         upper=upper_bound)
+        search_space = CustomBox(lower=lower_bound,
+                                 upper=upper_bound)
         scaler = None
 
-    pipeline = SearchSpacePipeline(search_space=search_space,
-                                   mapping=feature_map,
-                                   feature_names=feature_names,
-                                   scaler=scaler)
-
-    return pipeline
-
-def list_dict_process(some_list):
-    new_list = []
-    for element in some_list:
-        new_list.append({k: v.tolist() for k, v in element.items()})
-    return new_list
+    return search_space, scaler, feature_names
 
 
 def main(connection_config: dict, model_config: dict, path_config: dict,
@@ -235,6 +249,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
 
     #Port Flask indicates that a UI is listening to the process. We can send partial results and other info to this interface
     port_flask = connection_config.get('port_flask', False)
+
     if port_flask:
         post_url = f"http://localhost:{port_flask}"
     # TODO
@@ -247,6 +262,8 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
                                                     problem_config=problem_config)
 
     handshake_check(client_socket=client_socket)
+    atexit.register(cleanup_server_socket, client_sock=client_socket, server_sock=server_socket)
+
     package_size = connection_config['SizeLimit']
 
     received_data = client_socket.recv(package_size).decode()
@@ -260,17 +277,30 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     print("Loaded problem config")
     print(problem_config)
 
-    search_space_pipe = define_search_space(problem_config=problem_config,
-                                            scale_inputs=model_config["scale_inputs"])
+    search_space, scaler, feature_names = define_scaler_search_space(problem_config=problem_config,
+                                                                     scale_inputs=model_config["scale_inputs"])
 
+    x0 = np.linspace(scaler.feature_min[0], scaler.feature_max[0], GRID_POINTS)
+    x1 = np.linspace(scaler.feature_min[1], scaler.feature_max[1], GRID_POINTS)
+
+    x0_scaled = np.linspace(scaler.output_min, scaler.output_max, GRID_POINTS)
+    x1_scaled = np.linspace(scaler.output_min, scaler.output_max, GRID_POINTS)
+
+    meshgrid_x, meshgrid_y = np.meshgrid(x0, x1)
+    plot_inputs = np.column_stack([meshgrid_x.ravel(), meshgrid_y.ravel()])
+
+    meshgrid_x, meshgrid_y = np.meshgrid(x0_scaled, x1_scaled)
+    model_inputs = np.column_stack([meshgrid_x.ravel(), meshgrid_y.ravel()])
     # TODO Optional. Add other sampling methods such as LHS (Halton is in Trieste but not needed).
-    qp_dict, qp_array = search_space_pipe.sample(model_config['init_samples'],
-                                                 sample_method='sobol')
-    print("Search space defined")
-    print("First batch")
-    print(qp_dict)
+    qp_orig = search_space.sample_method(model_config['init_samples'], sampling_method='sobol')
+    qp_orig = qp_orig.numpy()
 
-    qp_json = list_dict_process(qp_dict)
+    if scaler:
+        qp = scaler.inverse_transform(qp_orig)
+
+    qp_json = array_to_list_of_dicts(qp_orig, feature_names)
+    print("First batch")
+    print(qp_json)
     response = {'message': 'first queried points using Sobol method',
                 'query_points': qp_json}
 
@@ -280,18 +310,17 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     received_data = fetch_data(client_socket, size=package_size)
 
     print("First data package:", received_data)
-
     received_data = pd.DataFrame(received_data)
     observations = received_data['observations'].values
 
+    # TODO check if this is correct for MOO
     if isinstance(observations[0], list):
         observations = np.vstack(observations)
 
     observations = np.atleast_2d(observations).T
 
-    init_data_size = len(qp_array)
-    feat_cols = search_space_pipe.feature_names_ixs()
-    results_df = pd.DataFrame(qp_array, columns=feat_cols)
+    init_data_size = len(qp)
+    results_df = pd.DataFrame(qp, columns=feature_names)
 
     if observations.shape[1] > 1:
         response_cols = []
@@ -302,21 +331,12 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
         results_df['response'] = observations
         response_cols = ['response']
 
-    if port_flask:
-        json_data = results_df.to_json(orient='records')
-        response = requests.post(post_url+"/update_data", json=json_data)
-        # Check the response
-        if response.status_code == 200:
-            print(response.json())
-        else:
-            print("Error updating data:", response.status_code, response.text)
-
     # TODO Complete file naming
     os.makedirs(f"{path_config['save_path']}/{problem_config['experiment']['name']}/", exist_ok=True)
     results_df.to_csv(f"{path_config['save_path']}/{problem_config['experiment']['name']}/results.csv", index=False)
 
     # @Note. For some tensorflow reason observations need to be float even for classification problems.
-    init_dataset = Dataset(query_points=tf.cast(qp_array, tf.float64),
+    init_dataset = Dataset(query_points=tf.cast(qp_orig, tf.float64),
                            observations=tf.cast(observations, tf.float64))
 
     if model_config['noise_free']:
@@ -325,7 +345,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
         model_config['kernel_variance'] = None
 
     model = build_model(init_dataset,
-                        search_space_pipe.search_space,
+                        search_space,
                         model_config)
 
     # TODO extend to batch_sampling at a later stage
@@ -340,7 +360,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
 
     if problem_config['experiment']['type'] in ['multiobjective', 'moo']:
         acq = ExpectedHypervolumeImprovement()
-        print("Multiobjective model using HyperVolumes")
+        print("Multi-objective model using HyperVolumes")
     elif problem_config['experiment']['type'] in ['classification']:
         acq = BayesianActiveLearningByDisagreement()
         print("using Classification BALD")
@@ -374,47 +394,86 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     rule = EfficientGlobalOptimization(builder=acq,
                                        num_query_points=model_config['num_query_points']
                                        )
-    bo = BayesianOptimizer(observer=problem_config['experiment']['name'],
-                           search_space_pipe=search_space_pipe,
-                           track_state=True,
-                           track_path=f"{path_config['save_path']}/{problem_config['experiment']['name']}/",
-                           acquisition_rule=rule)
+    bo = AskTellOptimizerHistory(observer=problem_config['experiment']['name'],
+                                 datasets=init_dataset,
+                                 search_space=search_space,
+                                 models=model,
+                                 acquisition_rule=rule,
+                                 fit_model=True,
+                                 overwrite=True,
+                                 track_path=f"{path_config['save_path']}/{problem_config['experiment']['name']}/"
+                                 )
 
+    if port_flask:
+        json_message = dict()
+        json_message['data'] = results_df.to_json(orient='records')
+        json_message['plot_type'] = 'pairplot'
+
+        response = requests.post(post_url+"/update_data", json=json_message,
+                                 headers={'Content-Type': 'application/json'}
+                                 )
+        # Check the response
+        if response.status_code == 200:
+            print(response.json())
+        else:
+            print("Error updating data:", response.status_code, response.text)
+
+        mean, variance = bo.models[OBJECTIVE].predict(model_inputs)  # Predict mean and variance
+        #Only if the problem is a classification problem!
+        mean = bern().invlink(mean)
+
+        Z = mean.numpy().reshape(meshgrid_x.shape)
+        Z_var = variance.numpy().reshape(meshgrid_x.shape)
+        json_message = dict()
+        data = pd.DataFrame(np.column_stack([x0.squeeze(), x1.squeeze()]), columns=['x', 'y'])
+
+        json_message['z'] = Z.tolist()
+        json_message['z_var'] = Z_var.tolist()
+        json_message['data'] = data.to_json(orient='records')
+        json_message['plot_type'] = 'contour'
+
+        response = requests.post(post_url + "/update_data",
+                                 json=json_message,
+                                 headers={'Content-Type': 'application/json'}
+                                 )
+        # Check the response
+        if response.status_code == 200:
+            print(response.json())
+        else:
+            print("Error updating data:", response.status_code, response.text)
     print("Init dataset")
     print(init_dataset)
-
-    qp_dict, qp_array = bo.request_query_points(datasets=init_dataset,
-                                                models=model,
-                                                fit_initial_model=True,
-                                                fit_model=True)
-    # print("First qp")
-    print(qp_dict)
-
     terminate_flag = False
-    if qp_dict is None:
-        raise Exception("Terminated before optimization started \n no query points were retrieved")
 
     # TODO send stop signals from both ends upon certain conditions (i.e. no improvement, reached goal,
     # buget limit, etc...)
-
     # TODO, for toy-problems, add the option of generating performance results (i.e. Accuracy/RMSE over
     # updates
-
     # TODO, for real-world problems, generate the GridSearch solution, store (within GIT?) And use to
     # generate example figures of online learning efficiency
-
     # TODO, plotting functions for Pareto
     # TODO, plotting functions for 3D search shapes (see Notebook in NeuroAAA repo)
 
     with_plots = True
     count = 0
     exit_message = None
+    # TODO, use this ?
+    start = timeit.default_timer()
 
     while not terminate_flag:
         # Counter is used to save figures with different names. If kept constant it overwrites the figure.
         count += 1
+
+        qp_orig = bo.ask_and_save()
+        if qp is None:
+            raise Exception(f"Terminated at step {count} before optimization started")
+
+        qp_orig = qp_orig.numpy()
+        if scaler:
+            qp = scaler.inverse_transform(qp_orig)
+
         # Respond back
-        qp_json = list_dict_process(qp_dict)
+        qp_json = array_to_list_of_dicts(qp_orig, feature_names)
         message = {"query_points": qp_json,
                    "terminate_flag": terminate_flag}
         print(f"Count {count}")
@@ -422,12 +481,12 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
         response_json = json.dumps(message) + "\n"
         client_socket.sendall(response_json.encode())
 
-        # Check if termination signal received from MATLAB
+        received_data = fetch_data(client_socket, size=package_size)
+
+        # Check if termination signal received from simulator
         if "terminate_flag" in received_data:
             terminate_flag = received_data['terminate_flag']
             exit_message = "Termination signal received from MATLAB \n Saving results... \n Closing connection..."
-
-        received_data = fetch_data(client_socket, size=package_size)
 
         # If the result is a string, parse it again to get a dictionary
         observations = [r['observations'] for r in received_data]
@@ -435,8 +494,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
         observations = np.atleast_2d(observations).T
 
         # Save results
-        print("Feat Cols: ", feat_cols)
-        new_sample = pd.DataFrame(qp_array, columns=feat_cols)
+        new_sample = pd.DataFrame(qp, columns=feature_names)
 
         if observations.shape[1] > 1:
             for i in range(observations.shape[1]):
@@ -444,48 +502,70 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
         else:
             new_sample[response_cols] = observations
 
-        print(results_df)
         results_df = pd.concat([results_df, new_sample], ignore_index=True)
         print(results_df)
         # TODO, a line by line write to csv is more efficient than rewriting the whole file
         results_df.to_csv(f"{path_config['save_path']}/{problem_config['experiment']['name']}/results.csv", index=False)
+
         # TODO, this routine may be combined or redundant if plot-flask?
         if with_plots:
             update_plot(bo,
-                        initial_data=(results_df.iloc[:init_data_size][feat_cols],
+                        search_space=search_space,
+                        scaler=scaler,
+                        initial_data=(results_df.iloc[:init_data_size][feature_names],
                                       results_df.iloc[:init_data_size][response_cols]),
-                        sampled_data=(results_df.iloc[init_data_size:][feat_cols],
+                        sampled_data=(results_df.iloc[init_data_size:][feature_names],
                                       results_df.iloc[init_data_size:][response_cols]),
                         plot_ground_truth=None, ground_truth_function=None,
                         count=count)
-            time.sleep(0.5)
+            time.sleep(0.1)
 
         if port_flask:
-            json_data = new_sample.to_json(orient='records')
-            response = requests.post(post_url + "/update_data", json=json_data)
+            json_message = dict()
+            json_message['data'] = new_sample.to_json(orient='records')
+            json_message['plot_type'] = 'pairplot'
+            response = requests.post(post_url + "/update_data", json=json_message)
             # Check the response
             if response.status_code == 200:
                 print(response.json())
             else:
                 print("Error updating data:", response.status_code, response.text)
 
-        bo.optimize_step(query_points=qp_array,
-                         observer_output=observations)
+            mean, variance = bo.models[OBJECTIVE].predict(model_inputs)  # Predict mean and variance
+            # only if the problem is a classification problem!
 
-        final_data = bo.result.try_get_final_datasets()[OBJECTIVE]
-        final_models = bo.result.try_get_final_models()[OBJECTIVE]
+            mean = bern().invlink(mean)
 
-        qp_dict, qp_array = bo.request_query_points(datasets=final_data,
-                                                    models=final_models,
-                                                    fit_initial_model=False,
-                                                    fit_model=True)
+            Z = mean.numpy().reshape(meshgrid_x.shape)
+            Z_var = variance.numpy().reshape(meshgrid_x.shape)
+            json_message = dict()
+            #Only the first time, to see axis in their original scale (Maybe this should be ticks, to prevent
+            # plot distortions?
+            data = pd.DataFrame(plot_inputs, columns=['x', 'y'])
+            json_message['z'] = Z.tolist()
+            json_message['z_var'] = Z_var.tolist()
+            json_message['data'] = data.to_json(orient='records')
+            json_message['plot_type'] = 'contour'
 
+            response = requests.post(post_url + "/update_data",
+                                     json=json_message,
+                                     headers={'Content-Type': 'application/json'}
+                                     )
+            # Check the response
+            if response.status_code == 200:
+                print(response.json())
+            else:
+                print("Error updating data:", response.status_code, response.text)
+
+        tagged_output = Dataset(query_points=tf.cast(qp_orig, tf.float64),
+                                observations=tf.cast(observations, tf.float64))
+
+        bo.tell(tagged_output)
 
     print(exit_message)
 
-    # Close the connection
-    client_socket.close()
-    server_socket.close()
+    cleanup_server_socket(client_sock=client_socket, server_sock=server_socket)
+
 
 def convert_to_numeric(value):
     """Convert a comma-separated string to a list of floats or a single float."""
@@ -616,9 +696,9 @@ def process_args(args, unknown_args):
             else:
                 other_params[k] = v
 
-    def convert_string_numeric(data):
-        if isinstance(data, dict):
-            return {key:convert_string_numeric()}
+    # def convert_string_numeric(data):
+    #     if isinstance(data, dict):
+    #         return {key:convert_string_numeric()}
 
     return connection_config, model_config, path_config, problem_config, other_params
 

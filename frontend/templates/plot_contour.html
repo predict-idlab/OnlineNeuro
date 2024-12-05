@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contour plot</title>
+    <!-- Ensure correct closing of the script tag -->
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body style="margin: 0;">
+    <div id="contour-div" style="width: 100%; width:300px; height: 300px;"></div>
+    <script>
+        // Adjust the port in your Flask app if needed
+        console.log("Socket connection port:", '{{ port }}');  // Add this line for debugging
+        const socket = io.connect('http://localhost:{{ port }}',  { transports: ['websocket', 'polling'] });  // Ensure port is passed by Flask or hardcoded
+        let isFirstCall = true; // Flag to check if it's the first call
+
+        // This plot cant be updated once at a time, instead is generated at every call fully.
+        let data = [{
+            x: [],
+            y: [],
+            z: [],
+            type : 'contour',
+            colorscale: 'Jet',
+            contours: {coloring : 'heatmap'},
+        }]
+
+        let layout = {
+            title: 'Real-Time Data Plot',
+            paper_bgcolor: 'black',
+            plot_bgcolor: 'black',
+            font: { color: 'white' },
+
+            xaxis: {
+                title: 'X Axis',
+                gridcolor: 'gray',
+                zerolinecolor: 'gray',
+                showgrid: true
+            },
+            yaxis: {
+                title: 'Y Axis',
+                gridcolor: 'gray',
+                zerolinecolor: 'gray',
+                showgrid: true
+            },
+            margin: { l: 30, r: 30, t: 30, b: 30 },
+        };
+
+        // Create the initial plot
+        Plotly.newPlot('contour-div', data, layout);
+
+        // Listen for new data from the server via socket.io
+        socket.on('contour', function(newData) {
+            console.log("Received contour data:", newData);  // Log the received data for debuggin
+
+            if (isFirstCall){
+                data = [{
+                    x: newData.x,
+                    y: newData.y,
+                    z: newData.z,
+                    type: 'contour',
+                    colorscale: 'Jet',
+                    contours: { coloring: 'heatmap' },
+                    zmin: 0,
+                    zmax: 1,
+                    autocontour: true,  // Enable automatic contour levels
+
+                }];
+                Plotly.newPlot('contour-div', data, layout); // Create the initial plot
+                isFirstCall = false; // Mark as initialized
+
+            } else{
+                console.log("Just Updating!")
+                data[0].z = newData.z;
+                data[0].zmin = 0;
+                data[0].zmax = 1;
+                Plotly.react('contour-div', data, layout);
+            }
+
+        });
+
+        socket.on('connect', function() {
+            console.log('Successfully connected to the socket!');
+        });
+
+        socket.on('disconnect', function() {
+            console.log('Socket disconnected!');
+        });
+
+    </script>
+</body>
+</html>

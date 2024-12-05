@@ -1,6 +1,7 @@
 # frontend/app.py
 import json
 import os
+import io
 
 import numpy as np
 from common.utils import load_json
@@ -18,7 +19,6 @@ from flask_socketio import SocketIO
 
 app = Flask(__name__)
 socketio = SocketIO(app, async_mode='eventlet')  # Initialize SocketIO
-
 #CORS(app)  # This will allow CORS for all routes and origins
 
 FLASK_PORT = 9000
@@ -34,10 +34,10 @@ matlab_experiments = {"Axonsim (nerve block)": "axonsim_nerve_block",
                        "Axonsim (regression)": "axonsim_regression",
                        "Toy Regression": "rose_regression",
                        "Toy Classification": "circle_classification",
-                       "Toy MOO": "vlmop2"
+                       "Toy VLMOP2": "vlmop2"
                       }
 
-matlab_experiments_types = {
+experiments_types = {
     "axonsim_nerve_block": "classification",
     "axonsim_regression": "regression",
     "rose_regression": "regression",
@@ -45,8 +45,9 @@ matlab_experiments_types = {
     "vlmop2": "moo"
 }
 
-python_experiments = {}
-python_experiments_types = {}
+python_experiments = {"Toy classification (Python)": "circle_classification",
+                      "Toy regression (Python)": "rose_regression",
+                      "Toy MOO (Python)": "vlmop2"}
 
 
 experiment_list = list(matlab_experiments.keys()) + list(python_experiments.keys())
@@ -123,18 +124,27 @@ def get_parameters():
 
     if experiment in matlab_experiments:
         exp_params = config_problem(matlab_experiments[experiment])
+    elif experiment in python_experiments:
+        exp_params = config_problem(python_experiments[experiment])
     else:
         raise NotImplementedError
 
     return jsonify(exp_params)
 
 
-# Fetch the plot from Flask
-@app.route('/plot', methods=['GET'])  # Use GET here
+@app.route('/plot', methods=['GET'])
 def plot():
+    # Get the port number from query parameters
     port = request.args.get('port', default=FLASK_PORT, type=int)
-    return render_template('plotly.html', port=port)
 
+    # Get the plot type from query parameters, defaulting to 'plotly'
+    plot_type = request.args.get('type', default='plotly', type=str)
+
+    # Choose the template based on the plot type
+    if plot_type == 'contour':
+        return render_template('plot_contour.html', port=port)
+    else:
+        return render_template('plotly.html', port=port)
 
 # Thread function to run the experiment
 @app.route('/start', methods=['POST'])
@@ -148,10 +158,10 @@ def prepare_experiment():
     if 'experiment' in data['parameters']:
         if data['parameters']['experiment']['value'] in matlab_experiments:
             data['parameters']['experiment']['name'] = matlab_experiments[data['parameters']['experiment']['value']]
-            data['parameters']['experiment']['type'] = matlab_experiments_types[data['parameters']['experiment']['name']]
+            data['parameters']['experiment']['type'] = experiments_types[data['parameters']['experiment']['name']]
         elif data['parameters']['experiment']['value'] in python_experiments:
-            data['parameters']['experiment']['name']= python_experiments[data['parameters']['experiment']['value']]
-            data['parameters']['experiment']['type'] = python_experiments_types[data['parameters']['experiment']['name']]
+            data['parameters']['experiment']['name'] = python_experiments[data['parameters']['experiment']['value']]
+            data['parameters']['experiment']['type'] = experiments_types[data['parameters']['experiment']['name']]
         else:
             raise Exception("Not simulator implemented (?)")
 
@@ -160,6 +170,13 @@ def prepare_experiment():
         connection_payload = {
             'initiator': 'Python',
             'target': 'MATLAB',
+            'port_flask': str(FLASK_PORT)
+        }
+    elif data['problem'] in python_experiments:
+        base_command = ["python3", "online_neuro/server_side.py"]
+        connection_payload = {
+            'initiator': 'Python',
+            'target': 'Python',
             'port_flask': str(FLASK_PORT)
         }
     else:
@@ -174,6 +191,8 @@ def prepare_experiment():
     try:
         with process_lock:
             if process is None:
+                print("Command")
+                print(command)
                 process = subprocess.Popen(command)  # Start the process with the given command
                 threading.Thread(target=monitor_process, args=(process,),
                                  daemon=True).start()  # Monitor the process
@@ -210,7 +229,7 @@ def stop_experiment() -> None:
             if process is not None:
                 if process.poll() is None:
                     process.terminate()
-                    process.join()  # Ensure the process has finished
+                    process.wait()  # Ensure the process has finished
                     process = None
                     return jsonify({'status': 'stopped'})
                 else:
@@ -231,27 +250,33 @@ def get_data():
 
 @app.route('/update_data', methods=['POST'])
 def update_data():
-    """Receive new data and transmit it to the plot"""
-    global cache
-    json_data = request.get_json()
-
+    """Receive new data and transmit it to the plot
+    TODO extend this to handle the different plots?
+    """
+    data = request.get_json()
+    plot_data = data.get('data')
+    plot_type = data.get('plot_type')
     try:
-        if isinstance(json_data, str):
-            json_data = pd.read_json(json_data)
+        if isinstance(plot_data, str):
+            plot_data = pd.read_json(plot_data)
 
-        as_df = pd.DataFrame(json_data)
-        if cache is None:
-            cache = as_df
+        first_column = plot_data.columns[0]
+        second_column = plot_data.columns[1]
+        if plot_type == "pairplot":
+            socketio.emit('new_data', {
+                'x': plot_data[first_column].tolist(),
+                'y': plot_data[second_column].tolist(),
+                'class': plot_data['response'].tolist()
+            })
+        elif plot_type == 'contour':
+            z = data.get('z')
+            socketio.emit('contour', {
+                'x': plot_data[first_column].tolist(),
+                'y': plot_data[second_column].tolist(),
+                'z': z,
+            })
         else:
-            cache = pd.concat([cache, as_df])
-
-        first_column = cache.columns[0]
-        first_response_column = [c for c in cache.columns if c.startswith('response')][0]
-        socketio.emit('new_data', {
-            'x': cache[first_column].tolist(),
-            'y': cache[first_response_column].tolist()
-        })
-
+            return jsonify({"message": f"Plot type {plot_type} not implemented"}), 501
         # Return a success response
         return jsonify({"message": "Data updated successfully"}), 200
 

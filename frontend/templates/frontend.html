@@ -36,6 +36,7 @@
             padding: 15px;
             box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
             transition: width 0.3s ease;
+            overflow-y: scroll;
         }
         .sidebar-right {
             position: fixed;
@@ -48,12 +49,30 @@
             box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2); /* Adjusted the shadow to appear on the left */
             transition: width 0.3s ease;
         }
+        .sidebar::-webkit-scrollbar {
+            width: 8px; /* Width of the vertical scrollbar */
+            height: 8px; /* Height of the horizontal scrollbar */
+        }
+        /* Track (background of the scrollbar) */
+        .sidebar::-webkit-scrollbar-track {
+            background: #1e1e1e; /* Dark background color */
+            border-radius: 4px; /* Rounded corners */
+        }
 
+        /* Thumb (draggable part of the scrollbar) */
+        .sidebar::-webkit-scrollbar-thumb {
+            background: #555; /* Gray thumb color */
+            border-radius: 4px; /* Rounded corners */
+        }
+
+        /* Thumb hover (when hovered over) */
+        .sidebar::-webkit-scrollbar-thumb:hover {
+            background: #888; /* Lighter gray when hovered */
+        }
         .header {
             display: flex;
             align-items: center;
         }
-
         .sidebar h2 {
             color: #6b6b6b;
             margin-top: 0;
@@ -64,7 +83,6 @@
             margin-bottom: 10px;
             padding: 10px;
         }
-
         .sidebar button {
             display: block;
             width: 100%;
@@ -577,8 +595,12 @@
                     }
                 });
 
-                let optPulseFeatures = Object.keys(pulseConfig).filter(key => pulseConfig[key].optimizable ===true)
-                let fixPulseFeatures = Object.keys(pulseConfig).filter(key => pulseConfig[key].user_fixed ===true)
+                let optPulseFeatures = Object.keys(pulseConfig).filter(
+                    key => pulseConfig[key]?.optimizable === true
+                );
+                let fixPulseFeatures = Object.keys(pulseConfig).filter(
+                    key => pulseConfig[key]?.user_fixed === true
+                );
                 optPulseFeatures = sortFeatures(optPulseFeatures, pulseConfig);
                 fixPulseFeatures = sortFeatures(fixPulseFeatures, pulseConfig);
 
@@ -1308,12 +1330,20 @@
     <!-- Main content -->
     <div class="content">
         <h1>Live Data Plots</h1>
-
         <!-- Loading spinner -->
         <div id="spinner" class="spinner"></div>
-
         <!-- Embedded plot in iframe -->
-        <iframe src="http://localhost:{{ port }}/plot" scrolling="no"></iframe>
+        <iframe
+            id="mainPlot"
+            src="http://localhost:{{ port }}/plot?type=plotly"
+            scrolling="no">
+        </iframe>
+        <iframe
+            id="scatterPlot"
+            src="http://localhost:{{ port }}/plot?type=contour"
+            scrolling="no">
+        </iframe>
+
     </div>
 
     <div class="sidebar-right" id="sidebar-model">
