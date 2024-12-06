@@ -24,6 +24,7 @@ venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
+### Matlab
 In case you want to solve Matlab problems (i.e. Axonsim), install the required matlab engine (the default pip wheel is currently Matlab 2024a). 
 
 You can check the version by opening MATLAB and run the command: version
@@ -39,6 +40,17 @@ pip install matlabengine==24.1.2
 ```
 
 For more information: https://pypi.org/project/matlabengine/
+
+### Neuron, Cajal and AxonML
+First install MPI4 in your system, followed by the installation using pip (included in the Cajal instructions):
+```bash
+apt install -y mpich
+```
+
+
+Install Cajal following the instructions:
+
+Install AxonML following the instructions:
 
 ## How to start
 
