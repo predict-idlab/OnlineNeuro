@@ -238,7 +238,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
     black-box *objective function* over some *search space*.
     """
 
-    def __init__(self, observer: str, search_space_pipe: SearchSpacePipeline,
+    def __init__(self, observer: str, search_space_pipe,
                  feature_names: Optional[np.ndarray | list] = None,
                  track_state: bool = True,
                  track_path: Optional[Path | str] = None,

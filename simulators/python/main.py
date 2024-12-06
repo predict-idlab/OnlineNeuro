@@ -147,18 +147,20 @@ def main(problem_name, problem_type, problem_config, connection_config, *args, *
     root_path = Path.cwd().resolve().parents[2]
     print("Verifying port is open")
     # Detect if path or configuration was provided
-    potential_path = Path(problem_config)
-    if potential_path.is_file() and potential_path.suffix == ".json":
-        with open(potential_path) as f:
-            problem_config = json.load(f)
-    elif (root_path / potential_path).is_file() and potential_path.suffx == ".json":
-        with (root_path / potential_path) as f:
-            problem_config = json.load(f)
-    elif isinstance(problem_config, str):
-        problem_config = json.loads(problem_config)
-    else:
-        msg = f"Problem config: {problem_config} \n not recognized as a json or path"
-        raise Exception(msg)
+
+    print(problem_config)
+    # potential_path = Path(problem_config)
+    # if potential_path.is_file() and potential_path.suffix == ".json":
+    #     with open(potential_path) as f:
+    #         problem_config = json.load(f)
+    # elif (root_path / potential_path).is_file() and potential_path.suffx == ".json":
+    #     with (root_path / potential_path) as f:
+    #         problem_config = json.load(f)
+    # elif isinstance(problem_config, str):
+    #     problem_config = json.loads(problem_config)
+    # else:
+    #     msg = f"Problem config: {problem_config} \n not recognized as a json or path"
+    #     raise Exception(msg)
 
     # Open TCP connection
     tcpip_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

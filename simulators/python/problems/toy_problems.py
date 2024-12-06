@@ -56,6 +56,40 @@ def multiple_circles(x0, x1, radius, noise, center):
 
     return binary_results
 
+
+def hypersphere(points, radius, noise, center):
+    """
+    @param points: points to evaluate
+    @param radius: radius of the hypersphere
+    @param noise: noise value for the hypersphere
+    @param center: center position
+    @return:
+    """
+    distances = np.linalg.norm(points - center, axis=1)
+    noisy_radius = radius + np.random.uniform(-noise, noise, size=distances.shape)
+    return (distances <= noisy_radius).astype(int)
+
+
+def multiple_hyperspheres(points, radii, noises, centers):
+    """
+    @param points: Points to be evaluated, shape (n_points, n_dimensions).
+    @param radii: List of radii for the hyperspheres.
+    @param noises: List of noise values for each hypersphere.
+    @param centers:  List of center coordinates for each hypersphere, each of shape (n_dimensions,).
+    @return: 
+    """
+    results = []
+
+    for r, n, c in zip(radii, noises, centers):
+        result = hypersphere(points, radius=r, noise=n, center=c)
+        results.append(result)
+
+    # Sum the results from all hyperspheres and return binary results
+    combined_results = np.sum(results, axis=0) - (len(radii) - 1)
+    binary_results = (combined_results > 0).astype(int)
+
+    return binary_results
+
 def log_single_var(x, noise=0, target_loc=1):
     """
     A one input logistic regression problem with noise.
