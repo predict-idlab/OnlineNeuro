@@ -54,7 +54,22 @@ GRID_POINTS = 10
 # BatchExpectedImprovement
 # MultipleOptimismNegativeLowerConfidenceBound
 
-#
+
+def find_available_port(socket, ip, port):
+    """
+    @param ip: ip adress
+    @param starting_port:
+    @return:
+    """
+    while True:
+        try:
+            socket.bind((ip, port))
+            return socket, port
+
+        except OSError:
+            port += 1
+
+
 def start_connection(connection_config, problem_config):
     """
     @param connection_config:
@@ -64,9 +79,17 @@ def start_connection(connection_config, problem_config):
     # Create a TCP/IP socket
     server_socket = socket.socket(family=socket.AF_INET,
                                   type=socket.SOCK_STREAM)
+
     print(f"Establishing connection at port {connection_config['ip']} with port {connection_config['port']}")
     # Bind the socket to the address and port
-    server_socket.bind((connection_config['ip'], connection_config['port']))
+    server_socket, new_port = find_available_port(socket=server_socket,
+                                                  ip=connection_config['ip'],
+                                                  port=connection_config['port'])
+
+    if new_port != connection_config['port']:
+        msg = f"Selected port {connection_config['port']} not available, port {new_port} assigned instead."
+        warnings.warn(msg)
+        connection_config['port'] = new_port
 
     # Listen for incoming connections
     server_socket.listen(1)
@@ -88,7 +111,7 @@ def start_connection(connection_config, problem_config):
 
         print('Starting Matlab with Payload:')
         print(matlab_payload)
-        matlab_payload['script_path'] = Path("simulators") / "matlab"
+        matlab_payload['script_path'] = str(Path("simulators") / "matlab")
 
         t = Thread(target=run_matlab, kwargs={"matlab_script_path": matlab_payload['script_path'],
                                               "matlab_function_name": "main",
@@ -192,10 +215,15 @@ def define_scaler_search_space(problem_config,
     feature_map = {}
     counter = 0
     for i, key in enumerate(filtered_feats):
-        feature_names.append(key)
+
         feature_map[key] = np.arange(counter, counter + len(problem_config[key]['min_value']))
         counter += len(problem_config[key]['min_value'])
 
+        if len(problem_config[key]['min_value']) == 1:
+            feature_names.append(key)
+        else:
+            for e in range(len(problem_config[key]['min_value'])):
+                feature_names.append(f"{key}_{e+1}")
         for j, (min_v, max_v) in enumerate(zip(problem_config[key]['min_value'], problem_config[key]['max_value'])):
             lower_bound.append(min_v)
             upper_bound.append(max_v)
@@ -296,6 +324,9 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
 
     if scaler:
         qp = scaler.inverse_transform(qp_orig)
+
+    print(qp.shape)
+    print(feature_names)
 
     qp_json = array_to_list_of_dicts(qp_orig, feature_names)
     print("First batch")
@@ -421,6 +452,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
             print(response.json())
         else:
             print("Error updating data:", response.status_code, response.text)
+
 
         mean, variance = bo.models[OBJECTIVE].predict(model_inputs)  # Predict mean and variance
         #Only if the problem is a classification problem!
