@@ -2,7 +2,6 @@
 import numpy as np
 import matlab.engine
 import json
-from trieste.space import SearchSpaceType
 from typing import List, Optional, Union
 import subprocess
 import queue
@@ -33,7 +32,7 @@ class CustomBox(Box):
             raise ValueError(f"Unsupported sampling method: {sampling_method}")
 
 class SearchSpacePipeline:
-    def __init__(self, search_space: SearchSpaceType,
+    def __init__(self, search_space,
                  mapping: dict, feature_names: Union[List, np.ndarray],
                  scaler=None):
         """
@@ -209,7 +208,7 @@ def run_matlab(matlab_script_path, matlab_function_name='main', **kwargs):
         # Here we assume that problems will be stored at ./simulators/matlab/problems
         matlab_script_full_path = parent_directory / matlab_script_path
 
-    if not Path.exists():
+    if not matlab_script_full_path.exists():
         raise FileNotFoundError(f"The MATLAB folder does not exist: {matlab_script_full_path}")
 
     matlab_script_full_path = str(matlab_script_full_path)
@@ -218,7 +217,7 @@ def run_matlab(matlab_script_path, matlab_function_name='main', **kwargs):
 
     eng = matlab.engine.start_matlab()
     eng.cd(matlab_script_full_path)
-    eng.addpath(parent_directory, nargout=0)
+    eng.addpath(str(parent_directory), nargout=0)
     # Call MATLAB function main
     matlab_args = json.dumps(kwargs)
 
@@ -283,24 +282,16 @@ def monitor_output(output_queue):
             continue  # No output available, keep checking
 
 
-def generate_grids(n, num_points):
+def generate_grids(n, num_points, upper_bound=None, lower_bound=None):
     """
     Generates an evenly distributed grid across n dimensions and its midpoints.
+    By default, the grid goes from 0-1
 
-    Parameters:
-        n (int): Number of dimensions.
-        num_points (int): Number of points per dimension.
-
-    Returns:
-        tuple: A tuple containing:
-            - grid (np.ndarray): The evenly distributed grid.
-            - midpoints_grid (np.ndarray): The midpoints of the grid.
-
-    # Example usage
-    n = 3  # Number of dimensions
-    num_points = 4  # Number of points per dimension
-    grid, midpoints_grid = generate_grids(n, num_points)
-
+    @param n: number of dimensions
+    @param num_points: number of points per dimension (same in all dimensions)
+    @param upper_bound: if provided the grid is rescaled
+    @param lower_bound:
+    @return:
     """
     # Create an evenly spaced grid in each dimension
     points = np.linspace(0, 1, num_points)
@@ -313,6 +304,10 @@ def generate_grids(n, num_points):
     midpoints = (points[:-1] + points[1:]) / 2
     midpoints_grids = np.meshgrid(*([midpoints] * n), indexing='ij')
     midpoints_grid = np.stack(midpoints_grids, axis=-1).reshape(-1, n)
+
+    if upper_bound and lower_bound:
+        grid = lower_bound + grid*(upper_bound-lower_bound)
+        midpoints_grid = lower_bound + midpoints_grid*(upper_bound-lower_bound)
 
     return grid, midpoints_grid
 
