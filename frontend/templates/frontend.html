@@ -254,6 +254,7 @@
         }
 
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script>
         let globalData
         let optimizableFeatures
@@ -1251,7 +1252,66 @@
             }
 
         }
+        function draw3DPlot() {
+            const num_el_container = document.getElementById('num_electrodes')
+            if (!num_el_container) { // There are no electrodes in the problem, this plot is not needed.
+                return
+            }
+            const num_el = parseInt(num_el_container.value, 10)
+            const centerX = 110
+            const canvas = document.getElementById('plotCanvas')
+            const height = parseFloat(document.getElementById('param_dia').value)
+            const dims = globalData['e_pos']['dimensions']
 
+            // Create the scene and camera
+            const scene = new THREE.Scene()
+            const camera = new THREE.PerspectiveCamera(75, canvas.width / canvas.height, 0.1, 1000)
+            const renderer = new THREE.WebGLRenderer({ canvas: canvas })
+            renderer.setSize(canvas.width, canvas.height)
+
+            // Set camera position
+            camera.position.z = 500
+
+            // Add axes for reference
+            const axesHelper = new THREE.AxesHelper(100)
+            scene.add(axesHelper)
+
+            // Draw the rectangle as a 3D box
+            const geometry = new THREE.BoxGeometry(250, height, 10) // Width, height, depth
+            const material = new THREE.MeshBasicMaterial({ color: 0x6496c8, transparent: true, opacity: 0.5 })
+            const rect = new THREE.Mesh(geometry, material)
+            scene.add(rect)
+
+            // Center the rectangle
+            rect.position.set(centerX, 0, 0) // Adjust rectangle position
+
+            // Create a material for the electrode markers
+            const electrodeMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 })
+
+            // Plot electrode positions
+            for (let n = 0; n <= num_el - 1; n++) {
+                let pos = []
+                for (let dim in dims) {
+                    const el = document.getElementById(`param_e_pos_${dims[dim]}_${n}`);
+                    pos.push(parseFloat(el.value))
+                }
+                const electrodeGeometry = new THREE.SphereGeometry(5, 32, 32) // Small sphere for electrodes
+                const electrode = new THREE.Mesh(electrodeGeometry, electrodeMaterial)
+
+                // Set electrode position (scaled to fit canvas)
+                electrode.position.set(10 * pos[0] + centerX, -10 * pos[1], 10 * pos[2])
+
+                scene.add(electrode)
+            }
+
+            // Rendering loop
+            function animate() {
+                requestAnimationFrame(animate)
+                renderer.render(scene, camera)
+            }
+
+            animate() // Start animation loop
+        }
         function renderJSON(container, data) {
             for (const [key, value] of Object.entries(data)) {
                 const keyElement = document.createElement('div');
@@ -1321,7 +1381,7 @@
         <button onclick="stopExperiment()">Stop Experiment</button>
 
         </div>
-        <canvas id="plotCanvas" width="220" height="150"></canvas>
+        <canvas id="plotCanvas" width="150" height="150"></canvas>
 
         <div id="json-view" ></div>
 
