@@ -40,6 +40,7 @@ matlab_experiments = {"Axonsim (nerve block)": "axonsim_nerve_block",
 
 experiments_types = {
     "axonsim_nerve_block": "classification",
+    "cajal_ap_block":"classification",
     "axonsim_regression": "regression",
     "rose_regression": "regression",
     "circle_classification": "classification",
@@ -48,7 +49,8 @@ experiments_types = {
 
 python_experiments = {"Toy classification (Python)": "circle_classification",
                       "Toy regression (Python)": "rose_regression",
-                      "Toy MOO (Python)": "vlmop2"}
+                      "Toy MOO (Python)": "vlmop2",
+                      "Cajal nerve block": "cajal_ap_block"}
 
 
 experiment_list = list(matlab_experiments.keys()) + list(python_experiments.keys())

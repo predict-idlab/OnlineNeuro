@@ -306,6 +306,10 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
 
     search_space, scaler, feature_names = define_scaler_search_space(problem_config=problem_config,
                                                                      scale_inputs=model_config["scale_inputs"])
+    #filtered_feats = [k for k in problem_config.keys() if (('min_value' in problem_config[k]) and ('max_value' in problem_config[k]))]
+    # TODO send fixed_features first
+    # TODO fix Matlab function so that this becomes the standard (Right now it loads the config from default)
+    fixed_features = {k: v for k, v in problem_config.items() if ('value' in problem_config[k])}
 
     x0 = np.linspace(scaler.feature_min[0], scaler.feature_max[0], GRID_POINTS)
     x1 = np.linspace(scaler.feature_min[1], scaler.feature_max[1], GRID_POINTS)
@@ -329,6 +333,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     print(feature_names)
 
     qp_json = array_to_list_of_dicts(qp_orig, feature_names)
+
     print("First batch")
     print(qp_json)
     response = {'message': 'first queried points using Sobol method',

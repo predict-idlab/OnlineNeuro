@@ -5,59 +5,45 @@ function main(json_data)
     root_path = fullfile(pwd, '../../');
     addpath(genpath(pwd))
 
-    if nargin==0
-        %A default routine here for debugging purposes.
-        %In practice main is not executed without recieveing a json_data
-        debug_num_qp = 10;
-        data = jsondecode(fileread('config.json'));
-        display(data)
-        connection_config = data.('connection_config');
-        problem_config = jsondecode(fileread('config_experiments/axonsim_template.json'));
-        default_config = jsondecode(fileread('config_experiments/axonsim_template.json'));
-        problem_name = 'axonsim_single';
-
-    else
-        display(json_data)
-        data = jsondecode(json_data);
-        display(data.('problem_config'))
-        problem_name = data.('problem_name');
-        problem_type = data.('problem_type');
-        connection_config = data.('connection_config');
-        %Detect if path or configuration was provided
-        problem_config = data.('problem_config');
-        if isstring(problem_config)
-            file_path = fullfile(root_path, problem_config);
-            problem_config = jsondecode(fileread(file_path));
-        end
-
-        fprintf("Verifying port is open \n");
-        % IMPORTANT
-        % Matlab comes with its on C++ libraries which are used Python.
-        % If using linux, hide those (or delete) as explained in
-        % https://nl.mathworks.com/matlabcentral/answers/1907290-how-to-manually-select-the-libstdc-library-to-use-to-resolve-a-version-glibcxx_-not-found
-        cmd = sprintf('fuser %d/tcp', connection_config.port);
-        system(cmd);
-        
-        tcpipClient = tcpclient(connection_config.ip, connection_config.port, ...
-            "Timeout",connection_config.Timeout, "ConnectTimeout",connection_config.ConnectTimeout, "EnableTransferDelay",false);
-        
-        SizeLimit = connection_config.SizeLimit;
-        pause(1);
-
-        % Send handshake
-        dataToSend = struct('message', 'Hello from MATLAB','dummyNumber', 123);
-        jsonData = jsonencode(dataToSend);
-        write(tcpipClient, jsonData, 'char');
-        fprintf("Data sent \n") 
-        disp('Waiting for data...');
-        %end
-        pause(1);
-        receivedData = readData(tcpipClient);
-        display(receivedData)
-        % End handshake, connection works.
-
+    display(json_data)
+    data = jsondecode(json_data);
+    display(data.('problem_config'))
+    problem_name = data.('problem_name');
+    problem_type = data.('problem_type');
+    connection_config = data.('connection_config');
+    %Detect if path or configuration was provided
+    problem_config = data.('problem_config');
+    if isstring(problem_config)
+        file_path = fullfile(root_path, problem_config);
+        problem_config = jsondecode(fileread(file_path));
     end
-    
+
+    fprintf("Verifying port is open \n");
+    % IMPORTANT
+    % Matlab comes with its on C++ libraries which are used Python.
+    % If using linux, hide those (or delete) as explained in
+    % https://nl.mathworks.com/matlabcentral/answers/1907290-how-to-manually-select-the-libstdc-library-to-use-to-resolve-a-version-glibcxx_-not-found
+    cmd = sprintf('fuser %d/tcp', connection_config.port);
+    system(cmd);
+
+    tcpipClient = tcpclient(connection_config.ip, connection_config.port, ...
+        "Timeout",connection_config.Timeout, "ConnectTimeout",connection_config.ConnectTimeout, "EnableTransferDelay",false);
+
+    SizeLimit = connection_config.SizeLimit;
+    pause(1);
+
+    % Send handshake
+    dataToSend = struct('message', 'Hello from MATLAB','dummyNumber', 123);
+    jsonData = jsonencode(dataToSend);
+    write(tcpipClient, jsonData, 'char');
+    fprintf("Data sent \n")
+    disp('Waiting for data...');
+    %end
+    pause(1);
+    receivedData = readData(tcpipClient);
+    display(receivedData)
+    % End handshake, connection works.
+
     display("Selected problem")
     display(problem_name)
     % Prepare call function based on problem_config 
@@ -71,19 +57,16 @@ function main(json_data)
             %TODO fix this
             [eval_fun, eval_dict] = multiobjective_problem('plot',true);
         case {'axonsim_single', 'axonsim_double', 'axonsim_regression','axon_threshold','axonsim_nerve_block'}
-            default_config = jsondecode(fileread('../../config/experiments/axonsim_template.json'));
-
-            [eval_fun, eval_dict] = axon_problem(problem_config,'plot', false, 'default_setting', default_config);
+            [eval_fun, eval_dict] = axon_problem(problem_config,'plot', false);
             n_features = fieldnames(eval_dict);
         otherwise
             warning('Unexpected problem type, defaulting to Rosenbrock')
             [eval_fun, eval_dict] = rosenbrock_problem('plot',true);
     end
     
-    exp_summary = struct('features',eval_dict, ...
+    exp_summary = struct('features', eval_dict, ...
                         'constraints', '');
-    
-    
+
     if nargin==0
         featNames = fieldnames(eval_dict);
         query_points= cell(debug_num_qp,1);  % Preallocate the struct array for 15 samples

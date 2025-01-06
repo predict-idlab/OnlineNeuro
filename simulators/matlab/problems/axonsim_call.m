@@ -55,22 +55,6 @@ function result = axonsim_call(varin)
     % default_struct.custom_fun = ["stim_sin(t, 20000, 1)", "stim_sin(t, 2000, 1)"];
     % default_struct.I = [-1, -1];
 
-    % fields = fieldnames(default_struct);
-    % if ~exist("varin","var")
-    %     varin = struct();
-    % end
-    % counter = 0;
-    % for i = 1:length(fields)
-    %     if ~isfield(varin, fields{i})
-    %         varin.(fields{i}) = default_struct.(fields{i});
-    %         counter = counter+1;
-    %     end
-    % end
-    % 
-    % if counter > 0
-    %     warning("A total of %d variables were not specified, and their defaults were used", counter)
-    % end
-
     e_pos = varin.e_pos;
     c = varin.c;
     phi = varin.phi;
@@ -98,7 +82,6 @@ function result = axonsim_call(varin)
     
     %
     n_sources = varin.num_electrodes;
-
     e_sep = e_sep*1000;
     switch string(model_type)
         case "MRG"
@@ -110,11 +93,13 @@ function result = axonsim_call(varin)
     end
     
     %Modified code from axonsim_mod
-    % Handling single strings as arrays 
-    e_type_array = double.empty;
-    fun_type_array = double.empty;
-    for i=1:n_sources
+    % Handling single strings as arrays
+    % TODO Update this later Currently only using single electrodes
+    e_type = repmat("single", n_sources, 1);
+    fun_type_array = NaN(1, n_sources);
+    e_type_array = NaN(1, n_sources);
 
+    for i=1:n_sources
         switch string(e_type(i))
             case "single"
                 e_type_array(i) = 1;
