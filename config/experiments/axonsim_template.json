@@ -1,13 +1,14 @@
 {
+  "multiple_sets": true,
   "balance_charge":
     {"optimizable": false,
-      "user_fixed": true,
-      "value": true,
+      "user_fixed": false,
+      "value": false,
       "type": "boolean"
     },
   "num_electrodes" :
   { "optimizable": false,
-    "user_fixed" : false,
+    "user_fixed" : true,
     "value": 1,
     "min_value": 1,
     "max_value": 3,
@@ -94,7 +95,7 @@
   "fun_type" :
       { "optimizable": false,
         "user_fixed" : true,
-        "value": "single pulse",
+        "value": "single_pulse",
         "possible_values": ["single_pulse", "double_pulse", "pulse_ramp", "custom"],
         "type": "cat-mult"
   },
