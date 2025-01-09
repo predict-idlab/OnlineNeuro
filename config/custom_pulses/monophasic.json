@@ -1,0 +1,28 @@
+{
+  "s_amp" :
+    { "optimizable": true,
+      "user_fixed" : false,
+      "value": 0.0,
+      "min_value": -3.0,
+      "max_value": 3.0,
+      "type": "float"
+    },
+  "s_pw":
+    {
+      "optimizable": true,
+      "user_fixed": false,
+      "value": 0.25,
+      "min_value": 0.25,
+      "max_value": 2.0,
+      "type": "float"
+  },
+  "s_delay":
+    {
+      "optimizable": true,
+      "user_fixed": false,
+      "value": 0.0,
+      "min_value": 0.0,
+      "max_value": 2.0,
+      "type": "float"
+  }
+}

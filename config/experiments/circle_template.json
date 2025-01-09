@@ -1,0 +1,43 @@
+{
+  "radius":
+    {"optimizable": false,
+      "user_fixed": true,
+      "value": 1,
+      "min_value": 0.5,
+      "max_value": 3,
+      "type": "float"
+    },
+  "noise" :
+  { "optimizable": false,
+    "user_fixed" : true,
+    "value": 0.1,
+    "min_value": 0,
+    "max_value": 1,
+    "type": "float"
+  },
+  "center" :
+  { "optimizable": false,
+    "user_fixed" : true,
+    "value": [0, 0],
+    "min_value": [-3, -3],
+    "max_value": [3, 3],
+    "dimensions": ["x","y"],
+    "type": "array"
+  },
+  "x0" :
+  { "optimizable": true,
+    "user_fixed" : false,
+    "value": 0,
+    "min_value": -5,
+    "max_value": 5,
+    "type": "float"
+  },
+  "x1" :
+  { "optimizable": true,
+    "user_fixed" : false,
+    "value": 0,
+    "min_value": -5,
+    "max_value": 5,
+    "type": "float"
+  }
+}
