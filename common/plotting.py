@@ -8,7 +8,6 @@ from mpl_toolkits.mplot3d import axes3d
 import gpflow
 from matplotlib import cm
 import os
-import itertools
 from trieste.experimental.plotting import plot_bo_points, plot_function_2d
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -31,8 +30,15 @@ def custom_cmap():
     cmap = LinearSegmentedColormap.from_list(cmap_name, colors, N=2)
     return cmap
 
+def save_fig(fig, save_dir, count):
+    if save_dir is None:
+        fig.savefig(os.path.join('figures', f'plot_{count:02}.png'))
+    else:
+        fig.savefig(os.path.join(f'{save_dir}', f'plot_{count:02}.png'))
+    return 0
 
-def plot_log_reg(model, initial_data, search_space_pipe, test_data=None, sampled_data=None,
+
+def plot_log_reg(model, initial_data, search_space, scaler, test_data=None, sampled_data=None,
                plot_ground_truth=None, ground_truth_function=None, save_dir=None, count=0):
     """
     Plot a two feature 1 output model
@@ -50,10 +56,7 @@ def plot_log_reg(model, initial_data, search_space_pipe, test_data=None, sampled
     if plot_ground_truth:
         assert ground_truth_function is not None
 
-    search_space = search_space_pipe.search_space
-    scaler = search_space_pipe.scaler
-
-    plt.figure(figsize=(6, 3))
+    fig = plt.figure(figsize=(6, 3))
     plt.plot(initial_data[0].values[:, 0],
              initial_data[1].values[:, 0],
              'ro', mew=2, label='Initial samples')
@@ -87,14 +90,11 @@ def plot_log_reg(model, initial_data, search_space_pipe, test_data=None, sampled
     plt.ylabel('Y')
     plt.legend()
     plt.title('Online \n Logistic regression')
-    if save_dir is None:
-        plt.savefig(f'figures/plot_{count:02}.png')
-    else:
-        plt.savefig(f'{save_dir}/plot_{count:02}.png')
+    save_fig(fig, save_dir, count)
     plt.close()
 
 
-def plot_circle(model, initial_data, search_space_pipe, test_data=None, sampled_data=None, plot_ground_truth=None,
+def plot_circle(model, initial_data, search_space, scaler, test_data=None, sampled_data=None, plot_ground_truth=None,
                 ground_truth_function=None, save_dir=None, count=0):
     """
     @param model:
@@ -111,9 +111,6 @@ def plot_circle(model, initial_data, search_space_pipe, test_data=None, sampled_
 
     if plot_ground_truth:
         assert callable(ground_truth_function)
-
-    search_space = search_space_pipe.search_space
-    scaler = search_space_pipe.scaler
 
     fig = plt.figure(figsize=(6, 6))
     ax = fig.add_subplot(111, projection='3d')
@@ -175,15 +172,11 @@ def plot_circle(model, initial_data, search_space_pipe, test_data=None, sampled_
                    c='C1', marker='x', label='Neg-test')
 
     ax.legend()
-
-    if save_dir is None:
-        plt.savefig(f'figures/plot_{count:02}.png')
-    else:
-        plt.savefig(f'{save_dir}/plot_{count:02}.png')
+    save_fig(fig, save_dir, count)
     plt.close()
 
 
-def plot_surface(model, initial_data, search_space_pipe, test_data=None, sampled_data=None, plot_ground_truth=None,
+def plot_surface(model, initial_data, search_space, scaler, test_data=None, sampled_data=None, plot_ground_truth=None,
                  ground_truth_function=None, feasible_region=None, save_dir=None, count=0):
     """
     @param model: Model from Trieste. TODO in some cases this may be a list with single output.
@@ -200,9 +193,6 @@ def plot_surface(model, initial_data, search_space_pipe, test_data=None, sampled
     """
     if plot_ground_truth:
         assert callable(ground_truth_function)
-
-    search_space = search_space_pipe.search_space
-    scaler = search_space_pipe.scaler
 
     fig = plt.figure()
     ax1 = fig.add_subplot(111, projection='3d')
@@ -242,10 +232,7 @@ def plot_surface(model, initial_data, search_space_pipe, test_data=None, sampled
         ax[0].scatter(test_data[0][:, 0], test_data[0][:, 1], preds, c='k', marker='o', label='Samples added')
 
     ax[0].legend()
-    if save_dir is None:
-        plt.savefig(f'figures/plot_{count:02}.png')
-    else:
-        plt.savefig(f'{save_dir}/plot_{count:02}.png')
+    save_fig(fig, save_dir, count)
     plt.close()
 
 def calculate_reference_point(observations):
@@ -268,7 +255,7 @@ def log_hv(obs, ref_point):
     obs_hv = Pareto(obs).hypervolume_indicator(ref_point)
     return np.log10(obs_hv)
 
-def plot_pareto_2d(model, search_space_pipe, initial_data, test_data=None, sampled_data=None,
+def plot_pareto_2d(model, search_space, scaler, initial_data, test_data=None, sampled_data=None,
                    plot_ground_truth=None,
                    ground_truth_function=None, save_dir=None, count=0):
     """
@@ -286,9 +273,6 @@ def plot_pareto_2d(model, search_space_pipe, initial_data, test_data=None, sampl
 
     if plot_ground_truth:
         assert callable(ground_truth_function)
-
-    search_space = search_space_pipe.search_space
-    scaler = search_space_pipe.scaler
 
     fig, ax = plt.subplots(figsize=(10, 10), ncols=2, nrows=2)
     ax = ax.ravel()
@@ -329,7 +313,7 @@ def plot_pareto_2d(model, search_space_pipe, initial_data, test_data=None, sampl
 
     #TODO, probably a caching would be handy to not have to recompute all the hlv values
     #TODO. Note: a bit arbitrary how trieste select the ref point, verify if there are other methods. In general
-    # it should be fine as the ref. value doesn't change when comparing vs other models/techniques, or acrros incremental
+    # it should be fine as the ref. value doesn't change when comparing vs other models-techniques, or acrros incremental
     # calculations of the HV
 
     Z_init, Zvar_init = model.predict(initial_data[0])
@@ -377,10 +361,7 @@ def plot_pareto_2d(model, search_space_pipe, initial_data, test_data=None, sampl
     fig.suptitle(f"Multiobjective optimization Step #{count}")
     fig.tight_layout()
 
-    if save_dir is None:
-        plt.savefig(f'./figures/plot_{count:02}.png')
-    else:
-        plt.savefig(f'{save_dir}/plot_{count:02}.png')
+    save_fig(fig, save_dir, count)
     plt.close()
 
 
@@ -494,15 +475,13 @@ def plot_nerve_block(model, initial_data, search_space_pipe, sampled_data=None, 
     #ax[0].legend()
     fig.tight_layout()
 
-    if save_dir is None:
-        plt.savefig(f'figures/plot_{count:02}.png')
-    else:
-        plt.savefig(f'{save_dir}/plot_{count:02}.png')
+    save_fig(fig, save_dir, count)
     plt.close()
 
 
-def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, plot_ground_truth=None,
-                ground_truth_function=None,
+def update_plot(bo, search_space, scaler, initial_data, sampled_data=None,
+                test_data=None,
+                plot_ground_truth=None, ground_truth_function=None,
                 count=0, *args, **vargs):
     """
     @param bo: BayesianOptimizer object
@@ -522,13 +501,14 @@ def update_plot(bo, initial_data=None, sampled_data=None, test_data=None, plot_g
     # TODO Include inverse scaling for features when bo.scaler is not None
         #Partially done for some methods
 
-    save_dir = f"figures/{bo._observer}"
+    save_dir = os.path.join("figures", f"{bo._observer}")
     os.makedirs(save_dir, exist_ok=True)
 
     common_args = {
         'model': bo._models[OBJECTIVE],
         'initial_data': initial_data,
-        'search_space_pipe': bo._search_space_pipe,
+        'search_space': search_space,
+        'scaler': scaler,
         'sampled_data': sampled_data,
         'plot_ground_truth': plot_ground_truth,
         'ground_truth_function': ground_truth_function,
