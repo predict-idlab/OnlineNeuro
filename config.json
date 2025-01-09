@@ -1,9 +1,10 @@
 {
   "connection_config": {
     "ip": "127.0.0.0",
-    "port": 10000,
+    "port": 10005,
     "Timeout": 20,
     "ConnectTimeout": 30,
+    "SizeLimit": 1048576,
     "initiator": "Python",
     "target": "MATLAB"
   },
@@ -15,7 +16,7 @@
     }
   },
   "model_config": {
-    "type": "GP",
+    "type": "VGP",
     "classification": true,
     "scale_inputs": true,
     "constrains": false,
@@ -23,13 +24,14 @@
     "variational": true,
     "noise_free": true,
     "trainable_likelihood": false,
-    "init_samples":15,
+    "init_samples":25,
     "batch_sampling": false,
     "num_query_points": 1
   },
   "path_config": {
     "save_path": "./simulations",
     "benchmark_path": "./benchmarks",
-    "axonsim_path": "/home/idlab398/AxonSim-r1-main/"
+    "axonsim_path": "/home/idlab398/AxonSim-r1-main/",
+    "cajal_path": "/home/idlab398/cajal/"
   }
 }

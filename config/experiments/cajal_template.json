@@ -1,0 +1,85 @@
+{
+  "multiple_sets": true,
+  "axon_diameter":
+  { "optimizable": false,
+    "user_fixed": true,
+    "value":1.0,
+    "min_value": 1.0,
+    "max_value": 16.0,
+    "type": "float"
+  },
+  "axon_length" :
+  { "optimizable": false,
+    "user_fixed" : true,
+    "value":35,
+    "min_value": 5,
+    "max_value": 60,
+    "type": "float"
+  },
+  "balance_charge":
+  {"optimizable": false,
+      "user_fixed": false,
+      "value": false,
+      "type": "boolean"
+    },
+  "num_electrodes":
+  { "optimizable": false,
+    "user_fixed" : true,
+    "value": 1,
+    "min_value": 1,
+    "max_value": 3,
+    "type": "int"
+  },
+  "e_pos":
+  { "optimizable": false,
+        "user_fixed": true,
+        "value":[0, 0, 0],
+        "min_value" : [-10, -10, -10],
+        "max_value" : [10, 10, 10],
+        "dimensions" : ["x", "y", "z"],
+        "type": "array"
+  },
+  "e_offset":
+  { "optimizable": false,
+        "user_fixed": true,
+        "value": 0,
+        "min_value" : -2,
+        "max_value" : 2,
+        "type": "float"
+  },
+  "e_rhoe":
+  { "optimizable": false,
+    "user_fixed": true,
+    "value": 500,
+    "min_value" : 50,
+    "max_value" : 1000,
+    "type": "float"
+
+  },
+  "sim_dur":
+    { "optimizable": false,
+      "user_fixed" : false,
+      "value":7.0,
+      "type": "float"
+    },
+  "time_resolution" :
+      { "optimizable": false,
+        "user_fixed" : false,
+        "value":0.005,
+        "type": "float"
+  },
+  "fun_type" :
+      { "optimizable": false,
+        "user_fixed" : true,
+        "value": "single_pulse",
+        "possible_values": ["monophasic", "biphasic"],
+        "type": "cat-mult"
+  },
+  "model_type" :
+      { "optimizable": false,
+        "user_fixed" : false,
+        "value":"MRG",
+        "possible_values": ["MRG", "SUNDT", "linear"],
+        "type": "cat"
+  }
+}

@@ -6,7 +6,7 @@ from pathlib import Path
 import argparse
 import numpy as np
 import pandas as pd
-from problems import circle, rosenbrock, log_single_var, toy_feasbility, vlmop2
+from problems import circle, rosenbrock, log_single_var, toy_feasbility, vlmop2, cajal_fun
 import inspect
 from collections import defaultdict
 import select
@@ -18,6 +18,7 @@ problem_dict = {
     "circle_classification": circle,
     "rose_regression": rosenbrock,
     "moo_problem": vlmop2,
+    "cajal_ap_block": cajal_fun
 }
 
 VECTORIZED_FUNS = [circle, rosenbrock, vlmop2]
@@ -64,9 +65,14 @@ def convert_list_to_dict(list_of_dicts):
     return dict(dict_of_lists)
 
 
-def evaluate_function(query_points, eval_fun, problem_name, mode):
+def evaluate_function(query_points, fixed_features, eval_fun, problem_name, mode):
     if eval_fun in VECTORIZED_FUNS:
         qp_dict = convert_list_to_dict(query_points)
+        for key, value in fixed_features.items():
+            if key in qp_dict:
+                raise ValueError(f"Key '{key}' from fixed_features already exists in query_points.")
+            qp_dict[key] = [value] * len(query_points)
+
         fvalues = fun_wrapper(eval_fun, qp=qp_dict, problem_name=problem_name, mode=mode)
         fvalues = fvalues.tolist()
 
@@ -75,7 +81,8 @@ def evaluate_function(query_points, eval_fun, problem_name, mode):
         fvalues = []
         for i in range(num_points):
             qp = query_points[i]
-            result = fun_wrapper(eval_fun, qp=qp, problem_name=problem_name, mode=mode)
+            qp_with_fixed = {**qp, **fixed_features}
+            result = fun_wrapper(eval_fun, qp=qp_with_fixed, problem_name=problem_name, mode=mode)
             fvalues.append(result)
 
     return fvalues
@@ -130,7 +137,7 @@ def write_data(client_socket, data):
 
 def fun_wrapper(eval_fun, qp, problem_name, mode=None):
     """
-    Logic on how to post-process the restuls of the evaluated function
+    Logic on how to post-process the results of the evaluated function
     @param eval_fun:
     @param qp:
     @param problem_name:
@@ -144,7 +151,6 @@ def fun_wrapper(eval_fun, qp, problem_name, mode=None):
 
 
 def main(problem_name, problem_type, problem_config, connection_config, *args, **kwargs):
-    root_path = Path.cwd().resolve().parents[2]
     print("Verifying port is open")
     # Detect if path or configuration was provided
 
@@ -184,17 +190,14 @@ def main(problem_name, problem_type, problem_config, connection_config, *args, *
     print(received_data)
     # End handshake, connection works.
 
-    eval_fun = problem_dict[problem_name]
-    # In comparison to Matlab main.py, here there's no need of an eval_dict, as Python functions can easily take
-    # Default parameters
-    features = list(inspect.signature(eval_fun).parameters)
-    exp_summary = {
-        'features': features,
-        'constraints': None,
-    }
+    if problem_name in problem_dict:
+        eval_fun = problem_dict[problem_name]
+    else:
+        NotImplementedError(f"Problem {problem_name} not implemented.")
+        
+    received_data = read_data(tcpip_client)
+    fixed_features = {k: v['value'] for k, v in received_data['Fixed_features'].items()}
 
-    write_data(tcpip_client, exp_summary)
-    print("Data sent")
     received_data = read_data(tcpip_client)
     query_points = received_data['query_points']
 
@@ -203,7 +206,8 @@ def main(problem_name, problem_type, problem_config, connection_config, *args, *
     operator = None
     # TODO some calls need to be made point by point, but when possible, is best to use the vector form
 
-    fvalues = evaluate_function(query_points=query_points, eval_fun=eval_fun,
+    fvalues = evaluate_function(query_points=query_points, fixed_features=fixed_features,
+                                eval_fun=eval_fun,
                                 problem_name=problem_name, mode=operator)
 
     print("first responses")
@@ -223,7 +227,8 @@ def main(problem_name, problem_type, problem_config, connection_config, *args, *
         if terminate_flag:
             print("Termination signal received from Python. Saving data and closing connection...")
         else:
-            fvalues = evaluate_function(query_points=query_points, eval_fun=eval_fun,
+            fvalues = evaluate_function(query_points=query_points, fixed_features=fixed_features,
+                                        eval_fun=eval_fun,
                                         problem_name=problem_name, mode=operator)
 
             response = send_data(fvalues=fvalues,

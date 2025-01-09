@@ -48,7 +48,7 @@ experiments_types = {
 }
 
 python_experiments = {"Toy classification (Python)": "circle_classification",
-                      "Toy regression (Python)": "rose_regression",
+                      #"Toy regression (Python)": "rose_regression",
                       "Toy MOO (Python)": "vlmop2",
                       "Cajal nerve block": "cajal_ap_block"}
 

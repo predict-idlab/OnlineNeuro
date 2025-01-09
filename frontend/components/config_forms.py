@@ -10,11 +10,13 @@ template_map = {
     "axonsim_regression": Path("config") / "experiments" / "axonsim_template.json",
     "rose_regression": Path("config") / "experiments" / "rose_template.json",
     "circle_classification": Path("config") / "experiments" / "circle_template.json",
-    "vlmop2": Path("config") / "experiments" / "vlmop2_template.json"
+    "vlmop2": Path("config") / "experiments" / "vlmop2_template.json",
+    "cajal_ap_block": Path("config") / "experiments" / "cajal_template.json"
 }
 
 function_map = {
     'pulse_ramp': Path("config") / "custom_pulses" / "pulse_ramp.json",
+    'monophasic': Path("config") / "custom_pulses" / "monophasic.json",
     'default': Path("config") / "custom_pulses" / "axonsim_default.json"
 }
 
@@ -22,6 +24,7 @@ function_map = {
 VALID_PROBLEMS = {
     'axonsim_nerve_block': ['classification', 'regression', 'moo'],
     'axonsim_regression': ['regression', 'moo'],
+    'cajal_nerve_block': ['classification', 'regression', 'moo'],
     'todo': ['placeholder']
 }
 
@@ -60,14 +63,10 @@ def config_problem(problem: str = 'axonsim') -> dict:
     problem = problem.lower()
     try:
         config = load_json(template_map[problem])
-
-        if problem.startswith("axonsim"):
-            config['multiple_sets'] = True
-        else:
-            config['multiple_sets'] = False
         #Verifying that parameters are fixed or optimizable, but not both!
         # TODO as they exclude each other this can be simplified!
         verify_optim_fixed(config)
+        print(config)
         config['name'] = problem
 
     except NotImplementedError:
