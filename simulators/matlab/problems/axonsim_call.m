@@ -54,7 +54,8 @@ function result = axonsim_call(varin)
     % default_struct.model_type = "MRG";
     % default_struct.custom_fun = ["stim_sin(t, 20000, 1)", "stim_sin(t, 2000, 1)"];
     % default_struct.I = [-1, -1];
-
+    % fib_length [um]
+    
     e_pos = varin.e_pos;
     c = varin.c;
     phi = varin.phi;
@@ -94,8 +95,6 @@ function result = axonsim_call(varin)
     
     %Modified code from axonsim_mod
     % Handling single strings as arrays
-    % TODO Update this later Currently only using single electrodes
-    e_type = repmat("single", n_sources, 1);
     fun_type_array = NaN(1, n_sources);
     e_type_array = NaN(1, n_sources);
 
@@ -227,8 +226,8 @@ function result = axonsim_call(varin)
     fname = sprintf('%s/simulation_%s.mat', relativeFolder, datestr(now,'mm-dd-yyyy HH-MM'));
     %display(fname)
     tosave.fname = fname;
-
     save(fname,'tosave');
+
     result = tosave;
 
 end

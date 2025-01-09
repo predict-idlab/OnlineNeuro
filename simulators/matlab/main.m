@@ -41,6 +41,7 @@ function main(json_data)
     %end
     pause(1);
     receivedData = readData(tcpipClient);
+    display("1")
     display(receivedData)
     % End handshake, connection works.
 
@@ -63,54 +64,23 @@ function main(json_data)
             warning('Unexpected problem type, defaulting to Rosenbrock')
             [eval_fun, eval_dict] = rosenbrock_problem('plot',true);
     end
-    
-    exp_summary = struct('features', eval_dict, ...
-                        'constraints', '');
 
-    if nargin==0
-        featNames = fieldnames(eval_dict);
-        query_points= cell(debug_num_qp,1);  % Preallocate the struct array for 15 samples
-        for n = 1:debug_num_qp
-            sample = struct();  % Initialize an empty struct for each sample
-        
-            for i = 1:length(featNames)
-                fN = featNames{i};  % Get the feature name
-                numValues = size(eval_dict.(fN), 1);  % Get the number of values for this feature
-        
-                % Check for min/max or value fields, and generate the appropriate sample
-                if isfield(problem_config.(fN), 'min_value') && isfield(problem_config.(fN), 'max_value') && ~isequal(fN, 'num_electrodes')
-                    % Handle numeric ranges: generate random values between min and max
-                    sample.(fN) = zeros(1, numValues);  % Preallocate a numeric array
-                    for j = 1:numValues
-                        sample.(fN)(j) = problem_config.(fN).min_value(j) + ...
-                            (problem_config.(fN).max_value(j) - problem_config.(fN).min_value(j)) * rand();
-                    end
-                elseif isfield(problem_config.(fN), 'value')
-                    % Handle strings and fixed numeric values:
-                    if ischar(eval_dict.(fN))  % If the feature is a string
-                        sample.(fN) = {eval_dict.(fN)};  % Directly assign the string
-                    else
-                        % For numeric arrays or single values, assign them directly
-                        sample.(fN) = eval_dict.(fN);  
-                    end
-                else
-                    error('Feature %s does not have min/max nor value field', fN);
-                end
-            end
-            
-            query_points{n} = sample;  % Assign the sample struct to the query_points array
-        end
-    else
+    %    exp_summary = struct('features', eval_dict, ...
+    %                        'constraints', '');
 
-        jsonData = jsonencode(exp_summary);
-        write(tcpipClient, jsonData, 'char');
-        fprintf("Data sent \n") 
-        
-        %First batch of query points
-        receivedData = readData(tcpipClient);        
-        query_points = receivedData.query_points;
+    receivedData = readData(tcpipClient);
+    fieldnames_fixed = fieldnames(receivedData.("Fixed_features"));
+    fieldnames_trainable = fieldnames(eval_dict);
+
+    missingFields = setdiff(fieldnames_fixed, fieldnames_trainable);
+
+    for i = 1:numel(missingFields)
+        eval_dict.(missingFields{i}) = receivedData.("Fixed_features").(missingFields{i});
     end
-    
+
+    receivedData = readData(tcpipClient);
+    query_points = receivedData.query_points;
+
     num_points = length(query_points);
     fvalues = cell(1,length(query_points));
 
@@ -137,9 +107,6 @@ function main(json_data)
     end
 
     display("Sending data to Python ...")
-    for i =1:num_points
-        display(fvalues{i})
-    end
     sendData(fvalues, tcpipClient, SizeLimit);
 
     % Read values sent from Python 

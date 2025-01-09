@@ -252,6 +252,17 @@ def define_scaler_search_space(problem_config,
     return search_space, scaler, feature_names
 
 
+def plot_flask(sample, plot_type, post_url):
+    json_message = dict()
+    json_message['data'] = sample.to_json(orient='records')
+    json_message['plot_type'] = plot_type
+    response = requests.post(post_url + "/update_data", json=json_message)
+    # Check the response
+    if response.status_code == 200:
+        print(response.json())
+    else:
+        print("Error updating data:", response.status_code, response.text)
+
 def main(connection_config: dict, model_config: dict, path_config: dict,
          problem_config: dict, *args, **kwargs) -> None:
     """
@@ -272,7 +283,6 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     connection_config = {**default_dict['connection_config'], **connection_config}
     model_config = {**default_dict['model_config'], **model_config}
     path_config = {**default_dict['path_config'], **path_config}
-    #problem_config = {**default_dict['problem_config'], **problem_config}
 
     #Port Flask indicates that a UI is listening to the process. We can send partial results and other info to this interface
     port_flask = connection_config.get('port_flask', False)
@@ -284,55 +294,44 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     # i.e. matlab, axonsim, neuron, python, each need to have a simulator file for the given problem.
     #  - verify that the model type can solve the problem type
     # i.e. prevent multiobjective or regression to be solved with classification, etc...
-
     server_socket, client_socket = start_connection(connection_config=connection_config,
                                                     problem_config=problem_config)
 
     handshake_check(client_socket=client_socket)
     atexit.register(cleanup_server_socket, client_sock=client_socket, server_sock=server_socket)
-
     package_size = connection_config['SizeLimit']
-
-    received_data = client_socket.recv(package_size).decode()
-    # TODO this line won't be needed anymore, as search space is now defined from the UI & terminal and not the problem config
-    ## First message
-    # Receives feature names, target_names(?), Upper and lower_boundaries.
-    # This should probably also pass constraints.
-
-    problem_specs = json.loads(received_data)
 
     print("Loaded problem config")
     print(problem_config)
-
     search_space, scaler, feature_names = define_scaler_search_space(problem_config=problem_config,
                                                                      scale_inputs=model_config["scale_inputs"])
-    #filtered_feats = [k for k in problem_config.keys() if (('min_value' in problem_config[k]) and ('max_value' in problem_config[k]))]
-    # TODO send fixed_features first
-    # TODO fix Matlab function so that this becomes the standard (Right now it loads the config from default)
+
     fixed_features = {k: v for k, v in problem_config.items() if ('value' in problem_config[k])}
+    print("Fixed features")
+    print(fixed_features)
+    msg = json.dumps({"Fixed_features": fixed_features}) + "\n"
+    client_socket.sendall(msg.encode())
 
     x0 = np.linspace(scaler.feature_min[0], scaler.feature_max[0], GRID_POINTS)
     x1 = np.linspace(scaler.feature_min[1], scaler.feature_max[1], GRID_POINTS)
-
-    x0_scaled = np.linspace(scaler.output_min, scaler.output_max, GRID_POINTS)
-    x1_scaled = np.linspace(scaler.output_min, scaler.output_max, GRID_POINTS)
-
     meshgrid_x, meshgrid_y = np.meshgrid(x0, x1)
     plot_inputs = np.column_stack([meshgrid_x.ravel(), meshgrid_y.ravel()])
 
+    x0_scaled = np.linspace(scaler.output_min[0], scaler.output_max[1], GRID_POINTS)
+    x1_scaled = np.linspace(scaler.output_min[0], scaler.output_max[1], GRID_POINTS)
     meshgrid_x, meshgrid_y = np.meshgrid(x0_scaled, x1_scaled)
     model_inputs = np.column_stack([meshgrid_x.ravel(), meshgrid_y.ravel()])
+
     # TODO Optional. Add other sampling methods such as LHS (Halton is in Trieste but not needed).
     qp_orig = search_space.sample_method(model_config['init_samples'], sampling_method='sobol')
     qp_orig = qp_orig.numpy()
 
     if scaler:
         qp = scaler.inverse_transform(qp_orig)
+    else:
+        qp = qp_orig
 
-    print(qp.shape)
-    print(feature_names)
-
-    qp_json = array_to_list_of_dicts(qp_orig, feature_names)
+    qp_json = array_to_list_of_dicts(qp, feature_names)
 
     print("First batch")
     print(qp_json)
@@ -372,7 +371,6 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
 
     save_path.mkdir(parents=True, exist_ok=True)
     model_store_path.mkdir(parents=True, exist_ok=True)
-
     results_df.to_csv(csv_path, index=False)
 
     # @Note. For some tensorflow reason observations need to be float even for classification problems.
@@ -444,44 +442,35 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
                                  track_path=model_store_path
                                  )
 
+    print(bo)
     if port_flask:
-        json_message = dict()
-        json_message['data'] = results_df.to_json(orient='records')
-        json_message['plot_type'] = 'pairplot'
+        print("Flask plotting")
+        plot_flask(results_df, 'pairplot', post_url)
+        if len(feature_names) == 2:
+            #TODO plot prediction surfaces
+            mean, variance = bo.models[OBJECTIVE].predict(model_inputs)  # Predict mean and variance
+            #TODO handle this. Only if the problem is a classification problem!
+            mean = bern().invlink(mean)
 
-        response = requests.post(post_url+"/update_data", json=json_message,
-                                 headers={'Content-Type': 'application/json'}
-                                 )
-        # Check the response
-        if response.status_code == 200:
-            print(response.json())
-        else:
-            print("Error updating data:", response.status_code, response.text)
+            Z = mean.numpy().reshape(meshgrid_x.shape)
+            Z_var = variance.numpy().reshape(meshgrid_x.shape)
+            json_message = dict()
+            data = pd.DataFrame(np.column_stack([x0.squeeze(), x1.squeeze()]), columns=['x', 'y'])
 
+            json_message['z'] = Z.tolist()
+            json_message['z_var'] = Z_var.tolist()
+            json_message['data'] = data.to_json(orient='records')
+            json_message['plot_type'] = 'contour'
 
-        mean, variance = bo.models[OBJECTIVE].predict(model_inputs)  # Predict mean and variance
-        #Only if the problem is a classification problem!
-        mean = bern().invlink(mean)
-
-        Z = mean.numpy().reshape(meshgrid_x.shape)
-        Z_var = variance.numpy().reshape(meshgrid_x.shape)
-        json_message = dict()
-        data = pd.DataFrame(np.column_stack([x0.squeeze(), x1.squeeze()]), columns=['x', 'y'])
-
-        json_message['z'] = Z.tolist()
-        json_message['z_var'] = Z_var.tolist()
-        json_message['data'] = data.to_json(orient='records')
-        json_message['plot_type'] = 'contour'
-
-        response = requests.post(post_url + "/update_data",
-                                 json=json_message,
-                                 headers={'Content-Type': 'application/json'}
-                                 )
-        # Check the response
-        if response.status_code == 200:
-            print(response.json())
-        else:
-            print("Error updating data:", response.status_code, response.text)
+            response = requests.post(post_url + "/update_data",
+                                     json=json_message,
+                                     headers={'Content-Type': 'application/json'}
+                                     )
+            # Check the response
+            if response.status_code == 200:
+                print(response.json())
+            else:
+                print("Error updating data:", response.status_code, response.text)
     print("Init dataset")
     print(init_dataset)
     terminate_flag = False
@@ -512,9 +501,11 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
         qp_orig = qp_orig.numpy()
         if scaler:
             qp = scaler.inverse_transform(qp_orig)
+        else:
+            qp = qp_orig
 
         # Respond back
-        qp_json = array_to_list_of_dicts(qp_orig, feature_names)
+        qp_json = array_to_list_of_dicts(qp, feature_names)
         message = {"query_points": qp_json,
                    "terminate_flag": terminate_flag}
         print(f"Count {count}")
@@ -562,41 +553,34 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
             time.sleep(0.1)
 
         if port_flask:
-            json_message = dict()
-            json_message['data'] = new_sample.to_json(orient='records')
-            json_message['plot_type'] = 'pairplot'
-            response = requests.post(post_url + "/update_data", json=json_message)
-            # Check the response
-            if response.status_code == 200:
-                print(response.json())
-            else:
-                print("Error updating data:", response.status_code, response.text)
+            print("FLask plotting")
+            plot_flask(new_sample, 'pairplot', post_url)
 
-            mean, variance = bo.models[OBJECTIVE].predict(model_inputs)  # Predict mean and variance
-            # only if the problem is a classification problem!
+            if len(feature_names) == 2:
+                mean, variance = bo.models[OBJECTIVE].predict(model_inputs)  # Predict mean and variance
+                # only if the problem is a classification problem!
+                mean = bern().invlink(mean)
 
-            mean = bern().invlink(mean)
+                Z = mean.numpy().reshape(meshgrid_x.shape)
+                Z_var = variance.numpy().reshape(meshgrid_x.shape)
+                json_message = dict()
+                #Only the first time, to see axis in their original scale (Maybe this should be ticks, to prevent
+                # plot distortions?
+                data = pd.DataFrame(plot_inputs, columns=['x', 'y'])
+                json_message['z'] = Z.tolist()
+                json_message['z_var'] = Z_var.tolist()
+                json_message['data'] = data.to_json(orient='records')
+                json_message['plot_type'] = 'contour'
 
-            Z = mean.numpy().reshape(meshgrid_x.shape)
-            Z_var = variance.numpy().reshape(meshgrid_x.shape)
-            json_message = dict()
-            #Only the first time, to see axis in their original scale (Maybe this should be ticks, to prevent
-            # plot distortions?
-            data = pd.DataFrame(plot_inputs, columns=['x', 'y'])
-            json_message['z'] = Z.tolist()
-            json_message['z_var'] = Z_var.tolist()
-            json_message['data'] = data.to_json(orient='records')
-            json_message['plot_type'] = 'contour'
-
-            response = requests.post(post_url + "/update_data",
-                                     json=json_message,
-                                     headers={'Content-Type': 'application/json'}
-                                     )
-            # Check the response
-            if response.status_code == 200:
-                print(response.json())
-            else:
-                print("Error updating data:", response.status_code, response.text)
+                response = requests.post(post_url + "/update_data",
+                                         json=json_message,
+                                         headers={'Content-Type': 'application/json'}
+                                         )
+                # Check the response
+                if response.status_code == 200:
+                    print(response.json())
+                else:
+                    print("Error updating data:", response.status_code, response.text)
 
         tagged_output = Dataset(query_points=tf.cast(qp_orig, tf.float64),
                                 observations=tf.cast(observations, tf.float64))

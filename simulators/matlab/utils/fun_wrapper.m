@@ -33,7 +33,7 @@ function out_struct = fun_wrapper(fun, qp,  feat_struct, operator, channel, full
         end
         
         feat_struct = preprocess_struct(feat_struct);
-        
+        display(feat_struct)
         y = fun(feat_struct);
         out_struct = struct();
 
@@ -41,7 +41,7 @@ function out_struct = fun_wrapper(fun, qp,  feat_struct, operator, channel, full
         % TODO, extend what else to do here. 
         switch operator
             case 'min_global'
-                % Pass the entire signal (models AP over time)
+                % Pass the entire signal (i.e. modelling AP over time)
                 response = y.Yp(:,channel);
                 out_struct.('observations') = response;
 
@@ -61,58 +61,28 @@ function out_struct = fun_wrapper(fun, qp,  feat_struct, operator, channel, full
                 out_struct.('observations') = response;
 
             case 'nerve_block'
-                %Seen as classification atm
-                %TODO save the entire pulses.
+                %Saves the entire pulses for later verification.
                 % Verify this?
-                threshold_ap = 15;
-                ncols = size(y.Yp,2);
-                up_to = floor(ncols /2);
+                threshold_ap = -20;
+                % We will assume that leftmost electrode is the generating
+                % one, and rightmos is the blocking one. A block could
+                % occur in the other direction, but we ignore that scenario
+                % (not valid event).
+                data = y.Yp
+                max_time = max(data, [], 1);
+                b0 = max_time(1) > threshold_ap;    % First point exceeds threshold
+                b1 = max_time(end) < threshold_ap;  % Last point stays below threshold
+                effective_block = b0 && b1;
 
-                ch_1 = y.Yp(:,1:up_to); % we try to detect an AP here
-                ch_2 = y.Yp(:,up_to+1:ncols); % We try to detect a block here
-                
-                ap_generated = any(ch_1(:)>threshold_ap);
-                effective_block = ap_generated && any(ch_2(:) < threshold_ap);
                 if effective_block
                     response=1;
                 else
                     response=0;
                 end
+
                 out_struct.('full_observations') = y.fname;
                 out_struct.('observations') = response;
 
-                % figure(1)
-                % plot(ch_1)
-                % hold on
-                % plot(ch_2)
-                % hold off
-                % fig = gca;
-                % save_figure_counter(fig, './figures/nerve_block/caps/', 'caps_first_last')
-                % 
-                % figure(1)
-                % ncols = size(y.Yp,2);
-                % plot(y.Yp + (1:ncols)*40)
-                % fig = gca;
-                % save_figure_counter(fig, '../../figures/nerve_block/caps/', 'caps_all')
-
-                % if ((ch_1_max - ch_1_min) > 80) && (ch_1_max > 0)
-                %     ap_1 = 1;
-                % else
-                %     ap_1 = 0;
-                % end
-
-                % if ((ch_2_max - ch_2_min) > 80) && (ch_2_max > 0)
-                %     ap_2 = 1;
-                % else
-                %     ap_2 = 0;
-                % end
-                % 
-                % if ((ap_1 == 1) & (ap_2 == 0)) | ((ap_1 == 0) & (ap_2 == 1))
-                %     y = 1;
-                % 
-                % else
-                %     y = 0;
-                % end
                 
             otherwise
                 y_min = min(y.Yp(:,channel));

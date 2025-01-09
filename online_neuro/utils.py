@@ -116,10 +116,12 @@ class CustomMinMaxScaler:
 
         """
 
+        self.num_features = len(feature_min)
         self.feature_min = np.array(feature_min)
         self.feature_max = np.array(feature_max)
         self.feature_range = self.feature_max - self.feature_min
-        self.output_min, self.output_max = output_range
+        self.output_min = np.ones(self.num_features)*output_range[0]
+        self.output_max = np.ones(self.num_features)*output_range[1]
         self.output_range = self.output_max - self.output_min
         self.scale_ = self.output_range/self.feature_range
 
@@ -172,7 +174,7 @@ class CustomMinMaxScaler:
         if len(x.shape) != 2:
             raise ValueError("Expected 2D array for x_scaled.")
 
-        x[:, ix] = (x[:, ix] - self.output_min) / self.scale_[ix] + self.feature_min[ix]
+        x[:, ix] = (x[:, ix] - self.output_min[ix]) / self.scale_[ix] + self.feature_min[ix]
         return x
 
     def inverse_transform_mat(self, x, ix):
@@ -186,7 +188,7 @@ class CustomMinMaxScaler:
         Returns:
         - x_original: Data transformed back to the original feature range.
         """
-        x = (x - self.output_min) / self.scale_[ix] + self.feature_min[ix]
+        x = (x - self.output_min[ix]) / self.scale_[ix] + self.feature_min[ix]
         return x
 
 
@@ -339,7 +341,7 @@ def fetch_data(client_socket, size=1024):
 
 def array_to_list_of_dicts(array, column_names):
     """
-    Convert a numypy array into a list of dictionaries
+    Convert a np.array into a list of dictionaries
     @param array:
     @param column_names:
     @return:
@@ -348,3 +350,4 @@ def array_to_list_of_dicts(array, column_names):
         raise ValueError("Number of columns in array must match the number of column names.")
 
     return [dict(zip(column_names, row)) for row in array]
+

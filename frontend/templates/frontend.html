@@ -20,7 +20,7 @@
 
         /* Main container for content */
         .content {
-            margin-left: 250px; /* Width of the sidebar */
+            margin-left: 380px; /* Width of the sidebar */
             padding: 20px;
             transition: margin-left 0.3s ease;
         }
@@ -30,7 +30,7 @@
             position: fixed;
             top: 0;
             left: 0;
-            width: 250px;
+            width: 350px;
             height: 100%;
             background-color: #0e0e0e;
             padding: 15px;
@@ -160,9 +160,9 @@
             width: 0;
             overflow: hidden;
         }
-        .content-expanded {
-            margin-left: 30px;
-        }
+        /*.content-expanded {*/
+        /*    margin-left: 30px;*/
+        /*}*/
         iframe {
             display: block;
             margin: 20px auto;
@@ -196,8 +196,8 @@
             flex-direction: column;      /* Stack input rows vertically */
         }
         .inputs-container input{
-            width: 50px;
-            margin-right: 8px
+            width: 45px;
+            margin-right: 3px
         }
         .input-row{
             display: flex;
@@ -259,19 +259,20 @@
         let globalData
         let optimizableFeatures
         let fixedFeatures
+        let defaultFeatures
 
         //let sortedKeys
         function toggleSidebar() {
             const sidebar = document.querySelector('.sidebar');
             const content = document.querySelector('.content');
             sidebar.classList.toggle('sidebar-closed');
-            content.classList.toggle('content-expanded');
+            //content.classList.toggle('content-expanded');
         }
         function toggleSidebarRight() {
             const sidebar = document.querySelector('.sidebar-right');
             const content = document.querySelector('.content');
             sidebar.classList.toggle('sidebar-closed');
-            content.classList.toggle('content-expanded');
+            //content.classList.toggle('content-expanded');
         }
         function showSpinner(show) {
             document.getElementById('spinner').style.display = show ? 'block' : 'none';
@@ -441,6 +442,17 @@
             });
 
             const cleanedParameters = cleanFinalParameters(finalParameters);
+
+            Object.keys(defaultFeatures).forEach(key => {
+                // Initialize cleanedParameters[key] if it doesn't already exist
+                if (!cleanedParameters[key]) {
+                    cleanedParameters[key] = {};
+                }
+
+                // Now safely assign the value
+                cleanedParameters[key].value = defaultFeatures[key];
+            });
+
             return cleanedParameters
         }
 
@@ -458,8 +470,9 @@
                     // For other inputs, store the value
                     parameters[input.id] = input.value;
                 }
+                console.log(input.id)
+                console.log(input.value)
             });
-
             const selects = sidebarFrame.querySelectorAll('select');
             selects.forEach(select =>{
                 parameters[select.id] = select.options[select.selectedIndex].value;  // Get selected option value
@@ -471,15 +484,14 @@
 
         async function startExperiment() {
             showSpinner(true);
-
             const experimentSelector = document.getElementById('experiment');
             const selectedExperiment = experimentSelector.value;
             // Collect all inputs from the "sidebar-frame" div
             let parameters = collectInputs('sidebar-left')
-            parameters = restructureParameters(parameters)
 
-            console.log("Package sent")
-            console.log(parameters)
+            parameters = restructureParameters(parameters)
+            await createIframes()
+
             const bodyData = {
                 problem: selectedExperiment,  // Add the selected experiment
                 parameters: parameters            // Add the collected input
@@ -493,6 +505,9 @@
                     },
                     body: JSON.stringify(bodyData),
                 });
+                console.log("Package sent")
+                console.log(parameters)
+
                 const data = await response.json();
                 console.log(data);
 
@@ -517,7 +532,6 @@
             console.log(data);
             showSpinner(false);
         }
-
 
         // Function to display the selected experiment
         async function fetchExperiments() {
@@ -602,6 +616,7 @@
                 let fixPulseFeatures = Object.keys(pulseConfig).filter(
                     key => pulseConfig[key]?.user_fixed === true
                 );
+
                 optPulseFeatures = sortFeatures(optPulseFeatures, pulseConfig);
                 fixPulseFeatures = sortFeatures(fixPulseFeatures, pulseConfig);
 
@@ -628,7 +643,7 @@
             e_pos_inputs.forEach(input => {
                 input.addEventListener('change', drawPlot);
             });
-            const diameterInput = document.getElementById('param_dia');
+            const diameterInput = document.getElementById('param_dia') || document.getElementById('param_axon_diameter');
             diameterInput.addEventListener('change', drawPlot);
             await drawPlot()
         }
@@ -637,7 +652,7 @@
             const experimentSelect = document.getElementById('experiment');
             experimentSelect.addEventListener('change', addPlotListeners);
 
-            const num_electrodes = document.getElementById('num_electrodes');
+            const num_electrodes = document.getElementById('param_num_electrodes');
             if (num_electrodes){
                 num_electrodes.addEventListener('change', updateElectrodeListeners);
                 await updateElectrodeListeners()
@@ -670,7 +685,6 @@
                 const containerFixedPulse = document.getElementById('parameters-container-fixed-pulse');
                 const containerVariablePulse = document.getElementById('parameters-container-variable-pulse');
 
-
                 container.innerHTML = '';  // Clear existing parameters
                 fixedTitle.innerHTML = '';  // Clear existing parameters
                 variableTitle.innerHTML = '';  // Clear existing parameters
@@ -696,8 +710,19 @@
                 console.log("Received load")
                 console.log(globalData)
 
+                const excludeList = ['num_electrodes'];
+
                 optimizableFeatures = Object.keys(globalData).filter(key => globalData[key].optimizable ===true)
-                fixedFeatures = Object.keys(globalData).filter(key => globalData[key].user_fixed ===true)
+                fixedFeatures = Object.keys(globalData).filter(key => globalData[key].user_fixed ===true && !excludeList.includes(key))
+                // Non GUI values (see the experiment .json for optimizable/user_fixed both false.)
+                defaultFeatures = Object.fromEntries(
+                    Object.entries(globalData)
+                        .filter(([key, value]) => value.user_fixed === false && value.optimizable === false)
+                        .map(([key, value]) => [key, value.value]) // Keep only the 'value' key
+                );
+
+                console.log("Default features")
+                console.log(defaultFeatures)
                 optimizableFeatures = sortFeatures(optimizableFeatures, globalData);
                 fixedFeatures = sortFeatures(fixedFeatures, globalData);
 
@@ -749,7 +774,7 @@
 
                     const input = document.createElement('input');
                     input.type = 'number';
-                    input.id = 'num_electrodes';
+                    input.id = 'param_num_electrodes';
                     input.value = globalData.num_electrodes.value;
                     input.min = globalData.num_electrodes.min_value;
                     input.max = globalData.num_electrodes.max_value;
@@ -896,7 +921,7 @@
                 inputRow.appendChild(rowLabel); // Add the label first
                 inputRow.appendChild(booleanInput); // Add the checkbox input
             } else {
-                rowLabel.innerText = columns > 1 && index !== null ? `e_${index + 1}` : (index === null ? 'value' : `e_${index}`);
+                rowLabel.innerText = columns > 1 && index !== null ? `e_${index + 1}` : (index === null ? '' : `e_${index}`);
 
                 // Create numeric input for other types
                 const valueInput = document.createElement('input');
@@ -1041,7 +1066,7 @@
 
             if (append==false){
                 container.innerHTML = '';  // Clear existing parameters
-                const numColumnsInput = document.getElementById('num_electrodes');
+                const numColumnsInput = document.getElementById('param_num_electrodes');
                 numColumnsValue = numColumnsInput ? numColumnsInput.value : 1;
             }else{
                 numColumnsValue = append
@@ -1086,13 +1111,13 @@
             let numColumnsValue;
             if (append==false){
                 container.innerHTML = '';  // Clear existing parameters
-                const numColumnsInput = document.getElementById('num_electrodes');
+                const numColumnsInput = document.getElementById('param_num_electrodes');
                 numColumnsValue = numColumnsInput ? numColumnsInput.value : 1;
             }else{
                 numColumnsValue = append
             }
 
-            const numColumnsInput = document.getElementById('num_electrodes');
+            const numColumnsInput = document.getElementById('param_num_electrodes');
             const numColumnsValueVar = numColumnsInput ? numColumnsInput.value : 1;
 
             const types = {
@@ -1199,7 +1224,6 @@
                     }
 
                 }
-
                 parameterContainer.appendChild(label);
                 parameterContainer.appendChild(toggleContainer); // Add the toggle checkbox
                 parameterContainer.appendChild(inputsContainer);
@@ -1208,16 +1232,26 @@
         }
         // Function to draw the plot
         function drawPlot() {
-            const num_el_container = document.getElementById('num_electrodes')
+            const num_el_container = document.getElementById('param_num_electrodes')
             if (!num_el_container){ //There are no electrodes in the problem, this plot is not needed.
                 return
             }
             const num_el = parseInt(num_el_container.value, 10)
             const centerX = 110
             const canvas = document.getElementById('plotCanvas')
-            const height = parseFloat(document.getElementById('param_dia').value)
-            const dims = globalData['e_pos']['dimensions']
 
+            let height
+            if (globalData['name'].startsWith("axonsim")){
+                height = parseFloat(document.getElementById('param_dia').value)
+            }
+            else if (globalData['name'].startsWith("cajal")){
+                height = parseFloat(document.getElementById('param_axon_diameter').value)
+            }
+            else{
+                console.error("The input is not valid")
+            }
+
+            const dims = globalData['e_pos']['dimensions']
             const ctx = canvas.getContext('2d');
             // Clear the canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -1253,14 +1287,14 @@
 
         }
         function draw3DPlot() {
-            const num_el_container = document.getElementById('num_electrodes')
+            const num_el_container = document.getElementById('param_num_electrodes')
             if (!num_el_container) { // There are no electrodes in the problem, this plot is not needed.
                 return
             }
             const num_el = parseInt(num_el_container.value, 10)
             const centerX = 110
             const canvas = document.getElementById('plotCanvas')
-            const height = parseFloat(document.getElementById('param_dia').value)
+            const height = parseFloat(document.getElementById('param_axon_diameter').value)
             const dims = globalData['e_pos']['dimensions']
 
             // Create the scene and camera
@@ -1340,9 +1374,44 @@
         jsonInputs.forEach(input => {
             input.addEventListener('input', updateJSONDisplay);
         });
-
-
     </script>
+
+    <script>
+        // Function to create and append iFrames
+        async function createIframes() {
+            await removeIframes()
+            const iframeContainer = document.getElementById('iframeContainer');
+
+            // Example list of iFrame configurations
+            const iframeConfigs = [
+                { id: 'mainPlot', src: 'http://localhost:{{ port }}/plot?type=plotly' },
+                { id: 'scatterPlot', src: 'http://localhost:{{ port }}/plot?type=contour' }
+            ];
+
+            iframeConfigs.forEach(config => {
+                if (!document.getElementById(config.id)) {
+                    const iframe = document.createElement('iframe');
+                    iframe.id = config.id;
+                    iframe.src = config.src;
+                    iframe.style.width = '100%';
+                    //iframe.style.height = '500px';
+                    iframeContainer.appendChild(iframe);
+                }
+            });
+        }
+
+        // Function to remove (or hide) iFrames
+        function removeIframes() {
+            const iframeContainer = document.getElementById('iframeContainer');
+            const existingIframes = iframeContainer.querySelectorAll('iframe');
+            existingIframes.forEach(iframe => {
+                iframe.remove(); // Alternatively, use iframe.style.display = 'none'; to hide instead of removing
+            });
+        }
+        // Attach event listeners to buttons
+        // document.getElementById('startButton').addEventListener('click', createIframes);
+        // document.getElementById('stopButton').addEventListener('click', removeIframes);
+  </script>
 
 </head>
 <body>
@@ -1376,9 +1445,9 @@
 
         <div class="experiments-box">
 
-        <button onclick="startExperiment()">Start Experiment</button>
-        <button onclick="checkStatus()">Check Status</button>
-        <button onclick="stopExperiment()">Stop Experiment</button>
+        <button id="startExpermient" onclick="startExperiment()">Start Experiment</button>
+        <button id="checkStatus" onclick="checkStatus()">Check Status</button>
+        <button id="stopExpermient" onclick="stopExperiment()">Stop Experiment</button>
 
         </div>
         <canvas id="plotCanvas" width="150" height="150"></canvas>
@@ -1388,24 +1457,9 @@
     </div>
 
     <!-- Main content -->
-    <div class="content">
-        <h1>Live Data Plots</h1>
-        <!-- Loading spinner -->
-        <div id="spinner" class="spinner"></div>
-        <!-- Embedded plot in iframe -->
-        <iframe
-            id="mainPlot"
-            src="http://localhost:{{ port }}/plot?type=plotly"
-            scrolling="no">
-        </iframe>
-        <iframe
-            id="scatterPlot"
-            src="http://localhost:{{ port }}/plot?type=contour"
-            scrolling="no">
-        </iframe>
+    <div id="spinner" class="spinner"></div>
 
-    </div>
-
+    <div class="content" id="iframeContainer"></div>
     <div class="sidebar-right" id="sidebar-model">
         <div class="header">
             <h2>Problem config</h2>

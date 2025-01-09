@@ -1,6 +1,4 @@
 function feat_struct = preprocess_struct(feat_struct)
-    % TODO this could be done in the loading of defaults rather than
-    % here
     funTypes = feat_struct.fun_type;
     j = 1;
     k = 1;
@@ -10,6 +8,8 @@ function feat_struct = preprocess_struct(feat_struct)
     original_pulse_dur = feat_struct.pulse_dur;
     feat_struct.I = zeros(numel(funTypes), 1);
     feat_struct.pulse_dur = zeros(numel(funTypes), 1);
+    % TODO Update this later Currently only using single electrodes
+    feat_struct.e_type = repmat("single", numel(funTypes), 1);
 
     for i = 1:numel(funTypes)
         currentType = feat_struct.fun_type(i);

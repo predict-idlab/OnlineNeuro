@@ -17,9 +17,9 @@
   "e_pos":
       { "optimizable": false,
         "user_fixed": true,
-        "value":[-1, 1],
-        "min_value" : [-3, -3],
-        "max_value" : [3, 3],
+        "value":[0, 0],
+        "min_value" : [-6, -6],
+        "max_value" : [6, 6],
         "dimensions" : ["x", "y"],
         "type": "array"
     },
@@ -58,7 +58,7 @@
   "sim_dur":
     { "optimizable": false,
       "user_fixed" : false,
-      "value":5.0,
+      "value": 7.0,
       "type": "float"
     },
   "e_sep" :
