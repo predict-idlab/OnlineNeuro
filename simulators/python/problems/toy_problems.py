@@ -3,7 +3,7 @@ import numpy as np
 # Closely equivalent problems to the ones in Matlab, but here the python versions of them.
 
 
-def circle(x0, x1, radius=0.5, noise=0, center=np.array([0, 0])):
+def circle(x0, x1, radius=0.5, noise=0, center=np.array([0, 0]), *args, **kwargs):
     """
     Given a center, radius and noise, define whether a given coordinate (x0, x1) is in or out of a circle.
 
@@ -16,8 +16,14 @@ def circle(x0, x1, radius=0.5, noise=0, center=np.array([0, 0])):
     @param center: [x, y] coordinates for the circle center.
     @return:
     """
-    x0 = np.atleast_2d(np.array(x0)).reshape(-1,1)
-    x1 = np.atleast_2d(np.array(x1)).reshape(-1,1)
+    print(kwargs)
+    if isinstance(noise, list):
+        noise = np.array(noise)
+    if isinstance(center, list):
+        center = np.array(center)
+
+    x0 = np.atleast_2d(np.array(x0)).reshape(-1, 1)
+    x1 = np.atleast_2d(np.array(x1)).reshape(-1, 1)
 
     x = np.hstack([x0, x1])
 
@@ -26,14 +32,22 @@ def circle(x0, x1, radius=0.5, noise=0, center=np.array([0, 0])):
     radii = np.linalg.norm(x_centered, axis=1)
 
     # Add noise to the distance if required
-    if noise > 0:
-        noise_vector = noise * np.random.randn(len(radii))
-        radii = radii + noise_vector
+    if isinstance(noise, (int, float)):
+        if noise > 0:
+            noise_vector = noise * np.random.randn(len(radii))
+            radii = radii + noise_vector
+    elif isinstance(noise, np.ndarray):
+        if np.any(noise > 0):
+            noise_vector = noise * np.random.randn(len(radii))
+            radii = radii + noise_vector
 
+    print(radii)
+    print(radius)
     # Return 1 if the point is outside the radius, otherwise return 0 (opposite of original Python function)
     return (radii > radius).astype(int)
 
-def multiple_circles(x0, x1, radius, noise, center):
+
+def multiple_circles(x0, x1, radius, noise, center, *args, **kwargs):
     """
     Parameters:
     x (np.ndarray): Points to be evaluated, shape (n_points, 2).
@@ -57,7 +71,7 @@ def multiple_circles(x0, x1, radius, noise, center):
     return binary_results
 
 
-def hypersphere(points, radius, noise, center):
+def hypersphere(points, radius, noise, center, *args, **kwargs):
     """
     @param points: points to evaluate
     @param radius: radius of the hypersphere
@@ -70,7 +84,7 @@ def hypersphere(points, radius, noise, center):
     return (distances <= noisy_radius).astype(int)
 
 
-def multiple_hyperspheres(points, radii, noises, centers):
+def multiple_hyperspheres(points, radii, noises, centers, *args, **kwargs):
     """
     @param points: Points to be evaluated, shape (n_points, n_dimensions).
     @param radii: List of radii for the hyperspheres.
@@ -90,7 +104,7 @@ def multiple_hyperspheres(points, radii, noises, centers):
 
     return binary_results
 
-def log_single_var(x, noise=0, target_loc=1):
+def log_single_var(x, noise=0, target_loc=1, *args, **kwargs):
     """
     A one input logistic regression problem with noise.
     Noise is sampled each call.
@@ -105,7 +119,7 @@ def log_single_var(x, noise=0, target_loc=1):
     return tf.cast(tf.where(x > target_loc, 1, 0), tf.float64)
 
 
-def toy_feasbility(x, ymax=1, noise=0):
+def toy_feasbility(x, ymax=1, noise=0, *args, **kwargs):
     """
     TODO extend it to have noise
 
@@ -120,7 +134,7 @@ def toy_feasbility(x, ymax=1, noise=0):
     return term1 + term2 + term3 + 1 + 0.3
 
 
-def vlmop2(x):
+def vlmop2(x, *args, **kwargs):
     transl = 1/np.sqrt(2)
     # Compute part1 and part2
     part1 = (x[:, 0] - transl) ** 2 + (x[:, 1] - transl) ** 2
@@ -133,6 +147,6 @@ def vlmop2(x):
     return [y0, y1]
 
 
-def rosenbrock(x):
+def rosenbrock(x0, x1, *args, **kwargs):
     #TODO implement
     return NotImplementedError
