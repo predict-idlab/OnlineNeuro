@@ -52,12 +52,11 @@ function [eval_fun, eval_dict] = axon_problem(problem_setting, varargin)
     eval_fun = @axonsim_call;
     
     fields = fieldnames(experiment_params);
-
     eval_dict = struct();
 
     %This is just to allow the code to be debugged. In general num of
     %electrodes needs to be specified!
-    array_size = experiment_params.('num_electrodes').value;
+    array_size = experiment_params.('num_electrodes');
 
     if isstring(array_size)
         array_size = str2double(array_size);
@@ -67,16 +66,8 @@ function [eval_fun, eval_dict] = axon_problem(problem_setting, varargin)
         % Fixed and included in the experiment_params
         if isfield(experiment_params.(fields{i}), 'value')
             eval_dict.(fields{i}) = experiment_params.(fields{i}).value;
-        else
-            %Placeholders. Non fixed values are replaced later.
-            if isfield(experiment_params, fields{i})
-                %type = experiment_params.(fields{i}).type;
-                value = experiment_params.(fields{i}).min_value;
-            else
-                error("Parameters not specified for variable %s",fields{i})
-            end
-
-            eval_dict.(fields{i}) = value;
+            % If it doesn't contain a value then is not part of the problem requirements i.e. booleans passed from the GUI
+            %eval_dict.(fields{i}) = value;
         end
     end
 end

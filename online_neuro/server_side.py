@@ -102,7 +102,8 @@ def start_connection(connection_config, problem_config):
         matlab_payload['connection_config'] = connection_config.copy()
         matlab_payload['problem_name'] = problem_config['experiment']['name']
         matlab_payload['problem_type'] = problem_config['experiment']['type']
-        omit_keys = ['name', 'type']
+
+        omit_keys = ['experiment']
         other_keys = [k for k in problem_config.keys() if k not in omit_keys]
         if len(other_keys) > 0:
             matlab_payload['problem_config'] = {k: problem_config[k] for k in other_keys}
@@ -125,7 +126,7 @@ def start_connection(connection_config, problem_config):
         python_payload['problem_name'] = problem_config['experiment']['name']
         python_payload['problem_type'] = problem_config['experiment']['type']
 
-        omit_keys = ['name', 'type']
+        omit_keys = ['experiment']
         other_keys = [k for k in problem_config.keys() if k not in omit_keys]
         if len(other_keys) > 0:
             python_payload['problem_config'] = {k: problem_config[k] for k in other_keys}
@@ -206,27 +207,33 @@ def define_scaler_search_space(problem_config,
     @return: instance : SearchSpacePipeline
     """
     # TODO extend to handle categorical and boolean features (i.e. they have to bypass the feature normalization
-    filtered_feats = [k for k in problem_config.keys() if (('min_value' in problem_config[k]) and ('max_value' in problem_config[k]))]
+    fixed_features = {}
+    variable_features = {}
 
     lower_bound = []
     upper_bound = []
-    feature_names = []
 
-    feature_map = {}
-    counter = 0
-    for i, key in enumerate(filtered_feats):
-
-        feature_map[key] = np.arange(counter, counter + len(problem_config[key]['min_value']))
-        counter += len(problem_config[key]['min_value'])
-
-        if len(problem_config[key]['min_value']) == 1:
-            feature_names.append(key)
+    for k, v in problem_config.items():
+        if not isinstance(problem_config[k], dict):
+            fixed_features[k] = v
         else:
-            for e in range(len(problem_config[key]['min_value'])):
-                feature_names.append(f"{key}_{e+1}")
-        for j, (min_v, max_v) in enumerate(zip(problem_config[key]['min_value'], problem_config[key]['max_value'])):
-            lower_bound.append(min_v)
-            upper_bound.append(max_v)
+            if 'min_value' in problem_config[k] and 'max_value' in problem_config[k]:
+                for ix in range(len(problem_config[k]['value'])):
+                    if len(problem_config[k]['value']) == 1:
+                        feat_name = k
+                    else:
+                        feat_name = f"{k}_{ix + 1}"
+                    if problem_config[k]['min_value'][ix] == problem_config[k]['max_value'][ix]:
+                        fixed_features[feat_name] = v
+                    else:
+                        variable_features[feat_name] = v
+                        lower_bound.append(problem_config[k]['min_value'][ix])
+                        upper_bound.append(problem_config[k]['max_value'][ix])
+
+            elif 'value' in problem_config[k]:
+                fixed_features[k] = v
+            else:
+                warnings.warn(f"Feature: {k} does not have a valid formatting, skipping")
 
     if scale_inputs:
         num_features = len(lower_bound)
@@ -249,7 +256,9 @@ def define_scaler_search_space(problem_config,
                                  upper=upper_bound)
         scaler = None
 
-    return search_space, scaler, feature_names
+    feat_dict = {'fixed_features': fixed_features,
+                 'variable_features': variable_features}
+    return search_space, scaler, feat_dict
 
 
 def plot_flask(sample, plot_type, post_url):
@@ -303,24 +312,29 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
 
     print("Loaded problem config")
     print(problem_config)
-    search_space, scaler, feature_names = define_scaler_search_space(problem_config=problem_config,
+    search_space, scaler, feat_dict = define_scaler_search_space(problem_config=problem_config,
                                                                      scale_inputs=model_config["scale_inputs"])
 
-    fixed_features = {k: v for k, v in problem_config.items() if ('value' in problem_config[k])}
+    feature_names = list(feat_dict['variable_features'].keys())
+    fixed_features = feat_dict['fixed_features']
+
     print("Fixed features")
     print(fixed_features)
+    print("Variable features")
+    print(feature_names)
     msg = json.dumps({"Fixed_features": fixed_features}) + "\n"
     client_socket.sendall(msg.encode())
 
-    x0 = np.linspace(scaler.feature_min[0], scaler.feature_max[0], GRID_POINTS)
-    x1 = np.linspace(scaler.feature_min[1], scaler.feature_max[1], GRID_POINTS)
-    meshgrid_x, meshgrid_y = np.meshgrid(x0, x1)
-    plot_inputs = np.column_stack([meshgrid_x.ravel(), meshgrid_y.ravel()])
+    if len(feature_names) == 2:
+        x0 = np.linspace(scaler.feature_min[0], scaler.feature_max[0], GRID_POINTS)
+        x1 = np.linspace(scaler.feature_min[1], scaler.feature_max[1], GRID_POINTS)
+        meshgrid_x, meshgrid_y = np.meshgrid(x0, x1)
+        plot_inputs = np.column_stack([meshgrid_x.ravel(), meshgrid_y.ravel()])
 
-    x0_scaled = np.linspace(scaler.output_min[0], scaler.output_max[1], GRID_POINTS)
-    x1_scaled = np.linspace(scaler.output_min[0], scaler.output_max[1], GRID_POINTS)
-    meshgrid_x, meshgrid_y = np.meshgrid(x0_scaled, x1_scaled)
-    model_inputs = np.column_stack([meshgrid_x.ravel(), meshgrid_y.ravel()])
+        x0_scaled = np.linspace(scaler.output_min[0], scaler.output_max[1], GRID_POINTS)
+        x1_scaled = np.linspace(scaler.output_min[0], scaler.output_max[1], GRID_POINTS)
+        meshgrid_x, meshgrid_y = np.meshgrid(x0_scaled, x1_scaled)
+        model_inputs = np.column_stack([meshgrid_x.ravel(), meshgrid_y.ravel()])
 
     # TODO Optional. Add other sampling methods such as LHS (Halton is in Trieste but not needed).
     qp_orig = search_space.sample_method(model_config['init_samples'], sampling_method='sobol')
@@ -341,11 +355,18 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     response_json = json.dumps(response) + "\n"
 
     client_socket.sendall(response_json.encode())
-    received_data = fetch_data(client_socket, size=package_size)
+    received_json = fetch_data(client_socket, size=package_size)
 
-    print("First data package:", received_data)
-    received_data = pd.DataFrame(received_data)
-    observations = received_data['observations'].values
+    if isinstance(received_json, list):
+        if isinstance(received_json[0], dict):
+            pass
+        else:
+            print(received_json)
+            raise Exception("Expected dict!")
+    elif isinstance(received_json, dict):
+        received_json = [received_json]
+
+    observations = [r['observations'] for r in received_json]
 
     # TODO check if this is correct for MOO
     if isinstance(observations[0], list):
@@ -442,14 +463,24 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
                                  track_path=model_store_path
                                  )
 
-    print(bo)
     if port_flask:
-        print("Flask plotting")
         plot_flask(results_df, 'pairplot', post_url)
+
+        if 'time' in received_json[0]:
+            #Only sending the last case
+            pulse_data = pd.DataFrame()
+            pulse_data['pulse_a'] = received_json[-1]['pulse_a']
+            pulse_data['pulse_b'] = received_json[-1]['pulse_b']
+            pulse_data['time'] = received_json[-1]['time']
+
+            plot_flask(pulse_data, 'pulses', post_url)
+
         if len(feature_names) == 2:
-            #TODO plot prediction surfaces
+            # TODO handle this. Only if the problem is a classification problem!
+            # TODO this plot will be used seldomly, so it may make sense to load in front-end only if it will be used.
+
             mean, variance = bo.models[OBJECTIVE].predict(model_inputs)  # Predict mean and variance
-            #TODO handle this. Only if the problem is a classification problem!
+
             mean = bern().invlink(mean)
 
             Z = mean.numpy().reshape(meshgrid_x.shape)
@@ -467,10 +498,9 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
                                      headers={'Content-Type': 'application/json'}
                                      )
             # Check the response
-            if response.status_code == 200:
-                print(response.json())
-            else:
-                print("Error updating data:", response.status_code, response.text)
+            if response.status_code != 200:
+                warnings.warn("Error updating data:", response.status_code, response.text)
+
     print("Init dataset")
     print(init_dataset)
     terminate_flag = False
@@ -484,7 +514,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     # TODO, plotting functions for Pareto
     # TODO, plotting functions for 3D search shapes (see Notebook in NeuroAAA repo)
 
-    with_plots = True
+    with_plots = False
     count = 0
     exit_message = None
     # TODO, use this ?
@@ -508,21 +538,29 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
         qp_json = array_to_list_of_dicts(qp, feature_names)
         message = {"query_points": qp_json,
                    "terminate_flag": terminate_flag}
+
         print(f"Count {count}")
-        print(message)
         response_json = json.dumps(message) + "\n"
         client_socket.sendall(response_json.encode())
 
-        received_data = fetch_data(client_socket, size=package_size)
+        received_json = fetch_data(client_socket, size=package_size)
+        print("Received")
+        print(received_json)
+
+        if isinstance(received_json, list):
+            if isinstance(received_json[0], dict):
+                pass
+            else:
+                raise Exception("Expected dict!")
+        elif isinstance(received_json, dict):
+            received_json = [received_json]
 
         # Check if termination signal received from simulator
-        if "terminate_flag" in received_data:
-            terminate_flag = received_data['terminate_flag']
+        if "terminate_flag" in received_json[0]:
+            terminate_flag = received_json['terminate_flag']
             exit_message = "Termination signal received from MATLAB \n Saving results... \n Closing connection..."
 
-        # If the result is a string, parse it again to get a dictionary
-        observations = [r['observations'] for r in received_data]
-        observations = np.array(observations)
+        observations = [r['observations'] for r in received_json]
         observations = np.atleast_2d(observations).T
 
         # Save results
@@ -535,7 +573,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
             new_sample[response_cols] = observations
 
         results_df = pd.concat([results_df, new_sample], ignore_index=True)
-        print(results_df)
+
         # TODO, a line by line write to csv is more efficient than rewriting the whole file
         results_df.to_csv(csv_path, index=False)
 
@@ -553,9 +591,14 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
             time.sleep(0.1)
 
         if port_flask:
-            print("FLask plotting")
             plot_flask(new_sample, 'pairplot', post_url)
+            if 'time' in received_json[0]:
+                pulse_data = pd.DataFrame()
+                pulse_data['pulse_a'] = received_json[-1]['pulse_a']
+                pulse_data['pulse_b'] = received_json[-1]['pulse_b']
+                pulse_data['time'] = received_json[-1]['time']
 
+                plot_flask(pulse_data, 'pulses', post_url)
             if len(feature_names) == 2:
                 mean, variance = bo.models[OBJECTIVE].predict(model_inputs)  # Predict mean and variance
                 # only if the problem is a classification problem!

@@ -365,7 +365,7 @@ def plot_pareto_2d(model, search_space, scaler, initial_data, test_data=None, sa
     plt.close()
 
 
-def plot_nerve_block(model, initial_data, search_space_pipe, sampled_data=None, plot_ground_truth=None,
+def plot_nerve_block(model, initial_data, search_space=None, scaler=None, sampled_data=None, plot_ground_truth=None,
                      ground_truth_function=None, save_dir=None, count=0):
     """
     Nerve_block is a binary output but has more inputs.
@@ -376,7 +376,7 @@ def plot_nerve_block(model, initial_data, search_space_pipe, sampled_data=None, 
 
     @param model:
     @param initial_data:
-    @param search_space_pipe:
+    @param search_space:
     @param sampled_data:
     @param plot_ground_truth:
     @param ground_truth_function:
@@ -387,9 +387,6 @@ def plot_nerve_block(model, initial_data, search_space_pipe, sampled_data=None, 
 
     if plot_ground_truth:
         assert callable(ground_truth_function)
-
-    search_space = search_space_pipe.search_space
-    scaler = search_space_pipe.scaler
 
     num_vars = len(search_space._lower.numpy())
     counts = np.arange(num_vars)

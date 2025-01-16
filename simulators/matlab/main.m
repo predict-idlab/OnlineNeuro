@@ -65,9 +65,6 @@ function main(json_data)
             [eval_fun, eval_dict] = rosenbrock_problem('plot',true);
     end
 
-    %    exp_summary = struct('features', eval_dict, ...
-    %                        'constraints', '');
-
     receivedData = readData(tcpipClient);
     fieldnames_fixed = fieldnames(receivedData.("Fixed_features"));
     fieldnames_trainable = fieldnames(eval_dict);

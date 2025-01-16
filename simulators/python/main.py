@@ -24,7 +24,7 @@ problem_dict = {
 VECTORIZED_FUNS = [circle, rosenbrock, vlmop2]
 
 
-def send_data(fvalues, tcpip_client, size_lim=1024):
+def send_data(fvalues, tcpip_client, size_lim=65536):
     """
     TODO current function is meant to only send the output.
          This needs to be changed in case we want to send additional data (dict with multiple entries)
@@ -34,23 +34,30 @@ def send_data(fvalues, tcpip_client, size_lim=1024):
     @param size_lim:
     @return:
     """
-    json_data = json.dumps({'observations': fvalues})
+
+    json_data = json.dumps({'full_data': fvalues})
+    print("Data to be sent")
 
     if len(json_data) > size_lim:
         print("Breaking down message")
-        pckgs = len(json_data) // size_lim + 1
-        row_per_pckg = len(fvalues) // pckgs
+        json_data = json.dumps({'full_data': fvalues[0]})
 
-        for i in range(pckgs):
-            start_ix = i * row_per_pckg
-            end_ix = min((i + 1) * row_per_pckg, len(fvalues))
-            chunk = {'data': fvalues[start_ix:end_ix],
-                     'tot_pckgs': pckgs
-                     }
-            response = write_data(tcpip_client, chunk)
+        if len(json_data) < size_lim:
+            pckgs = len(fvalues)
+            for i in range(pckgs):
+                print(f"Package {i}/{pckgs}")
+                chunk = {'data': fvalues[i],
+                         'tot_pckgs': pckgs,
+                         'current_pckg': i  # Track which chunk this is
+                         }
+                response = write_data(tcpip_client, chunk)
+        else:
+            raise NotImplementedError("Package needs to be transmitted in another way (too large for socket)")
+
     else:
         response = write_data(tcpip_client, json_data)
 
+    print("Message sent")
     return response
 
 
@@ -74,12 +81,12 @@ def evaluate_function(query_points, fixed_features, eval_fun, problem_name, mode
             qp_dict[key] = [value] * len(query_points)
 
         fvalues = fun_wrapper(eval_fun, qp=qp_dict, problem_name=problem_name, mode=mode)
-        fvalues = fvalues.tolist()
 
     else:
         num_points = len(query_points)
         fvalues = []
         for i in range(num_points):
+            print(f"Exp {i}/{num_points}")
             qp = query_points[i]
             qp_with_fixed = {**qp, **fixed_features}
             result = fun_wrapper(eval_fun, qp=qp_with_fixed, problem_name=problem_name, mode=mode)
@@ -88,7 +95,7 @@ def evaluate_function(query_points, fixed_features, eval_fun, problem_name, mode
     return fvalues
 
 
-def read_data(client_socket, timeout=30):
+def read_data(client_socket, timeout=300):
     """
     @param client_socket:
     @param timeout:
@@ -122,11 +129,11 @@ def read_data(client_socket, timeout=30):
 
                 # Retain last part as buffer in case it's a partial message
                 buffer = messages[-1]
+
     raise TimeoutError("Timeout: No complete JSON message received.")
 
 
 def write_data(client_socket, data):
-
     json_data = json.dumps(data, ensure_ascii=True).encode('utf-8')
     try:
         client_socket.sendall(json_data)
@@ -194,15 +201,13 @@ def main(problem_name, problem_type, problem_config, connection_config, *args, *
         eval_fun = problem_dict[problem_name]
     else:
         NotImplementedError(f"Problem {problem_name} not implemented.")
-        
+
     received_data = read_data(tcpip_client)
-    fixed_features = {k: v['value'] for k, v in received_data['Fixed_features'].items()}
+    fixed_features = received_data['Fixed_features']
 
     received_data = read_data(tcpip_client)
     query_points = received_data['query_points']
 
-    print("First QPS")
-    print(query_points)
     operator = None
     # TODO some calls need to be made point by point, but when possible, is best to use the vector form
 
@@ -210,12 +215,12 @@ def main(problem_name, problem_type, problem_config, connection_config, *args, *
                                 eval_fun=eval_fun,
                                 problem_name=problem_name, mode=operator)
 
-    print("first responses")
-    print(fvalues)
+    print(f"first responses {len(fvalues)}")
 
     response = send_data(fvalues=fvalues,
                          tcpip_client=tcpip_client)
     print(response)
+
     print("Main side: Entering loop now")
     terminate_flag = False
 
@@ -234,7 +239,7 @@ def main(problem_name, problem_type, problem_config, connection_config, *args, *
             response = send_data(fvalues=fvalues,
                                  tcpip_client=tcpip_client)
 
-            print(f"response , {response}")
+            print(f"response {response}")
 
     tcpip_client.close()
 

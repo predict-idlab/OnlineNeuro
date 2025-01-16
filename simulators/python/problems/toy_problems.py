@@ -41,10 +41,11 @@ def circle(x0, x1, radius=0.5, noise=0, center=np.array([0, 0]), *args, **kwargs
             noise_vector = noise * np.random.randn(len(radii))
             radii = radii + noise_vector
 
-    print(radii)
-    print(radius)
     # Return 1 if the point is outside the radius, otherwise return 0 (opposite of original Python function)
-    return (radii > radius).astype(int)
+    result = (radii > radius).astype(int).tolist()
+
+    obs = {'observations': result}
+    return obs
 
 
 def multiple_circles(x0, x1, radius, noise, center, *args, **kwargs):
@@ -67,8 +68,10 @@ def multiple_circles(x0, x1, radius, noise, center, *args, **kwargs):
     # Sum the results from all circles and return binary results
     combined_results = np.sum(results, axis=0) - (len(radius) - 1)
     binary_results = (combined_results > 0).astype(int)
+    binary_results = binary_results.tolist()
+    obs = {'observations': binary_results}
 
-    return binary_results
+    return obs
 
 
 def hypersphere(points, radius, noise, center, *args, **kwargs):
@@ -81,7 +84,10 @@ def hypersphere(points, radius, noise, center, *args, **kwargs):
     """
     distances = np.linalg.norm(points - center, axis=1)
     noisy_radius = radius + np.random.uniform(-noise, noise, size=distances.shape)
-    return (distances <= noisy_radius).astype(int)
+    result = (distances <= noisy_radius).astype(int)
+    result = result.tolist()
+    obs = {'observations': result}
+    return obs
 
 
 def multiple_hyperspheres(points, radii, noises, centers, *args, **kwargs):
@@ -101,8 +107,9 @@ def multiple_hyperspheres(points, radii, noises, centers, *args, **kwargs):
     # Sum the results from all hyperspheres and return binary results
     combined_results = np.sum(results, axis=0) - (len(radii) - 1)
     binary_results = (combined_results > 0).astype(int)
-
-    return binary_results
+    binary_results = binary_results.tolist()
+    obs = {'observations': binary_results}
+    return obs
 
 def log_single_var(x, noise=0, target_loc=1, *args, **kwargs):
     """
@@ -116,7 +123,10 @@ def log_single_var(x, noise=0, target_loc=1, *args, **kwargs):
     """
     if noise > 0:
         x += 0.2 * noise * np.random.normal(size=len(x))
-    return tf.cast(tf.where(x > target_loc, 1, 0), tf.float64)
+    result = np.where(x > target_loc, 1, 0)
+    result = result.tolist()
+    obs = {'observations': result}
+    return obs
 
 
 def toy_feasbility(x, ymax=1, noise=0, *args, **kwargs):
@@ -131,7 +141,9 @@ def toy_feasbility(x, ymax=1, noise=0, *args, **kwargs):
     term1 = -0.001 / (0.01 * ((ymax - 5 / (4 * np.pi ** 2) * x ** 2 + (5 / np.pi) * x - 2) ** 2))
     term2 = 0.04 * (1 - 1 / (5 * np.pi)) * np.cos(x) * np.cos(ymax)
     term3 = 0.05 * np.log(x ** 2 + ymax ** 2 + 1)
-    return term1 + term2 + term3 + 1 + 0.3
+    result = term1 + term2 + term3 + 1 + 0.3
+    result = {'observations': [result]}
+    return result
 
 
 def vlmop2(x, *args, **kwargs):
@@ -144,7 +156,9 @@ def vlmop2(x, *args, **kwargs):
     y0 = 1 - np.exp(-part1)
     y1 = 1 - np.exp(-part2)
 
-    return [y0, y1]
+    result = {'observations': [y0.tolist(), y1.tolist()]}
+
+    return result
 
 
 def rosenbrock(x0, x1, *args, **kwargs):

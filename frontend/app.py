@@ -1,22 +1,18 @@
 # frontend/app.py
 import json
-import os
-import io
-
-import numpy as np
 from common.utils import load_json
 from flask import Flask, request, jsonify, render_template
 import threading
 import time
 import subprocess
 import atexit
-import requests
 import argparse
 import traceback
 import pandas as pd
-from frontend.components.config_forms import config_problem, config_function
+from frontend.components.config_forms import config_problem, config_function, python_experiments, experiments_types, matlab_experiments
 from flask_socketio import SocketIO
 from pathlib import Path
+import warnings
 
 app = Flask(__name__)
 socketio = SocketIO(app, async_mode='eventlet')  # Initialize SocketIO
@@ -30,28 +26,6 @@ cache = None
 
 process_lock = threading.Lock()  # Lock to ensure thread safety
 cache_lock = threading.Lock()
-
-matlab_experiments = {"Axonsim (nerve block)": "axonsim_nerve_block",
-                       "Axonsim (regression)": "axonsim_regression",
-                       "Toy Regression": "rose_regression",
-                       "Toy Classification": "circle_classification",
-                       "Toy VLMOP2": "vlmop2"
-                      }
-
-experiments_types = {
-    "axonsim_nerve_block": "classification",
-    "cajal_ap_block":"classification",
-    "axonsim_regression": "regression",
-    "rose_regression": "regression",
-    "circle_classification": "classification",
-    "vlmop2": "moo"
-}
-
-python_experiments = {"Toy classification (Python)": "circle_classification",
-                      #"Toy regression (Python)": "rose_regression",
-                      "Toy MOO (Python)": "vlmop2",
-                      "Cajal nerve block": "cajal_ap_block"}
-
 
 experiment_list = list(matlab_experiments.keys()) + list(python_experiments.keys())
 
@@ -119,7 +93,6 @@ def get_fun_parameters():
 
 @app.route('/get_parameters', methods=['POST'])
 def get_parameters():
-
     data = request.json
     experiment = data.get('experiment')
     if not experiment:
@@ -131,7 +104,6 @@ def get_parameters():
         exp_params = config_problem(python_experiments[experiment])
     else:
         raise NotImplementedError
-
     return jsonify(exp_params)
 
 
@@ -146,8 +118,27 @@ def plot():
     # Choose the template based on the plot type
     if plot_type == 'contour':
         return render_template('plot_contour.html', port=port)
-    else:
+    elif plot_type == 'pulses':
+        return render_template('plot_pulses.html', port=port)
+    elif plot_type == 'plotly':
         return render_template('plotly.html', port=port)
+    else:
+        warnings.warn(f"Not a valid plot {plot_type}")
+        pass
+
+
+def collapse_lists(data):
+    if not isinstance(data, dict):
+        raise ValueError("Input must be a dictionary")
+
+    result = {}
+    for key, value in data.items():
+        if isinstance(value, list):
+            result[key] = value[0] if len(value) == 1 else value
+        else:
+            result[key] = value
+
+    return result
 
 # Thread function to run the experiment
 @app.route('/start', methods=['POST'])
@@ -156,28 +147,34 @@ def prepare_experiment():
     global process_lock
 
     data = request.json
-    print("data recieved from frontend")
+    print("data received from frontend")
     print(data)
-    if 'experiment' in data['parameters']:
-        if data['parameters']['experiment']['value'] in matlab_experiments:
-            data['parameters']['experiment']['name'] = matlab_experiments[data['parameters']['experiment']['value']]
-            data['parameters']['experiment']['type'] = experiments_types[data['parameters']['experiment']['name']]
-        elif data['parameters']['experiment']['value'] in python_experiments:
-            data['parameters']['experiment']['name'] = python_experiments[data['parameters']['experiment']['value']]
-            data['parameters']['experiment']['type'] = experiments_types[data['parameters']['experiment']['name']]
+    data = collapse_lists(data)
+    if 'experiment' in data:
+        exp_orig = data['experiment']
+        if data['experiment'] in python_experiments:
+            exp_name = python_experiments[exp_orig]
+        elif data['experiment'] in matlab_experiments:
+            exp_name = matlab_experiments[exp_orig]
         else:
-            raise Exception("Not simulator implemented (?)")
+            raise Exception(f"Experiment with such name is not defined {data['experiment']}")
+
+        data['experiment'] = dict()
+        data['experiment']['name'] = exp_name
+        data['experiment']['type'] = experiments_types[exp_name]
+    else:
+        warnings.warn(f"No experiment in {data.keys()}")
 
     main_path = str(Path("online_neuro") / "server_side.py")
     base_command = ["python3", main_path]
 
-    if data['problem'] in matlab_experiments:
+    if exp_orig in matlab_experiments:
         connection_payload = {
             'initiator': 'Python',
             'target': 'MATLAB',
             'port_flask': str(FLASK_PORT)
         }
-    elif data['problem'] in python_experiments:
+    elif exp_orig in python_experiments:
         connection_payload = {
             'initiator': 'Python',
             'target': 'Python',
@@ -187,7 +184,7 @@ def prepare_experiment():
         raise NotImplementedError
 
     connection_payload = json.dumps(connection_payload)
-    prob_load = convert_strings_to_numbers(data['parameters'])
+    prob_load = convert_strings_to_numbers(data)
     prob_load = json.dumps(prob_load)
 
     command = base_command + ["--problem_config", prob_load] + ["--connection_config", connection_payload]
@@ -245,6 +242,7 @@ def stop_experiment() -> None:
         print(f"An unexpected error occurred: {e}")  # Optionally log the error
         return jsonify({"status": "Unexpected error", "error": str(e)}), 500
 
+
 @app.route('/get_data')
 def get_data():
     global cache
@@ -264,21 +262,33 @@ def update_data():
         if isinstance(plot_data, str):
             plot_data = pd.read_json(plot_data)
 
-        first_column = plot_data.columns[0]
-        second_column = plot_data.columns[1]
         if plot_type == "pairplot":
-            socketio.emit('new_data', {
+            first_column = plot_data.columns[0]
+            second_column = plot_data.columns[1]
+
+            socketio.emit('pairplot', {
                 'x': plot_data[first_column].tolist(),
                 'y': plot_data[second_column].tolist(),
                 'class': plot_data['response'].tolist()
             })
+
         elif plot_type == 'contour':
+            first_column = plot_data.columns[0]
+            second_column = plot_data.columns[1]
             z = data.get('z')
             socketio.emit('contour', {
                 'x': plot_data[first_column].tolist(),
                 'y': plot_data[second_column].tolist(),
                 'z': z,
             })
+
+        elif plot_type == 'pulses':
+            socketio.emit('pulses', {
+                't': plot_data.get('time').tolist(),
+                'y0': plot_data.get('pulse_a').tolist(),
+                'y1': plot_data.get('pulse_b').tolist(),
+            })
+
         else:
             return jsonify({"message": f"Plot type {plot_type} not implemented"}), 501
         # Return a success response

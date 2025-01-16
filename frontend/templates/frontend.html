@@ -258,7 +258,7 @@
     <script>
         let globalData
         let optimizableFeatures
-        let fixedFeatures
+        let userDefinedFeatures
         let defaultFeatures
 
         //let sortedKeys
@@ -279,181 +279,107 @@
         }
 
         function cleanFinalParameters(params) {
-            Object.keys(params).forEach(key => {
-                const paramData = params[key];
+            const cleanedParams = {};
 
-                // Check if it's an object with min_value and max_value keys
-                if (paramData.min_value && Array.isArray(paramData.min_value)) {
-                    paramData.min_value = paramData.min_value.filter(val => val !== null);
-                }
+            Object.entries(params).forEach(([key, subStruct]) => {
+                const hasMinMax = 'min_value' in subStruct && 'max_value' in subStruct;
+                const values = subStruct.value || [];
+                const minValues = subStruct.min_value || [];
+                const maxValues = subStruct.max_value || [];
 
-                if (paramData.max_value && Array.isArray(paramData.max_value)) {
-                    paramData.max_value = paramData.max_value.filter(val => val !== null);
-                }
+                if (!hasMinMax) {
+                    // Scenario 1: Only 'value' key exists
+                    const nonNullValues = Array.isArray(values)
+                        ? values.filter(val => val !== null)
+                        : (values !== null ? [values] : []);
+                    if (nonNullValues.length > 0){
+                        cleanedParams[key] = nonNullValues
+                    }
+                } else {
+                    // Scenario 2: 'value', 'min_value', and 'max_value' keys exist
+                    const maxLength = Math.max(values.length, minValues.length, maxValues.length);
+                    const filledValues = new Array(maxLength).fill(0);
+                    const filledMinValues = new Array(maxLength).fill(0);
+                    const filledMaxValues = new Array(maxLength).fill(0);
 
-                // If it's a single value array, handle it similarly
-                if (paramData.value && Array.isArray(paramData.value)) {
-                    paramData.value = paramData.value.filter(val => val !== null);
+                    for (let i = 0; i < maxLength; i++) {
+                        filledValues[i] = values[i] !== undefined ? values[i] : 0;
+                        filledMinValues[i] = minValues[i] !== undefined ? minValues[i] : 0;
+                        filledMaxValues[i] = maxValues[i] !== undefined ? maxValues[i] : 0;
+                    }
+
+                    cleanedParams[key] = {
+                        value: filledValues,
+                        min_value: filledMinValues,
+                        max_value: filledMaxValues,
+                    };
                 }
             });
 
-            return params;
+            return cleanedParams;
         }
-        function restructureParameters(data){
+
+        function restructureParameters(data) {
+
             const finalParameters = {};
-            const sortedElectrodeKeys = {};
-
-            console.log("Collected data");
-            console.log(data);
-
-            // Loop through the data to organize based on electrode number
             Object.entries(data).forEach(([key, value]) => {
-                // Extract electrode number from the key
-                const matchNum = key.match(/_(\d+)$/);
-                const electrodeIndex = matchNum ? parseInt(matchNum[1], 10) : null;
-                const matchMinMax = key.match(/_(min|max)$/);
+                const cleanedKey = key
+                    .replace(/^param_/, "") // Remove "param_"
+                    .replace(/_\d+$/, "") // Remove the index (_n)
+                    .replace(/_(min|max)$/, "")    // Remove "_min" or "_max" if present
+                    .replace(/_[a-zA-Z]$/, "");    // Remove the last "_x" (it would be a dimension)
 
-                if (electrodeIndex !== null) {
-                    // Base key for globalData lookup
-                    const baseKey = key.replace(/_(\d+)$/, "");
+                const typeMatch = key.match(/_(min|max)_/); // Check if key ends with "_min" or "_max"
 
-                    if (!sortedElectrodeKeys[baseKey]) {
-                        sortedElectrodeKeys[baseKey] = [];
-                    }
-                    sortedElectrodeKeys[baseKey][electrodeIndex] = value; // Store value at the corresponding index
+                const type = typeMatch ? `${typeMatch[1]}_value` : "value"; // Set the key type
+                const ixMatch = key.match(/_(\d+)$/);
+                const ix = ixMatch ? parseInt(ixMatch[1], 10) : null; // Extract the index as an integer, or null if none
+
+                if (!finalParameters[cleanedKey]) {
+                    finalParameters[cleanedKey] = {};
+                }
+                if (!finalParameters[cleanedKey][type]) {
+                    finalParameters[cleanedKey][type] = [];
+                }
+
+                let dimensions = null
+                if (cleanedKey in globalData) {
+                    dimensions = globalData[cleanedKey].dimensions || []
                 } else {
-                    // Handle non-electrode specific keys
-                    const tempKey = key.replace("param_", "");
-
-                    if (matchMinMax == null) {
-                        finalParameters[tempKey] = {"value": value}; // Directly assign the value
-                    }
-                    else{
-                        const baseKey = tempKey.replace(/_(min|max)$/, "");
-                        if (!finalParameters[baseKey]) {
-                            finalParameters[baseKey] = {
-                                min_value: [],
-                                max_value: []
-                            }
-                        }
-                        console.log(baseKey, matchMinMax[0], matchMinMax[1])
-                        if(matchMinMax[0] == '_min'){
-                            finalParameters[baseKey]['min_value'] = [value]
-                        }else if(matchMinMax[0] =='_max'){
-                            finalParameters[baseKey]['max_value'] = [value]
-                        }else{
-                            throw new Error("Not a valid limit (?)");
-                        }
-                    }
-                }
-            });
-
-            Object.entries(sortedElectrodeKeys).forEach(([key, value]) => {
-                // Remove the 'param_' prefix and check for min/max in the name
-                let baseKey = key.replace("param_", "");
-                let isRange = baseKey.includes('_min') || baseKey.includes('_max');
-
-                // If it's a range (min or max), we extract the base key without the _min/_max suffix
-                if (isRange) {
-                    baseKey = baseKey.replace(/_(min|max)$/, "");
+                    // We assume pulse parameters don't have dimensions
+                    dimensions = []
                 }
 
-                // Now check if baseKey exists in globalData
-                let actualKey = baseKey;
-                let interleaved = false;
-                if (!globalData.hasOwnProperty(baseKey)) {
-                    // If not in globalData, remove the last underscore and dimension part
-                    actualKey = baseKey.replace(/_[^_]+$/, "");
-                    interleaved = true;
-                }
-                if (actualKey in finalParameters){ //key already added
-                    return;
-                }
-
-                const globalInfo = globalData[actualKey];  // Get global info for this key
-
-                // If we have a range (min/max) case, store values as min and max
-                if (isRange) {
-                    // Initialize the range structure if it doesn't exist
-                    if (!finalParameters[actualKey]) {
-                        finalParameters[actualKey] = {
-                            min_value: [],
-                            max_value: []
-                        };
-
-                    }
-                    if (interleaved) {
-                        const interleavedValuesMin = [];
-                        const interleavedValuesMax = [];
-
-                        for (let i = 0; i < value.length; i++) {
-                            globalInfo.dimensions.forEach((dim, dim_ix) => {
-                                const minKey = `param_${actualKey}_${dim}_min`;
-                                const maxKey = `param_${actualKey}_${dim}_max`;
-                                if(sortedElectrodeKeys[minKey]){
-                                    interleavedValuesMin.push(sortedElectrodeKeys[minKey][i])
-                                }
-                                if(sortedElectrodeKeys[maxKey]){
-                                    interleavedValuesMax.push(sortedElectrodeKeys[maxKey][i]);
-                                }
-                            });
-                        }
-
-                        finalParameters[actualKey] = {'min_value':interleavedValuesMin,
-                                                      'max_value':interleavedValuesMax }
-
-                    }
-                    else{
-                        const minKey = `param_${actualKey}_min`;
-                        const maxKey = `param_${actualKey}_max`;
-
-                        finalParameters[actualKey] = {
-                            "min_value": sortedElectrodeKeys[minKey],
-                            "max_value": sortedElectrodeKeys[maxKey]
-                        }
-                    }
-                } else {
-                    // It's a simple value assignment
-                    if (!finalParameters[actualKey]) {
-                        finalParameters[actualKey] = {
-                            value: [],
-                        };
-                    }
-                    if (interleaved){
-                        const dimensions = globalInfo.dimensions;
-                        const interleavedValues = [];
-                        // Interleave the values across the dimensions
-                        for (let i = 0; i < value.length; i++) {
-                            dimensions.forEach((dim) => {
-                                const specificKey = `param_${actualKey}_${dim}`;
-                                interleavedValues.push(sortedElectrodeKeys[specificKey][i]);
-                            });
-                        }
-                        // Assign the interleaved values
-                        finalParameters[actualKey] = {
-                            "value": interleavedValues
-                        };
+                if (dimensions.length == 0) {
+                    if (ix !== null) {
+                        finalParameters[cleanedKey][type][ix] = value;
                     } else {
-                        finalParameters[actualKey] = {
-                            "value": value
-                        }
+                        finalParameters[cleanedKey][type] = value;
                     }
+                } else{
+                    const dimensionMatch = key.match(/_([a-zA-Z])_\d+$/); // Matches the dimension (_x_, _y_, etc.)
+                    const dimension = dimensionMatch[1];
+                    const dimensionIndex = dimensions.indexOf(dimension);
+
+                    if (!finalParameters[cleanedKey][type][dimensionIndex]){
+                        finalParameters[cleanedKey][type][dimensionIndex] = []
+                    }
+                    finalParameters[cleanedKey][type][dimensionIndex][ix] = value;
+
+                }
+            });
+            console.log("Final Param")
+            console.log(finalParameters)
+            const cleanParameters = cleanFinalParameters(finalParameters)
+            console.log(cleanParameters)
+            Object.entries(defaultFeatures).forEach(([key, value]) => {
+                if (!(key in finalParameters)) {
+                    console.log("Key was missing, added,", key)
+                    cleanParameters[key] = value;
                 }
             });
 
-            const cleanedParameters = cleanFinalParameters(finalParameters);
-
-            Object.keys(defaultFeatures).forEach(key => {
-                // Initialize cleanedParameters[key] if it doesn't already exist
-                if (!cleanedParameters[key]) {
-                    cleanedParameters[key] = {};
-                }
-
-                // Now safely assign the value
-                cleanedParameters[key].value = defaultFeatures[key];
-            });
-
-            return cleanedParameters
+            return cleanParameters;
         }
 
         function collectInputs(elementId){
@@ -470,32 +396,24 @@
                     // For other inputs, store the value
                     parameters[input.id] = input.value;
                 }
-                console.log(input.id)
-                console.log(input.value)
             });
             const selects = sidebarFrame.querySelectorAll('select');
             selects.forEach(select =>{
                 parameters[select.id] = select.options[select.selectedIndex].value;  // Get selected option value
             });
-
             return parameters
-
         }
 
         async function startExperiment() {
             showSpinner(true);
-            const experimentSelector = document.getElementById('experiment');
-            const selectedExperiment = experimentSelector.value;
+            //const experimentSelector = document.getElementById('experiment');
+            //const selectedExperiment = experimentSelector.value;
             // Collect all inputs from the "sidebar-frame" div
             let parameters = collectInputs('sidebar-left')
-
+            console.log("Collected params")
+            console.log(parameters)
             parameters = restructureParameters(parameters)
             await createIframes()
-
-            const bodyData = {
-                problem: selectedExperiment,  // Add the selected experiment
-                parameters: parameters            // Add the collected input
-                };
 
             try {
                 const response = await fetch('/start', {
@@ -503,7 +421,7 @@
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(bodyData),
+                    body: JSON.stringify(parameters),
                 });
                 console.log("Package sent")
                 console.log(parameters)
@@ -538,7 +456,6 @@
             try {
                 const response = await fetch('/experiments');  // API route that returns JSON
                 const experiments = await response.json();  // Ensure the response is parsed as JSON
-
                 const experimentSelector = document.getElementById('experiment');
 
                 // Clear existing options (if any)
@@ -577,7 +494,6 @@
             if (Object.keys(pulseTypes).length == 0){
                 return;
             }
-
             let configs = [];
             await Promise.all(Object.values(pulseTypes).map(async pt => { // Use Object.values to iterate
                 const response = await fetch('/get_fun_parameters', {
@@ -595,57 +511,56 @@
 
             for (let i = 0; i < configs.length; i++) {
                 const pulseConfig = configs[i];
-
-                if (!pulseConfig || typeof pulseConfig !== 'object') {
-                    console.warn("Invalid pulse configuration:", pulseConfig);
-                    continue;
-                }
-                // Update globalData with pulseConfig data
+                let pulse_key = `pulse_${i}`
+                globalData[pulse_key] = {}; // Initialize as an empty object if it doesn't exist
                 Object.keys(pulseConfig).forEach(key => {
-                    if (!globalData[key]) {  // Add if it doesn't already exist
-                        globalData[key] = pulseConfig[key];
-                    } else {
-                        // Merge/overwrite data if key already exists
-                        globalData[key] = { ...globalData[key], ...pulseConfig[key] };
-                    }
+                    globalData[pulse_key][key] = pulseConfig[key];
                 });
+                const currentPulseConfig = globalData[pulse_key];
 
-                let optPulseFeatures = Object.keys(pulseConfig).filter(
-                    key => pulseConfig[key]?.optimizable === true
+                let optPulseFeatures = Object.keys(currentPulseConfig).filter(
+                    key => currentPulseConfig[key]?.optimizable === true
                 );
-                let fixPulseFeatures = Object.keys(pulseConfig).filter(
-                    key => pulseConfig[key]?.user_fixed === true
+                let fixPulseFeatures = Object.keys(currentPulseConfig).filter(
+                    key => currentPulseConfig[key]?.user_fixed === true
                 );
 
-                optPulseFeatures = sortFeatures(optPulseFeatures, pulseConfig);
-                fixPulseFeatures = sortFeatures(fixPulseFeatures, pulseConfig);
+                optPulseFeatures = sortFeatures(optPulseFeatures, currentPulseConfig);
+                fixPulseFeatures = sortFeatures(fixPulseFeatures, currentPulseConfig);
 
-                await updateFixedParameters(fixPulseFeatures, pulseConfig, 'parameters-container-fixed-pulse', i)
-                await updateVariableParameters(optPulseFeatures, pulseConfig, 'parameters-container-variable-pulse', i)
-
+                await updateFixedParameters(fixPulseFeatures, currentPulseConfig, 'parameters-container-fixed-pulse', i)
+                await updateVariableParameters(optPulseFeatures, currentPulseConfig, 'parameters-container-variable-pulse', i)
             }
 
             Object.keys(pulseTypes).forEach(number => {
                 const input = document.getElementById(`param_fun_type_${number}`);
-                input.onchange = () => updatePulseParameters();  // Call the function on change
+                input.addEventListener('change', cleanParametersAndUpdate);  // Call the function on change
             });
 
         }
+        async function cleanParametersAndUpdate(){
+            // TODO here
+            const containerFixedPulse = document.getElementById('parameters-container-fixed-pulse');
+            const containerVariablePulse = document.getElementById('parameters-container-variable-pulse');
+            containerFixedPulse.innerHTML = ''; //Clear existing parameters
+            containerVariablePulse.innerHTML = ''; //Clear existing parameters
+            await updatePulseParameters();
+        }
         async function updateParameters(){
-            await updateFixedParameters(fixedFeatures, globalData, 'parameters-container-fixed')
+            await updateFixedParameters(userDefinedFeatures, globalData, 'parameters-container-fixed')
             await updateVariableParameters(optimizableFeatures, globalData , 'parameters-container-rest')
             await updatePulseParameters()
-
         }
 
         async function updateElectrodeListeners(){
             const e_pos_inputs = document.querySelectorAll('[id^="param_e_pos"]');
-            e_pos_inputs.forEach(input => {
-                input.addEventListener('change', drawPlot);
-            });
+            // e_pos_inputs.forEach(input => {
+            //     input.addEventListener('change', drawPlot);
+            // });
             const diameterInput = document.getElementById('param_dia') || document.getElementById('param_axon_diameter');
-            diameterInput.addEventListener('change', drawPlot);
-            await drawPlot()
+            //TODO uncomment this once the other thing is fixe
+            // diameterInput.addEventListener('change', drawPlot);
+            // await drawPlot()
         }
 
         async function addPlotListeners(){
@@ -663,7 +578,8 @@
             await loadParameters()
             if (globalData.hasOwnProperty('num_electrodes')) {
                 await addPlotListeners();
-                drawPlot();
+                // TODO uncomment
+                //drawPlot();
             } else {
                 // Clear the canvas if no electrodes are present
                 const canvas = document.getElementById('plotCanvas');
@@ -713,7 +629,7 @@
                 const excludeList = ['num_electrodes'];
 
                 optimizableFeatures = Object.keys(globalData).filter(key => globalData[key].optimizable ===true)
-                fixedFeatures = Object.keys(globalData).filter(key => globalData[key].user_fixed ===true && !excludeList.includes(key))
+                userDefinedFeatures = Object.keys(globalData).filter(key => globalData[key].user_fixed ===true && !excludeList.includes(key))
                 // Non GUI values (see the experiment .json for optimizable/user_fixed both false.)
                 defaultFeatures = Object.fromEntries(
                     Object.entries(globalData)
@@ -723,8 +639,9 @@
 
                 console.log("Default features")
                 console.log(defaultFeatures)
+
                 optimizableFeatures = sortFeatures(optimizableFeatures, globalData);
-                fixedFeatures = sortFeatures(fixedFeatures, globalData);
+                userDefinedFeatures = sortFeatures(userDefinedFeatures, globalData);
 
                 const container = document.getElementById('parameters-container-num');
                 const containerFixed = document.getElementById('parameters-container-fixed');
@@ -737,7 +654,7 @@
 
                 fixedTitle.innerText = '';
                 const hrFixed = document.createElement('hr');
-                hrFixed.classList.add('horizontal-line'); // Optional: Add a class for styling
+                hrFixed.classList.add('horizontal-line');
                 fixedTitle.append(hrFixed)
 
                 const titleFix = document.createElement('div');
@@ -747,7 +664,7 @@
 
                 variableTitle.innerText = '';
                 const hrVar = document.createElement('hr');
-                hrVar.classList.add('horizontal-line'); // Optional: Add a class for styling
+                hrVar.classList.add('horizontal-line');
                 variableTitle.append(hrVar)
 
                 const titleVar = document.createElement('div');
@@ -761,7 +678,7 @@
                 if (containerFixedPulse) containerFixedPulse.innerHTML = '';
                 if (containerVariablePulse) containerVariablePulse.innerHTML = '';
 
-                if (globalData.multiple_sets) { //Extend this so not only num_electrodes?
+                if (globalData.multiple_sets?.value) { //Extend this so not only num_electrodes?
                     // TODO This would be a hard requirements and needs to be documented.
                     console.log("Data has multiple sets")
                     const row = document.createElement('div');
@@ -789,23 +706,7 @@
 
             }
         }
-        async function handleFunTypeChange(selectedFunType){
-            const divToUpdateFixed = document.getElementById('parameters-container-fixed');
-            const divToUpdateVariable = document.getElementById('parameters-container-rest');  // div to modify keys
 
-            // if (globalData['fun_type'] && Array.isArray(globalData['fun_type'].value)) {
-            //     const funTypes = globalData['fun_type'].value;
-            //     for (let i = 0; i < funTypes.length; i++) {
-            //         const funTypeValue = funTypes[i];
-            //         const response = await fetch(`/check_fun_type`, {
-            //             method: 'POST',
-            //             headers: { 'Content-Type': 'application/json' },
-            //             body: JSON.stringify({ fun_type: funTypeValue })
-            //         })
-            //         const reponseData = await response.json()
-            //     }
-            // }
-        }
         // Helper functions
         function createParameterContainer() {
             const container = document.createElement('div');
@@ -816,7 +717,6 @@
         function createLabel(key, type, data) {
             const label = document.createElement('div');
             label.classList.add('parameter-label');
-
             if (type === 'boolean') {
                 label.innerText = `${key} boolean`;
             } else if (type === 'cat' || type === 'cat-mult') {
@@ -830,7 +730,6 @@
         function createSelectInput(keyOrId, options, index = null, isMultiple = true) {
             const select = document.createElement('select');
             select.multiple = isMultiple;
-
             // Determine ID based on input type
             if (index !== null) {
                 const key = keyOrId;
@@ -850,28 +749,43 @@
 
             return select;
         }
-        function addNumericMultInputs(container, key, data, columns) {
-            for (let i = 0; i < columns; i++) {
-                const inputRow = createInputRow(key, i, data.value, data.min_value, data.max_value, columns);
+        function createNumericInputRow(key, data, index=null) {
+            const inputRow = createInputRow(key, false);
+            const valueInput = document.createElement('input');
+            valueInput.type = 'number';
+            valueInput.id = index !== null ? `param_${key}_${index}` : `param_${key}`;
+            if (data.value !== null) valueInput.value = data.value;
+            if (data.min !== null) valueInput.min = data.min;
+            if (data.max !== null) valueInput.max = data.max;
+
+            inputRow.appendChild(valueInput);
+            return inputRow;
+        }
+
+        function addFixedNumericMultipleInputs(container, key, data, columns, index = null) {
+            const loopStart = index !== null ? index : 0;
+            const loopEnd = index !== null ? index + 1 : columns;
+
+            for (let i = loopStart; i < loopEnd; i++) {
+                container.appendChild(createNumericInputRow(key, data, i));
+            }
+        }
+        function addSingleNumericInput(container, key, data, index=null) {
+            container.appendChild(createNumericInputRow(key, data, index));
+        }
+
+        function addCatMultInputs(container, key, data, columns, index = null) {
+            const loopStart = index !== null ? index : 0;
+            const loopEnd = index !== null ? index + 1 : columns;
+
+            for (let i = loopStart; i < loopEnd; i++) {
+                const inputRow = createSelectRow(key, data.possible_values, i );
                 container.appendChild(inputRow);
             }
         }
 
-        function addSingleNumericInput(container, key, data) {
-            const inputRow = createInputRow(key, null, data.value, data.min_value, data.max_value, 1);
-            container.appendChild(inputRow);
-        }
-
-        function addCatMultInputs(container, key, data, columns) {
-            for (let i = 0; i < columns; i++) {
-                const inputRow = createSelectRow(key, i, data.possible_values, columns);
-                container.appendChild(inputRow);
-            }
-        }
-
-        function addSingleCatInput(container, key, data) {
-            const inputRow = createSelectRow(key, null, data.possible_values, 1);
-            container.appendChild(inputRow);
+        function addSingleCatInput(container, key, data, index=null) {
+            container.appendChild(createSelectRow(key, data.possible_values, index));
         }
 
         function addArrayInputs(container, key, data, columns) {
@@ -879,7 +793,7 @@
                 const inputRow = document.createElement('div');
                 inputRow.classList.add('input-row');
 
-                const rowLabel = createRowLabel(i, columns);
+                const rowLabel = createRowLabel(i);
                 inputRow.appendChild(rowLabel);
 
                 data.dimensions.forEach((dim, dimIndex) => {
@@ -895,7 +809,6 @@
                         valueInput.min = data.min_value[dimIndex];
                         valueInput.max = data.max_value[dimIndex];
                     }
-
                     inputRow.appendChild(dimLabel);
                     inputRow.appendChild(valueInput);
                 });
@@ -904,7 +817,7 @@
             }
         }
 
-        function createInputRow(key, index = null, value = null, min = null, max = null, columns = 1, isBoolean = false) {
+        function createInputRow(key, insertBoolean = false) {
             const inputRow = document.createElement('div');
             inputRow.classList.add('input-row');
 
@@ -912,7 +825,7 @@
             const rowLabel = document.createElement('div');
             rowLabel.classList.add('row-ix');
 
-            if (isBoolean) {
+            if (insertBoolean) {
                 // Create a checkbox for boolean inputs
                 rowLabel.innerText = "set (True)"
                 const booleanInput = document.createElement('input');
@@ -920,29 +833,17 @@
                 booleanInput.id = `param_${key}`;
                 inputRow.appendChild(rowLabel); // Add the label first
                 inputRow.appendChild(booleanInput); // Add the checkbox input
-            } else {
-                rowLabel.innerText = columns > 1 && index !== null ? `e_${index + 1}` : (index === null ? '' : `e_${index}`);
-
-                // Create numeric input for other types
-                const valueInput = document.createElement('input');
-                valueInput.type = 'number';
-                valueInput.id = index !== null ? `param_${key}_${index}` : `param_${key}`;
-                if (value !== null) valueInput.value = value;
-                if (min !== null) valueInput.min = min;
-                if (max !== null) valueInput.max = max;
-
-                // Append the label and input to the row container
-                inputRow.appendChild(rowLabel);
-                inputRow.appendChild(valueInput);
             }
+
+            inputRow.appendChild(rowLabel);
 
             return inputRow;
         }
-        function createSelectRow(key, index, options, columns) {
+        function createSelectRow(key, options, index=null) {
             const inputRow = document.createElement('div');
             inputRow.classList.add('input-row');
 
-            const rowLabel = createRowLabel(index, columns);
+            const rowLabel = createRowLabel(index);
             const selectInput = document.createElement('select');
             selectInput.id = index !== null ? `param_${key}_${index}` : `param_${key}`;
 
@@ -952,37 +853,33 @@
                 option.innerText = value;
                 selectInput.appendChild(option);
             });
-
             inputRow.appendChild(rowLabel);
             inputRow.appendChild(selectInput);
             return inputRow;
         }
 
-        function createRowLabel(index, columns) {
+        function createRowLabel(index) {
             const label = document.createElement('div');
             label.classList.add('row-ix');
-            label.innerText = columns === 1 ? '' : `e_${index + 1}`;
+            label.innerText = index === 1 ? '' : `e_${index + 1}`;
             return label;
         }
 
         // Helper for numeric multi-inputs (e.g., int-mult, float-mult)
-        function addNumericMultiInput(container, key, paramData, numColumns) {
-            for (let i = 0; i < numColumns; i++) {
-                const inputRow = createInputRow(`e_${i + 1}`);
-                inputRow.appendChild(createNumericInput(key, paramData, i, 'min'));
-                inputRow.appendChild(createNumericInput(key, paramData, i, 'max'));
-                container.appendChild(inputRow);
-            }
-        }
-        // Helper for single numeric inputs (e.g., int, float)
-        function addNumericInput(container, key, paramData, overwrite_i=false, i=0) {
+        function addVariableNumericMultipleInputs(container, key, paramData, electrode_ix) {
             const inputRow = document.createElement('div');
             inputRow.classList.add('input-row');
-
+            inputRow.appendChild(createNumericInput(key, paramData, electrode_ix, 'min'));
+            inputRow.appendChild(createNumericInput(key, paramData, electrode_ix, 'max'));
+            container.appendChild(inputRow);
+        }
+        // Helper for single numeric inputs (e.g., int, float)
+        function addNumericInput(container, key, paramData, i=null) {
+            const inputRow = document.createElement('div');
+            inputRow.classList.add('input-row');
             inputRow.appendChild(createNumericInput(key, paramData, i, 'min'));
             inputRow.appendChild(createNumericInput(key, paramData, i, 'max'));
             container.appendChild(inputRow);
-
         }
         // Helper for categorical multi-inputs (e.g., cat-mult)
         function addCategoricalMultiInput(container, key, paramData, numColumns) {
@@ -1007,6 +904,7 @@
                 const inputRow = createInputRow(`e_${i + 1}`);
                 dimensions.forEach((dim, dimIndex) => {
                     inputRow.appendChild(createDimensionLabel(dim));
+
                     inputRow.appendChild(createNumericInput(key, paramData, i, 'min', dimIndex));
                     inputRow.appendChild(createNumericInput(key, paramData, i, 'max', dimIndex));
                 });
@@ -1016,12 +914,13 @@
 
         // Helper for boolean inputs
         function addBooleanInput(container, key) {
-            const inputRow = createInputRow(key, null, 'set (True)', null, null, 1, true);
+            const inputRow = createInputRow(key, true);
             //inputRow.appendChild(inputRow);
             container.appendChild(inputRow);
         }
 
         // Create numeric inputs with min/max handling
+        //key, paramData, i, 'min')
         function createNumericInput(keyOrId, paramData = null, index = null, bound = null, dimIndex = null, simpleValue = null, simpleMin = null, simpleMax = null) {
             const input = document.createElement('input');
             input.type = 'number';
@@ -1060,25 +959,24 @@
             return dimLabel;
         }
 
-        async function updateFixedParameters(keyList, selData, container_name, append=false){
+        async function updateFixedParameters(keyList, selData, container_name, append=false, index=null){
             const container = document.getElementById(container_name);
-            let numColumnsValue;
+            const numColumnsInput = document.getElementById('param_num_electrodes');
+            const numColumnsValue = append === false
+                ? (numColumnsInput ? numColumnsInput.value : 0)
+                : null;
 
-            if (append==false){
-                container.innerHTML = '';  // Clear existing parameters
-                const numColumnsInput = document.getElementById('param_num_electrodes');
-                numColumnsValue = numColumnsInput ? numColumnsInput.value : 1;
-            }else{
-                numColumnsValue = append
-            }
+            if (!append) container.innerHTML = ''; // Clear existing parameters
 
-            const types = {
-                numeric: ['int', 'float'],
-                numericMult: ['int-mult', 'float-mult'],
-                cat: ['cat'],
-                catMult: ['cat-mult'],
-                array: ['array'],
-                bool: ['boolean']
+            const inputActions = {
+                'int-mult': addFixedNumericMultipleInputs,
+                'float-mult': addFixedNumericMultipleInputs,
+                'int': addSingleNumericInput,
+                'float': addSingleNumericInput,
+                'cat-mult': addCatMultInputs,
+                'cat': addSingleCatInput,
+                'array': addArrayInputs,
+                'boolean': addBooleanInput
             };
 
             keyList.forEach(key => {
@@ -1087,18 +985,12 @@
                 const label = createLabel(key, type, selData[key]);
                 const inputsContainer = document.createElement('div');
                 inputsContainer.classList.add('inputs-container');
-                if (types.numericMult.includes(type)) {
-                    addNumericMultInputs(inputsContainer, key, selData[key], numColumnsValue);
-                } else if (types.numeric.includes(type)) {
-                    addSingleNumericInput(inputsContainer, key, selData[key]);
-                } else if (types.catMult.includes(type)) {
-                    addCatMultInputs(inputsContainer, key, selData[key], numColumnsValue);
-                } else if (types.cat.includes(type)) {
-                    addSingleCatInput(inputsContainer, key, selData[key]);
-                } else if (types.array.includes(type)) {
-                    addArrayInputs(inputsContainer, key, selData[key], numColumnsValue);
-                } else if (types.bool.includes(type)) {
-                    addBooleanInput(inputsContainer, key);
+
+                const action = inputActions[type];
+                if (action) {
+                    action(inputsContainer, key, selData[key], numColumnsValue);
+                } else {
+                    console.warn(`Unknown type: ${type}`);
                 }
 
                 parameterContainer.appendChild(label);
@@ -1108,26 +1000,35 @@
         }
         async function updateVariableParameters(keyList, selData, container_name, append=false){
             const container = document.getElementById(container_name);
-            let numColumnsValue;
-            if (append==false){
-                container.innerHTML = '';  // Clear existing parameters
-                const numColumnsInput = document.getElementById('param_num_electrodes');
-                numColumnsValue = numColumnsInput ? numColumnsInput.value : 1;
-            }else{
-                numColumnsValue = append
-            }
-
             const numColumnsInput = document.getElementById('param_num_electrodes');
-            const numColumnsValueVar = numColumnsInput ? numColumnsInput.value : 1;
 
-            const types = {
-                numeric: ['int', 'float'],
-                numericMult: ['int-mult', 'float-mult'],
-                cat: ['cat'],
-                catMult: ['cat-mult'],
-                array: ['array'],
-                bool: ['boolean']
-            }
+            const numColumnsValue = append === false
+                ? (numColumnsInput ? numColumnsInput.value : 0)
+                : null;
+
+            if (!append) container.innerHTML = ''; // Clear existing parameters
+
+            const inputActions = {
+                'int-mult': addVariableNumericMultipleInputs,
+                'float-mult': addVariableNumericMultipleInputs,
+                'int': addNumericInput,
+                'float': addNumericInput,
+                'cat-mult': addCategoricalMultiInput,
+                'cat': addCategoricalInput,
+                'array': addArrayInput,
+                'boolean': addBooleanInput
+            };
+
+            const fixedAction = {
+                'int-mult': addFixedNumericMultipleInputs,
+                'float-mult': addFixedNumericMultipleInputs,
+                'int': addSingleNumericInput,
+                'float': addSingleNumericInput,
+                'cat-mult': addCatMultInputs,
+                'cat': addSingleCatInput,
+                'array': addArrayInputs,
+                'boolean': addBooleanInput
+            };
 
             keyList.forEach(key => {
                 const type = selData[key]['type'];
@@ -1136,6 +1037,7 @@
                 const label = createLabel(key, type, selData[key]);
                 const inputsContainer = document.createElement('div');
                 inputsContainer.classList.add('inputs-container');
+
                 // Add checkbox for min-max toggle
                 const toggleContainer = document.createElement('div');
                 const toggleLabel = document.createElement('label');
@@ -1144,86 +1046,33 @@
 
                 const toggleCheckbox = document.createElement('input');
                 toggleCheckbox.type = 'checkbox';
-                toggleCheckbox.id = `toggle_${key}`;
+
+                toggleCheckbox.id = `toggle_${key}_${numColumnsValue}`;
 
                 toggleContainer.appendChild(toggleLabel);
                 toggleContainer.appendChild(toggleCheckbox);
 
                 // Add event listener to handle toggle
                 toggleCheckbox.addEventListener('change', (event) => {
-                    const isSingleValue = event.target.checked;
-                    inputsContainer.innerHTML = '';  // Clear existing inputs
+                    const isFixed = event.target.checked;
+                    inputsContainer.innerHTML = ''; // Clear existing inputs
+                    const action = isFixed ? fixedAction[type] : inputActions[type];
 
-                    // Determine the input type based on the selection
-                    if (isSingleValue) {
-                        if (types.numericMult.includes(type)) {
-                            addNumericMultInputs(inputsContainer, key, selData[key], numColumnsValue);
-                        } else if (types.numeric.includes(type)) {
-                            addSingleNumericInput(inputsContainer, key, selData[key]);
-                        } else if (types.catMult.includes(type)) {
-                            addCatMultInputs(inputsContainer, key, selData[key], numColumnsValue);
-                        } else if (types.cat.includes(type)) {
-                            addSingleCatInput(inputsContainer, key, selData[key]);
-                        } else if (types.array.includes(type)) {
-                            addArrayInputs(inputsContainer, key, selData[key], numColumnsValue);
-                        } else if (types.bool.includes(type)) {
-                            addBooleanInput(inputsContainer, key);
-                        }
-
+                    if (action) {
+                        action(inputsContainer, key, paramData, numColumnsValue);
                     } else {
-                        if (types.numericMult.includes(paramData.type)) {
-                            addNumericMultiInput(inputsContainer, key, paramData, numColumnsValueVar);
-                        } else if (types.numeric.includes(paramData.type)) {
-                            if (append==false){
-                                addNumericInput(inputsContainer, key, paramData);
-                            }else{
-                                addNumericInput(inputsContainer, key, paramData, true, numColumnsValue);
-                            }
-                        } else if (types.catMult.includes(paramData.type)) {
-                            addCategoricalMultiInput(inputsContainer, key, paramData, numColumnsValueVar);
-                        } else if (types.cat.includes(paramData.type)) {
-                            addCategoricalInput(inputsContainer, key, paramData);
-                        } else if (types.array.includes(paramData.type)) {
-                            addArrayInput(inputsContainer, key, paramData, numColumnsValueVar);
-                        } else if (types.bool.includes(paramData.type)) {
-                            addBooleanInput(inputsContainer, key);
-                        }
+                        console.warn(`Unknown type: ${type}`);
                     }
                 });
-                if (toggleCheckbox.checked) {
-                    if (types.numericMult.includes(type)) {
-                        addNumericMultInputs(inputsContainer, key, selData[key], numColumnsValue);
-                    } else if (types.numeric.includes(type)) {
-                        addSingleNumericInput(inputsContainer, key, selData[key]);
-                    } else if (types.catMult.includes(type)) {
-                        addCatMultInputs(inputsContainer, key, selData[key], numColumnsValue);
-                    } else if (types.cat.includes(type)) {
-                        addSingleCatInput(inputsContainer, key, selData[key]);
-                    } else if (types.array.includes(type)) {
-                        addArrayInputs(inputsContainer, key, selData[key], numColumnsValue);
-                    } else if (types.bool.includes(type)) {
-                        addBooleanInput(inputsContainer, key);
-                    }
-                } else {
-                    if (types.numericMult.includes(paramData.type)) {
-                        addNumericMultiInput(inputsContainer, key, paramData, numColumnsValueVar);
-                    } else if (types.numeric.includes(paramData.type)) {
-                        if (append==false){
-                            addNumericInput(inputsContainer, key, paramData);
-                        }else{
-                            addNumericInput(inputsContainer, key, paramData, true, numColumnsValue);
-                        }
-                    } else if (types.catMult.includes(paramData.type)) {
-                        addCategoricalMultiInput(inputsContainer, key, paramData, numColumnsValueVar);
-                    } else if (types.cat.includes(paramData.type)) {
-                        addCategoricalInput(inputsContainer, key, paramData);
-                    } else if (types.array.includes(paramData.type)) {
-                        addArrayInput(inputsContainer, key, paramData, numColumnsValueVar);
-                    } else if (types.bool.includes(paramData.type)) {
-                        addBooleanInput(inputsContainer, key);
-                    }
 
+                const initialAction = toggleCheckbox.checked ? fixedAction[type] : inputActions[type];
+                console.log("***", key, numColumnsValue)
+                if (initialAction) {
+                    initialAction(inputsContainer, key, paramData, numColumnsValue);
+                } else {
+                    console.warn(`Unknown type: ${type}`);
                 }
+
                 parameterContainer.appendChild(label);
                 parameterContainer.appendChild(toggleContainer); // Add the toggle checkbox
                 parameterContainer.appendChild(inputsContainer);

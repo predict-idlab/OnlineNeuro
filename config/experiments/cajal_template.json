@@ -1,5 +1,7 @@
 {
-  "multiple_sets": true,
+  "multiple_sets":{
+   "value":true
+  },
   "axon_diameter":
   { "optimizable": false,
     "user_fixed": true,

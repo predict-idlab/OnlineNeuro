@@ -20,13 +20,34 @@ function_map = {
     'default': Path("config") / "custom_pulses" / "axonsim_default.json"
 }
 
-#Dictionary to validate model problem and model type.
-VALID_PROBLEMS = {
-    'axonsim_nerve_block': ['classification', 'regression', 'moo'],
-    'axonsim_regression': ['regression', 'moo'],
-    'cajal_nerve_block': ['classification', 'regression', 'moo'],
-    'todo': ['placeholder']
+matlab_experiments = {"Axonsim (nerve block)": "axonsim_nerve_block",
+                       "Axonsim (regression)": "axonsim_regression",
+                       "Toy Regression": "rose_regression",
+                       "Toy Classification": "circle_classification",
+                       "Toy VLMOP2": "vlmop2"
+                      }
+
+experiments_types = {
+    "axonsim_nerve_block": "classification",
+    "cajal_ap_block":"classification",
+    "axonsim_regression": "regression",
+    "rose_regression": "regression",
+    "circle_classification": "classification",
+    "vlmop2": "moo"
 }
+
+python_experiments = {"Toy classification (Python)": "circle_classification",
+                      #"Toy regression (Python)": "rose_regression",
+                      "Toy MOO (Python)": "vlmop2",
+                      "Cajal nerve block": "cajal_ap_block"}
+
+#Dictionary to validate model problem and model type.
+# VALID_PROBLEMS = {
+#     'axonsim_nerve_block': ['classification', 'regression', 'moo'],
+#     'axonsim_regression': ['regression', 'moo'],
+#     'cajal_nerve_block': ['classification', 'regression', 'moo'],
+#     'todo': ['placeholder']
+# }
 
 
 def verify_optim_fixed(config):
@@ -58,16 +79,15 @@ def config_problem(problem: str = 'axonsim') -> dict:
     """
     # TODO. do this in a smart way.
     # Dynamically create input widgets based on JSON keys
-
     # Load the JSON file
     problem = problem.lower()
     try:
         config = load_json(template_map[problem])
-        #Verifying that parameters are fixed or optimizable, but not both!
         # TODO as they exclude each other this can be simplified!
         verify_optim_fixed(config)
-        print(config)
-        config['name'] = problem
+
+        config['experiment'] = dict()
+        config['experiment']['value'] = problem
 
     except NotImplementedError:
         msg = f"No configuration file for experiment: ({problem})"

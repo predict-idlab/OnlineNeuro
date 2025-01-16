@@ -314,34 +314,34 @@ def generate_grids(n, num_points, upper_bound=None, lower_bound=None):
     return grid, midpoints_grid
 
 
-def fetch_data(client_socket, size=1024):
+def fetch_data(client_socket, size=65536):
     received_data = client_socket.recv(size).decode()
     received_data = json.loads(received_data)
-    print(received_data)
+
     if 'tot_pckgs' in received_data:
         tot_packages = received_data['tot_pckgs']
         all_data = [received_data['data']]
-        for _ in range(tot_packages - 1):
+        for ix in range(1, tot_packages):
+            print(f"{ix}/{tot_packages}")
             msg = client_socket.recv(size).decode()
             msg = json.loads(msg)
             all_data.append(msg['data'])
 
-        # Flatten
-        all_data = [x for xs in all_data for x in xs]
+        #all_data = [x for xs in all_data for x in xs]
         return all_data
     else:
         if isinstance(received_data, str):
             received_data = json.loads(received_data)
 
-        if isinstance(received_data, dict):
-            received_data = [received_data]
+        if 'full_data' in received_data:
+            received_data = received_data['full_data']
 
         return received_data
 
 
 def array_to_list_of_dicts(array, column_names):
     """
-    Convert a np.array into a list of dictionaries
+    Convert a np.ndarray into a list of dictionaries
     @param array:
     @param column_names:
     @return:

@@ -9,7 +9,7 @@
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 </head>
 <body style="margin: 0;">
-    <div id="plotly-div" style="width: 100%; height: 300px;"></div>
+    <div id="plotly-div" style="width: 100%; width:300px; height: 300px;"></div>
     <script>
         // Adjust the port in your Flask app if needed
         console.log("Socket connection port:", '{{ port }}');  // Add this line for debugging
@@ -34,7 +34,7 @@
         };
 
         var layout = {
-            title: 'Real-Time Data Plot',
+            title: 'Sampling',
             paper_bgcolor: 'black',
             plot_bgcolor: 'black',
             font: { color: 'white' },
@@ -58,7 +58,7 @@
         Plotly.newPlot('plotly-div', [trace0, trace1], layout);
 
         // Listen for new data from the server via socket.io
-        socket.on('new_data', function(data) {
+        socket.on('pairplot', function(data) {
             console.log("Received data:", data);  // Log the received data for debugging
 
             // Check if data contains valid arrays and update the plot

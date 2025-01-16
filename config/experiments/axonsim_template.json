@@ -1,5 +1,7 @@
 {
-  "multiple_sets": true,
+  "multiple_sets":{
+   "value":true
+  },
   "balance_charge":
     {"optimizable": false,
       "user_fixed": false,
