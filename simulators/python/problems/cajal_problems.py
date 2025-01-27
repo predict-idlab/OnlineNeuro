@@ -1,6 +1,3 @@
-import sys
-
-from common.utils import load_json
 from cajal.nrn import Backend as CajalBackend
 from cajal.nrn.cells import MRG
 from cajal.units import mm, mV, ms, mA, ohm, cm
@@ -10,6 +7,8 @@ from cajal.nrn.monitors import StateMonitor, APMonitor
 from cajal.nrn import SimulationEnvironment
 import re
 import numpy as np
+from simulators.python.pulses.pulse_definitions import PulseRamp
+
 # TODO
 CajalBackend.dt = 0.005*ms #The default is one (this could be modified when calling the simulator).
 
@@ -92,15 +91,16 @@ def create_monitors(mrg, ap_node_0=0, ap_node_1=1):
     return monitors
 
 
-def create_pulse(type, amp, pw, delay):
+def create_pulse(type, *args, **kwargs):
+    print(kwargs)
     if type in ['monophasic', 'single_pulse']:
-        stim_amp = amp * mA
-        stim_pw = pw * ms
-        stim_delay = delay * ms
+        amp = kwargs.get('amp', None)
+        pw = kwargs.get('pw', None)
+        delay = kwargs.get('delay', None)
 
-        stim = MonophasicPulse(amp=stim_amp, pw=stim_pw, delay=stim_delay)
-    else:
-        NotImplementedError(f"Stimulus of type {type}, not implemented")
+        stim = MonophasicPulse(amp=amp, pw=pw, delay=delay)
+    elif type in ['pulse_ramp', 'pulseramp']:
+        stim = PulseRamp(**kwargs)
 
     return stim
 
@@ -110,7 +110,7 @@ def create_stimulus(pos: list, stimulus_params, rhoe:float=500, monitors=None, *
     for ix in range(len(pos)):
         if 'source_type' not in kwargs:
             #Default to Isotropic
-            # TODO, allow adjusting res
+            # TODO, allow adjusting res / rhoe
             g = pos[ix]
             point_source = IsotropicPoint(x=g[0] * mm,
                                           y=g[1] * mm,
@@ -248,7 +248,6 @@ def cajal_fun(e_pos: list,
     print("Axon params")
     print(axon_params)
 
-
     axon_model = create_axon(**axon_params)
     monitors = create_monitors(axon_model)
 
@@ -280,10 +279,10 @@ def cajal_fun(e_pos: list,
     else:
         raise NotImplementedError(f"Post processing method {post_processing} not implemented")
     data_package = {'observations': y,
-                    "time": monitors['state'].t.tolist(),
-                    #"v": monitors['state'].v.tolist(),
-                    "pulse_a": pulses[0](monitors['state'].t).tolist(),
-                    "pulse_b": pulses[1](monitors['state'].t).tolist()
+                   # "time": monitors['state'].t.tolist(),
+                   # "v": monitors['state'].v.tolist(),
+                   # "pulse_a": pulses[0](monitors['state'].t).tolist(),
+                   # "pulse_b": pulses[1](monitors['state'].t).tolist()
     }
 
     return data_package
