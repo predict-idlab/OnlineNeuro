@@ -15,13 +15,5 @@
       "min_value": 0.25,
       "max_value": 2.0,
       "type": "float"
-  },
-  "frq":
-    { "optimizable": false,
-      "user_fixed": true,
-      "value": 1.0,
-      "min_value": 0.0,
-      "max_value": 100.0,
-      "type": "float"
-    }
+  }
 }

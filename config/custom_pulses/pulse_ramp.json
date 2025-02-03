@@ -46,6 +46,14 @@
   "max_value": 1,
   "type": "float"
 },
+  "tau": {
+  "optimizable": true,
+  "user_fixed": false,
+  "value": 0.5,
+  "min_value": 0.0,
+  "max_value": 10,
+  "type": "float"
+},
 "ramp_width": {
   "optimizable": true,
   "user_fixed": false,
