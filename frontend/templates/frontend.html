@@ -282,10 +282,13 @@
             const cleanedParams = {};
 
             Object.entries(params).forEach(([key, subStruct]) => {
+                if (key.startsWith("toggle_")) {
+                    return;
+                }
                 const hasMinMax = 'min_value' in subStruct && 'max_value' in subStruct;
-                const values = subStruct.value || [];
-                const minValues = subStruct.min_value || [];
-                const maxValues = subStruct.max_value || [];
+                const values = subStruct.value || false;
+                const minValues = subStruct.min_value || false;
+                const maxValues = subStruct.max_value || false;
 
                 if (!hasMinMax) {
                     // Scenario 1: Only 'value' key exists
@@ -297,15 +300,24 @@
                     }
                 } else {
                     // Scenario 2: 'value', 'min_value', and 'max_value' keys exist
-                    const maxLength = Math.max(values.length, minValues.length, maxValues.length);
+                    const valuesIsArray = Array.isArray(values);
+                    const minValuesIsArray = Array.isArray(minValues);
+                    const maxValuesIsArray = Array.isArray(maxValues);
+
+                    const anyArray = valuesIsArray || minValuesIsArray || maxValuesIsArray
+                    const maxLength =  Math.max(valuesIsArray ? values.length : 1,
+                        minValuesIsArray ? minValues.length : 1,
+                        maxValuesIsArray ? maxValues.length : 1)
+
                     const filledValues = new Array(maxLength).fill(0);
                     const filledMinValues = new Array(maxLength).fill(0);
                     const filledMaxValues = new Array(maxLength).fill(0);
 
+
                     for (let i = 0; i < maxLength; i++) {
-                        filledValues[i] = values[i] !== undefined ? values[i] : 0;
-                        filledMinValues[i] = minValues[i] !== undefined ? minValues[i] : 0;
-                        filledMaxValues[i] = maxValues[i] !== undefined ? maxValues[i] : 0;
+                        values && (filledValues[i] = values);
+                        minValues && (filledMinValues[i] = minValues);
+                        maxValues && (filledMaxValues[i] = maxValues);
                     }
 
                     cleanedParams[key] = {
@@ -320,99 +332,182 @@
         }
 
         function restructureParameters(data) {
-
             const finalParameters = {};
+
             Object.entries(data).forEach(([key, value]) => {
-                const cleanedKey = key
-                    .replace(/^param_/, "") // Remove "param_"
+                if (typeof value === "string" && !isNaN(value)) {
+                    value = parseFloat(value);
+                }
+
+                if (key.startsWith('pulse')){
+                    if (!finalParameters.pulses) {
+                        finalParameters.pulses = [];
+                    }
+                    // Directly copy the pulse parameters into the pulses array
+                    finalParameters.pulses.push(value);
+                } else {
+                    const cleanedKey = key
                     .replace(/_\d+$/, "") // Remove the index (_n)
                     .replace(/_(min|max)$/, "")    // Remove "_min" or "_max" if present
                     .replace(/_[a-zA-Z]$/, "");    // Remove the last "_x" (it would be a dimension)
 
-                const typeMatch = key.match(/_(min|max)_/); // Check if key ends with "_min" or "_max"
+                    const typeMatch = key.match(/_(min|max)/); // Check if key ends with "_min" or "_max"
+                    const type = typeMatch ? `${typeMatch[1]}_value` : "value"; // Set the key type
+                    const ixMatch = key.match(/_(\d+)$/);
+                    const ix = ixMatch ? parseInt(ixMatch[1], 10) : null; // Extract the index as an integer, or null if none
 
-                const type = typeMatch ? `${typeMatch[1]}_value` : "value"; // Set the key type
-                const ixMatch = key.match(/_(\d+)$/);
-                const ix = ixMatch ? parseInt(ixMatch[1], 10) : null; // Extract the index as an integer, or null if none
+                    if (!finalParameters[cleanedKey]) {
+                        finalParameters[cleanedKey] = {};
+                    }
+                    if (!finalParameters[cleanedKey][type]) {
+                        finalParameters[cleanedKey][type] = [];
+                    }
 
-                if (!finalParameters[cleanedKey]) {
-                    finalParameters[cleanedKey] = {};
-                }
-                if (!finalParameters[cleanedKey][type]) {
-                    finalParameters[cleanedKey][type] = [];
-                }
-
-                let dimensions = null
-                if (cleanedKey in globalData) {
-                    dimensions = globalData[cleanedKey].dimensions || []
-                } else {
-                    // We assume pulse parameters don't have dimensions
-                    dimensions = []
-                }
-
-                if (dimensions.length == 0) {
-                    if (ix !== null) {
-                        finalParameters[cleanedKey][type][ix] = value;
+                    let dimensions
+                    if (cleanedKey in globalData) {
+                        dimensions = globalData[cleanedKey].dimensions || []
                     } else {
-                        finalParameters[cleanedKey][type] = value;
+                        dimensions = []
                     }
-                } else{
-                    const dimensionMatch = key.match(/_([a-zA-Z])_\d+$/); // Matches the dimension (_x_, _y_, etc.)
-                    const dimension = dimensionMatch[1];
-                    const dimensionIndex = dimensions.indexOf(dimension);
 
-                    if (!finalParameters[cleanedKey][type][dimensionIndex]){
-                        finalParameters[cleanedKey][type][dimensionIndex] = []
+                    if (dimensions.length === 0) {
+                        if (ix !== null) {
+                            finalParameters[cleanedKey][type][ix] = value;
+                        } else {
+                            finalParameters[cleanedKey][type] = value;
+                        }
+                    } else{
+                        const dimensionMatch = key.match(/_([a-zA-Z])_\d+$/); // Matches the dimension (_x_, _y_, etc.)
+                        const dimension = dimensionMatch[1];
+                        const dimensionIndex = dimensions.indexOf(dimension);
+
+                        if (!finalParameters[cleanedKey][type][dimensionIndex]){
+                            finalParameters[cleanedKey][type][dimensionIndex] = []
+                        }
+                        finalParameters[cleanedKey][type][dimensionIndex][ix] = value;
                     }
-                    finalParameters[cleanedKey][type][dimensionIndex][ix] = value;
-
                 }
             });
-            console.log("Final Param")
-            console.log(finalParameters)
+
+            console.log("Final Param", finalParameters);
             const cleanParameters = cleanFinalParameters(finalParameters)
-            console.log(cleanParameters)
+            console.log("Clean Params", cleanParameters)
+
             Object.entries(defaultFeatures).forEach(([key, value]) => {
-                if (!(key in finalParameters)) {
+                if (!(key in cleanParameters)) {
                     console.log("Key was missing, added,", key)
                     cleanParameters[key] = value;
                 }
             });
+            cleanParameters['experiment'] = document.getElementById('experiment').value
 
             return cleanParameters;
         }
 
-        function collectInputs(elementId){
+        function collectInputs(elementId) {
             const sidebarFrame = document.getElementById(elementId);
-            const inputs = sidebarFrame.querySelectorAll('input');
+            // Object to store the final parameters
+            const returnParameters = {};
+            const otherParameters = {};
 
-            // Create an object to store the parameter values
-            const parameters = {};
+            // Process non-pulse parameters
+            const inputs = sidebarFrame.querySelectorAll('input');
             inputs.forEach(input => {
-                if (input.type === 'checkbox') {
-                    // For checkboxes, store true or false depending on whether it's checked
-                    parameters[input.id] = input.checked;
-                } else {
-                    // For other inputs, store the value
-                    parameters[input.id] = input.value;
+                if (!input.id.startsWith('pulse_')) { // Exclude pulse-related inputs
+                    if (input.type === 'checkbox') {
+                        otherParameters[input.id] = input.checked; // Boolean for checkboxes
+                    } else {
+                        otherParameters[input.id] = input.value; // String/number for other inputs
+                    }
                 }
             });
+
             const selects = sidebarFrame.querySelectorAll('select');
-            selects.forEach(select =>{
-                parameters[select.id] = select.options[select.selectedIndex].value;  // Get selected option value
+            selects.forEach(select => {
+                if (!select.id.startsWith('pulse_')) { // Exclude pulse-related selects
+                    otherParameters[select.id] = select.options[select.selectedIndex].value; // Get selected value
+                }
             });
-            return parameters
+
+            // Process pulse configurations into a list
+            const pulseKeys = Object.keys(globalData).filter(key => key.startsWith('pulse_')); // Filter for pulse keys
+            const pulses = [];
+
+            if (pulseKeys){
+                // Group pulse configurations by index
+                let pulseGrouped = {};
+
+                // Group the pulse keys by their index
+                pulseKeys.forEach(pulseKey => {
+                    const parts = pulseKey.split('_'); // Split the pulse key like 'pulse_0_I'
+                    const pulseIndex = parts[1]; // Extract the index (i.e., 0, 1, 2...)
+                    const paramKey = parts.slice(2).join('_'); // Get the rest of the parts as the parameter key (i.e., 'I', 'frq', etc.)
+                    if (!pulseGrouped[pulseIndex]) {
+                        pulseGrouped[pulseIndex] = {}; // Initialize an empty object for this index if it doesn't exist
+                    }
+                    pulseGrouped[pulseIndex][paramKey] = globalData[pulseKey]; // Assign the default value to the grouped object
+                });
+
+                console.log("Grouped pulse configurations:");
+                console.log(pulseGrouped);
+                // Now, process each pulse by index and collect the parameters
+                Object.keys(pulseGrouped).forEach(pulseIndex => {
+                    const pulseConfig = pulseGrouped[pulseIndex];
+                    const pulseData = {}; // Container for extracted values
+
+                    // Collect values from inputs in the sidebar
+                    Object.keys(pulseConfig).forEach(paramKey => {
+                        const simpleInputElement = sidebarFrame.querySelector(`#pulse_${pulseIndex}_${paramKey}`);
+
+                        // Ensure that we initialize the struct for min/max values, even if the simple value is absent
+                        if (!pulseData[paramKey]) {
+                            pulseData[paramKey] = {}; // Initialize the struct if it doesn't exist yet
+                        }
+                        if (simpleInputElement) {
+                            if (simpleInputElement.type === 'checkbox') {
+                                pulseData[paramKey] = {value: simpleInputElement.checked}; // Boolean for checkboxes
+                            } else if (simpleInputElement.tagName === 'SELECT') {
+                                pulseData[paramKey] = {value: simpleInputElement.options[simpleInputElement.selectedIndex].value}; // Selected value
+                            } else {
+                                pulseData[paramKey] = {value: simpleInputElement.value}; // Other input types
+                            }
+                        }
+
+                        // Handle the min and max value separately, if they exist
+                        const minInputElement = sidebarFrame.querySelector(`#pulse_${pulseIndex}_${paramKey}_min`);
+                        const maxInputElement = sidebarFrame.querySelector(`#pulse_${pulseIndex}_${paramKey}_max`);
+
+                        if (minInputElement) {
+                            pulseData[paramKey].min_value = minInputElement.value; // Store min value
+                        }
+                        if (maxInputElement) {
+                            pulseData[paramKey].max_value = maxInputElement.value; // Store max value
+                        }
+                    });
+                    pulses.push(pulseData); // Add the data for this pulse to the list of pulses
+                });
+            }
+
+            returnParameters.other_parameters = otherParameters
+
+            if (pulses && pulses.length > 0) {
+                returnParameters.pulse_parameters = pulses
+            }
+
+            return returnParameters
         }
 
         async function startExperiment() {
             showSpinner(true);
-            //const experimentSelector = document.getElementById('experiment');
-            //const selectedExperiment = experimentSelector.value;
             // Collect all inputs from the "sidebar-frame" div
             let parameters = collectInputs('sidebar-left')
+
             console.log("Collected params")
             console.log(parameters)
-            parameters = restructureParameters(parameters)
+            parameters.other_parameters = restructureParameters(parameters.other_parameters)
+            console.log("Restructured params")
+            console.log(parameters)
+
             await createIframes()
 
             try {
@@ -424,10 +519,9 @@
                     body: JSON.stringify(parameters),
                 });
                 console.log("Package sent")
-                console.log(parameters)
 
                 const data = await response.json();
-                console.log(data);
+                console.log("Response:", data);
 
             } catch(error) {
                 console.error('Error starting the experiment:', error);
@@ -483,7 +577,7 @@
             });
         }
         async function updatePulseParameters(){
-            const pulseTypes = Array.from(document.querySelectorAll('[id^="param_fun_type_"]')).reduce((acc, input) => {
+            let pulseTypes = Array.from(document.querySelectorAll('[id^="fun_type_"]')).reduce((acc, input) => {
                 const match = input.id.match(/_(\d+)$/); // Extract the number at the end of the ID
                 if (match) {
                     const number = match[1]; // Get the matched number
@@ -491,6 +585,7 @@
                 }
                 return acc; // Return the accumulator for the next iteration
             }, {});
+
             if (Object.keys(pulseTypes).length == 0){
                 return;
             }
@@ -509,31 +604,43 @@
                 configs.push(this_config)
                 }));
 
-            for (let i = 0; i < configs.length; i++) {
-                const pulseConfig = configs[i];
+            // Clear out any previous pulse keys in globalData to prevent leftover values
+            Object.keys(globalData).forEach(key => {
+                if (key.startsWith('pulse_')) {
+                    delete globalData[key];
+                }
+            });
+
+            let pulseCount = {}
+
+            for (let [i, pulseConfig] of configs.entries()) {
                 let pulse_key = `pulse_${i}`
-                globalData[pulse_key] = {}; // Initialize as an empty object if it doesn't exist
+                // globalData[pulse_key] = {}; // Initialize as an empty object
+                const prefixedPulseConfig = {};
+
                 Object.keys(pulseConfig).forEach(key => {
-                    globalData[pulse_key][key] = pulseConfig[key];
+                    const prefixedKey = `${pulse_key}_${key}`; // Create the prefixed key
+                    globalData[prefixedKey] = pulseConfig[key]; // Store in globalData
+                    prefixedPulseConfig[prefixedKey] = pulseConfig[key]; // Map with prefixed keys
+
                 });
-                const currentPulseConfig = globalData[pulse_key];
 
-                let optPulseFeatures = Object.keys(currentPulseConfig).filter(
-                    key => currentPulseConfig[key]?.optimizable === true
+                let optPulseFeatures = Object.keys(prefixedPulseConfig).filter(
+                    key => prefixedPulseConfig[key]?.optimizable === true
                 );
-                let fixPulseFeatures = Object.keys(currentPulseConfig).filter(
-                    key => currentPulseConfig[key]?.user_fixed === true
+                let fixPulseFeatures = Object.keys(prefixedPulseConfig).filter(
+                    key => prefixedPulseConfig[key]?.user_fixed === true
                 );
 
-                optPulseFeatures = sortFeatures(optPulseFeatures, currentPulseConfig);
-                fixPulseFeatures = sortFeatures(fixPulseFeatures, currentPulseConfig);
+                optPulseFeatures = sortFeatures(optPulseFeatures, prefixedPulseConfig);
+                fixPulseFeatures = sortFeatures(fixPulseFeatures, prefixedPulseConfig);
 
-                await updateFixedParameters(fixPulseFeatures, currentPulseConfig, 'parameters-container-fixed-pulse', i)
-                await updateVariableParameters(optPulseFeatures, currentPulseConfig, 'parameters-container-variable-pulse', i)
+                await updateFixedParameters(fixPulseFeatures, prefixedPulseConfig, 'parameters-container-fixed-pulse', i)
+                await updateVariableParameters(optPulseFeatures, prefixedPulseConfig, 'parameters-container-variable-pulse', i)
             }
 
             Object.keys(pulseTypes).forEach(number => {
-                const input = document.getElementById(`param_fun_type_${number}`);
+                const input = document.getElementById(`fun_type_${number}`);
                 input.addEventListener('change', cleanParametersAndUpdate);  // Call the function on change
             });
 
@@ -553,11 +660,11 @@
         }
 
         async function updateElectrodeListeners(){
-            const e_pos_inputs = document.querySelectorAll('[id^="param_e_pos"]');
+            const e_pos_inputs = document.querySelectorAll('[id^="e_pos"]');
             // e_pos_inputs.forEach(input => {
             //     input.addEventListener('change', drawPlot);
             // });
-            const diameterInput = document.getElementById('param_dia') || document.getElementById('param_axon_diameter');
+            const diameterInput = document.getElementById('dia') || document.getElementById('axon_diameter');
             //TODO uncomment this once the other thing is fixe
             // diameterInput.addEventListener('change', drawPlot);
             // await drawPlot()
@@ -567,7 +674,7 @@
             const experimentSelect = document.getElementById('experiment');
             experimentSelect.addEventListener('change', addPlotListeners);
 
-            const num_electrodes = document.getElementById('param_num_electrodes');
+            const num_electrodes = document.getElementById('num_electrodes');
             if (num_electrodes){
                 num_electrodes.addEventListener('change', updateElectrodeListeners);
                 await updateElectrodeListeners()
@@ -691,7 +798,7 @@
 
                     const input = document.createElement('input');
                     input.type = 'number';
-                    input.id = 'param_num_electrodes';
+                    input.id = 'num_electrodes';
                     input.value = globalData.num_electrodes.value;
                     input.min = globalData.num_electrodes.min_value;
                     input.max = globalData.num_electrodes.max_value;
@@ -733,7 +840,7 @@
             // Determine ID based on input type
             if (index !== null) {
                 const key = keyOrId;
-                select.id = `param_${key}_${index}`;
+                select.id = `${key}_${index}`;
             } else {
                 select.id = keyOrId; // Direct ID for simpler cases
             }
@@ -753,7 +860,7 @@
             const inputRow = createInputRow(key, false);
             const valueInput = document.createElement('input');
             valueInput.type = 'number';
-            valueInput.id = index !== null ? `param_${key}_${index}` : `param_${key}`;
+            valueInput.id = index !== null ? `${key}_${index}` : `${key}`;
             if (data.value !== null) valueInput.value = data.value;
             if (data.min !== null) valueInput.min = data.min;
             if (data.max !== null) valueInput.max = data.max;
@@ -788,7 +895,7 @@
             container.appendChild(createSelectRow(key, data.possible_values, index));
         }
 
-        function addArrayInputs(container, key, data, columns) {
+        function addArrayInputs(container, key, data, columns, index=null) {
             for (let i = 0; i < columns; i++) {
                 const inputRow = document.createElement('div');
                 inputRow.classList.add('input-row');
@@ -803,7 +910,7 @@
 
                     const valueInput = document.createElement('input');
                     valueInput.type = 'number';
-                    valueInput.id = `param_${key}_${dim}_${i}`;
+                    valueInput.id = `${key}_${dim}_${i}`;
                     valueInput.value = data.value?.[dimIndex] || 0;
                     if (data.min_value && data.max_value) {
                         valueInput.min = data.min_value[dimIndex];
@@ -817,7 +924,7 @@
             }
         }
 
-        function createInputRow(key, insertBoolean = false) {
+        function createInputRow(key, insertBoolean = false, index=null) {
             const inputRow = document.createElement('div');
             inputRow.classList.add('input-row');
 
@@ -830,7 +937,7 @@
                 rowLabel.innerText = "set (True)"
                 const booleanInput = document.createElement('input');
                 booleanInput.type = 'checkbox';
-                booleanInput.id = `param_${key}`;
+                booleanInput.id = index=== null? `${key}` : `${key}_${index}`;
                 inputRow.appendChild(rowLabel); // Add the label first
                 inputRow.appendChild(booleanInput); // Add the checkbox input
             }
@@ -845,7 +952,7 @@
 
             const rowLabel = createRowLabel(index);
             const selectInput = document.createElement('select');
-            selectInput.id = index !== null ? `param_${key}_${index}` : `param_${key}`;
+            selectInput.id = index !== null ? `${key}_${index}` : `${key}`;
 
             options.forEach((value) => {
                 const option = document.createElement('option');
@@ -866,19 +973,19 @@
         }
 
         // Helper for numeric multi-inputs (e.g., int-mult, float-mult)
-        function addVariableNumericMultipleInputs(container, key, paramData, electrode_ix) {
+        function addVariableNumericMultipleInputs(container, key, paramData, index=null) {
             const inputRow = document.createElement('div');
             inputRow.classList.add('input-row');
-            inputRow.appendChild(createNumericInput(key, paramData, electrode_ix, 'min'));
-            inputRow.appendChild(createNumericInput(key, paramData, electrode_ix, 'max'));
+            inputRow.appendChild(createNumericInput(key, paramData, index, 'min'));
+            inputRow.appendChild(createNumericInput(key, paramData, index, 'max'));
             container.appendChild(inputRow);
         }
         // Helper for single numeric inputs (e.g., int, float)
-        function addNumericInput(container, key, paramData, i=null) {
+        function addNumericInput(container, key, paramData, index=null) {
             const inputRow = document.createElement('div');
             inputRow.classList.add('input-row');
-            inputRow.appendChild(createNumericInput(key, paramData, i, 'min'));
-            inputRow.appendChild(createNumericInput(key, paramData, i, 'max'));
+            inputRow.appendChild(createNumericInput(key, paramData, index, 'min'));
+            inputRow.appendChild(createNumericInput(key, paramData, index, 'max'));
             container.appendChild(inputRow);
         }
         // Helper for categorical multi-inputs (e.g., cat-mult)
@@ -891,9 +998,9 @@
         }
 
         // Helper for single categorical inputs (e.g., cat)
-        function addCategoricalInput(container, key, paramData) {
+        function addCategoricalInput(container, key, paramData, index=null) {
             const inputRow = createInputRow('Select categories');
-            inputRow.appendChild(createSelectInput(key, paramData.possible_values));
+            inputRow.appendChild(createSelectInput(key, paramData.possible_values, index));
             container.appendChild(inputRow);
         }
 
@@ -913,7 +1020,7 @@
         }
 
         // Helper for boolean inputs
-        function addBooleanInput(container, key) {
+        function addBooleanInput(container, key, index) {
             const inputRow = createInputRow(key, true);
             //inputRow.appendChild(inputRow);
             container.appendChild(inputRow);
@@ -929,8 +1036,8 @@
                 // Use complex structure with key, index, bound, and optional dimIndex
                 const key = keyOrId;
                 input.id = dimIndex !== null
-                    ? `param_${key}_${paramData.dimensions[dimIndex]}_${bound}_${index}`
-                    : `param_${key}_${bound}${index !== null ? `_${index}` : ''}`;
+                    ? `${key}_${paramData.dimensions[dimIndex]}_${bound}_${index}`
+                    : `${key}_${bound}${index !== null ? `_${index}` : ''}`;
 
                 const valueKey = bound === 'min' ? 'min_value' : 'max_value';
                 const boundValue = Array.isArray(paramData[valueKey])
@@ -961,7 +1068,7 @@
 
         async function updateFixedParameters(keyList, selData, container_name, append=false, index=null){
             const container = document.getElementById(container_name);
-            const numColumnsInput = document.getElementById('param_num_electrodes');
+            const numColumnsInput = document.getElementById('num_electrodes');
             const numColumnsValue = append === false
                 ? (numColumnsInput ? numColumnsInput.value : 0)
                 : null;
@@ -1000,7 +1107,7 @@
         }
         async function updateVariableParameters(keyList, selData, container_name, append=false){
             const container = document.getElementById(container_name);
-            const numColumnsInput = document.getElementById('param_num_electrodes');
+            const numColumnsInput = document.getElementById('num_electrodes');
 
             const numColumnsValue = append === false
                 ? (numColumnsInput ? numColumnsInput.value : 0)
@@ -1047,7 +1154,7 @@
                 const toggleCheckbox = document.createElement('input');
                 toggleCheckbox.type = 'checkbox';
 
-                toggleCheckbox.id = `toggle_${key}_${numColumnsValue}`;
+                toggleCheckbox.id = `toggle_${key}`;
 
                 toggleContainer.appendChild(toggleLabel);
                 toggleContainer.appendChild(toggleCheckbox);
@@ -1059,16 +1166,16 @@
                     const action = isFixed ? fixedAction[type] : inputActions[type];
 
                     if (action) {
-                        action(inputsContainer, key, paramData, numColumnsValue);
+                        action(inputsContainer, key, paramData);
                     } else {
                         console.warn(`Unknown type: ${type}`);
                     }
                 });
 
                 const initialAction = toggleCheckbox.checked ? fixedAction[type] : inputActions[type];
-                console.log("***", key, numColumnsValue)
+
                 if (initialAction) {
-                    initialAction(inputsContainer, key, paramData, numColumnsValue);
+                    initialAction(inputsContainer, key, paramData);
                 } else {
                     console.warn(`Unknown type: ${type}`);
                 }
@@ -1081,7 +1188,7 @@
         }
         // Function to draw the plot
         function drawPlot() {
-            const num_el_container = document.getElementById('param_num_electrodes')
+            const num_el_container = document.getElementById('num_electrodes')
             if (!num_el_container){ //There are no electrodes in the problem, this plot is not needed.
                 return
             }
@@ -1091,10 +1198,10 @@
 
             let height
             if (globalData['name'].startsWith("axonsim")){
-                height = parseFloat(document.getElementById('param_dia').value)
+                height = parseFloat(document.getElementById('dia').value)
             }
             else if (globalData['name'].startsWith("cajal")){
-                height = parseFloat(document.getElementById('param_axon_diameter').value)
+                height = parseFloat(document.getElementById('axon_diameter').value)
             }
             else{
                 console.error("The input is not valid")
@@ -1126,7 +1233,7 @@
             for (let n=0; n<=num_el-1; n++){
                 let pos = []
                 for (let dim in dims) {
-                    const el = document.getElementById(`param_e_pos_${dims[dim]}_${n}`);
+                    const el = document.getElementById(`e_pos_${dims[dim]}_${n}`);
                     pos.push(parseFloat(el.value))
                 }
                 const markerX = 10*pos[0] + (canvas.width / 2); // Center the electrodes
@@ -1136,14 +1243,14 @@
 
         }
         function draw3DPlot() {
-            const num_el_container = document.getElementById('param_num_electrodes')
+            const num_el_container = document.getElementById('num_electrodes')
             if (!num_el_container) { // There are no electrodes in the problem, this plot is not needed.
                 return
             }
             const num_el = parseInt(num_el_container.value, 10)
             const centerX = 110
             const canvas = document.getElementById('plotCanvas')
-            const height = parseFloat(document.getElementById('param_axon_diameter').value)
+            const height = parseFloat(document.getElementById('axon_diameter').value)
             const dims = globalData['e_pos']['dimensions']
 
             // Create the scene and camera
@@ -1175,7 +1282,7 @@
             for (let n = 0; n <= num_el - 1; n++) {
                 let pos = []
                 for (let dim in dims) {
-                    const el = document.getElementById(`param_e_pos_${dims[dim]}_${n}`);
+                    const el = document.getElementById(`e_pos_${dims[dim]}_${n}`);
                     pos.push(parseFloat(el.value))
                 }
                 const electrodeGeometry = new THREE.SphereGeometry(5, 32, 32) // Small sphere for electrodes
