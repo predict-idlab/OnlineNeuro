@@ -1,7 +1,7 @@
 function main(json_data)
     format long g
     pyenv('ExecutionMode','InProcess');
-    
+
     root_path = fullfile(pwd, '../../');
     addpath(genpath(pwd))
 
@@ -41,13 +41,12 @@ function main(json_data)
     %end
     pause(1);
     receivedData = readData(tcpipClient);
-    display("1")
     display(receivedData)
     % End handshake, connection works.
 
     display("Selected problem")
     display(problem_name)
-    % Prepare call function based on problem_config 
+    % Prepare call function based on problem_config
 
     switch problem_name
         case 'circle_classification'
@@ -97,7 +96,7 @@ function main(json_data)
                 fvalues{i} = fun_wrapper(eval_fun, qp);
         end
     end
-    
+
     %Sending first (large batch)
     if nargin == 0
         quit()
@@ -106,7 +105,7 @@ function main(json_data)
     display("Sending data to Python ...")
     sendData(fvalues, tcpipClient, SizeLimit);
 
-    % Read values sent from Python 
+    % Read values sent from Python
     fprintf("Beginning loop now \n")
 
     if isfield(receivedData, 'terminate_flag')
@@ -115,12 +114,12 @@ function main(json_data)
         terminateFlag = false;
     end
 
-    
+
     while ~terminateFlag
         % Receive data from Python
         receivedData = readData(tcpipClient);
         qp = receivedData.query_points; %TODO Reshape if needed (batch_sampling may need this)
-        
+
         num_points = length(qp);
         % Check if termination signal received from Python
 
@@ -136,12 +135,10 @@ function main(json_data)
                     for i = 1:num_points
                         fvalues{i} = fun_wrapper(eval_fun, query_points(i), eval_dict);
                     end
-                %TODO, define experiment setup for nerve block tests                    
                 case {'axonsim_threshold','axonsim_nerve_block'}
                     for i =1:num_points
                         fvalues{i} = fun_wrapper(eval_fun, query_points(i), eval_dict, 'nerve_block');
                     end
-
                 otherwise
                     for i = 1:num_points
                         fvalues{i} = fun_wrapper(eval_fun, query_points(i));
@@ -155,4 +152,3 @@ function main(json_data)
     clear tcpipClient;
 
 end
-

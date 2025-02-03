@@ -15,7 +15,7 @@ function [eval_fun, eval_dict] = axon_problem(problem_setting, varargin)
     plot = p.Results.plot;
     problem_setting = p.Results.problem_setting;
     path_setting = p.Results.path_config;
-    
+
     % If problem_setting is a string, interpret it as a JSON file path and load the config
     if ischar(problem_setting) || isstring(problem_setting)
         try
@@ -50,7 +50,7 @@ function [eval_fun, eval_dict] = axon_problem(problem_setting, varargin)
         disp("AxonSim can't display a plot as the response surface is unknown");
     end
     eval_fun = @axonsim_call;
-    
+
     fields = fieldnames(experiment_params);
     eval_dict = struct();
 

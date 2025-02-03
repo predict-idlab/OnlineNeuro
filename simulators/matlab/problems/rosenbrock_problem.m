@@ -18,10 +18,10 @@ function [eval_fun, features, n_targets] = rosenbrock_problem(varargin)
     b = 100;
     x0 = [-5, 5];
     x1 = [-5, 5];
-    
+
     missing_vars = [];
     spec_vars = {'a','b','x0','x1'};
-    
+
     if problem_setting
        for i = 1:length(spec_vars)
            if ~isfield(problem_setting, spec_vars{i})
@@ -55,18 +55,18 @@ function [eval_fun, features, n_targets] = rosenbrock_problem(varargin)
         % Define the range for plotting
         x1_range = linspace(-5, 5, 100);
         x2_range = linspace(-5, 5, 100);
-        
+
         % Generate a grid of points for plotting
         [X1, X2] = meshgrid(x1_range, x2_range);
         Z = zeros(size(X1));
-        
+
         % Compute function values at each grid point
         for i = 1:size(X1, 1)
             for j = 1:size(X1, 2)
                 Z(i, j) = eval_fun([X1(i, j), X2(i, j)]);
             end
         end
-    
+
         figure;
         surf(X1, X2, Z);
         xlabel('x1');

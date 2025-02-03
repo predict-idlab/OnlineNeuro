@@ -1,5 +1,5 @@
 function out_struct = fun_wrapper(fun, qp,  feat_struct, operator, channel, full_response)
-    % TODO. handle putting multi-input vectors in the correct struct 
+    % TODO. handle putting multi-input vectors in the correct struct
     if nargin < 2
         error('Fun Wrapper requires at least two input arguments.');
     end
@@ -9,11 +9,10 @@ function out_struct = fun_wrapper(fun, qp,  feat_struct, operator, channel, full
         display(qp)
         response = fun(qp);
         out_struct = struct('observations', response);
-        
+
     elseif nargin <3
             error(" A feature structure needs to be provided")
     else
-        display(qp)
         if nargin < 4
             operator = 'default';
         end
@@ -25,20 +24,20 @@ function out_struct = fun_wrapper(fun, qp,  feat_struct, operator, channel, full
         if nargin < 6
             full_response = false;
         end
-        
+
         fieldNames = fieldnames(qp);
         for i=1:length(fieldNames)
             fN = fieldNames{i};
             feat_struct.(fN) = qp.(fN);
         end
-        
+
         feat_struct = preprocess_struct(feat_struct);
         display(feat_struct)
         y = fun(feat_struct);
         out_struct = struct();
 
-        % Operator applied to only a node 
-        % TODO, extend what else to do here. 
+        % Operator applied to only a node
+        % TODO, extend what else to do here.
         switch operator
             case 'min_global'
                 % Pass the entire signal (i.e. modelling AP over time)
@@ -68,7 +67,7 @@ function out_struct = fun_wrapper(fun, qp,  feat_struct, operator, channel, full
                 % one, and rightmos is the blocking one. A block could
                 % occur in the other direction, but we ignore that scenario
                 % (not valid event).
-                data = y.Yp
+                data = y.Yp;
                 max_time = max(data, [], 1);
                 b0 = max_time(1) > threshold_ap;    % First point exceeds threshold
                 b1 = max_time(end) < threshold_ap;  % Last point stays below threshold
@@ -83,7 +82,7 @@ function out_struct = fun_wrapper(fun, qp,  feat_struct, operator, channel, full
                 out_struct.('full_observations') = y.fname;
                 out_struct.('observations') = response;
 
-                
+
             otherwise
                 y_min = min(y.Yp(:,channel));
                 y_max = max(y.Yp(:,channel));
@@ -91,7 +90,7 @@ function out_struct = fun_wrapper(fun, qp,  feat_struct, operator, channel, full
                 out_struct.('observations') = response;
 
         end
-    
+
     end
 
 end

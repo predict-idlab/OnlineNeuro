@@ -1,30 +1,30 @@
 function [eval_fun, features, n_targets] = circle_problem(varargin)
    % Create an input parser object
     p = inputParser;
-    
+
     % Define the parameters and their default values
     addOptional(p, 'plot', false, @(x) islogical(x) || isnumeric(x));
     addOptional(p, 'problem_setting', false, @(x) isstruct(x));
 
     % Parse the input arguments
     parse(p, varargin{:});
-    
+
     % Retrieve values after parsing
     plot_bool = p.Results.plot;
     problem_setting = p.Results.problem_setting;
 
     n_targets = 'y';
     %Default values
-    
+
     x0=[-1,1];
     x1=[-1,1];
     radius=0.5;
     noise=0.1;
     center= [0,0];
-    
+
     missing_vars = [];
     spec_vars = {'x0','x1','radius','noise','center'};
-    
+
     if problem_setting
         for i = 1:length(spec_vars)
             if ~isfield(problem_setting, spec_vars{i})
@@ -50,7 +50,7 @@ function [eval_fun, features, n_targets] = circle_problem(varargin)
             center = problem_setting.center;
         end
     else
-        warning('No problem configuration was passed, using default values');        
+        warning('No problem configuration was passed, using default values');
     end
 
     features = struct('x0', x0, 'x1', x1);

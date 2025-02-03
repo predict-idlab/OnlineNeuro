@@ -35,10 +35,10 @@ function [eval_fun, features, n_targets] = multiobjective_problem(varargin)
     else
         warning('No problem configuration was passed, using default values');
     end
-    
+
     features = struct('x0',x0,'x1',x1);
 
-    % Plot the function surface 
+    % Plot the function surface
     if plot_bool
         % Define the range for plotting
         x1_range = linspace(features.x0(1), features.x0(2), 100);

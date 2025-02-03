@@ -34,7 +34,7 @@ function result = axonsim_call(varin)
     % fiber length [uA?] it should be um\
     % calc_thr purpose?
 
-    
+
     % This is not handled when loading the defaults via the .json
 
     % default_struct = struct;
@@ -55,7 +55,7 @@ function result = axonsim_call(varin)
     % default_struct.custom_fun = ["stim_sin(t, 20000, 1)", "stim_sin(t, 2000, 1)"];
     % default_struct.I = [-1, -1];
     % fib_length [um]
-    
+
     e_pos = varin.e_pos;
     c = varin.c;
     phi = varin.phi;
@@ -78,9 +78,9 @@ function result = axonsim_call(varin)
     % fun_type{1} = "custom";
     I = varin.I;
 
-    
+
     %params = varin.custom_fun_params;
-    
+
     %
     n_sources = varin.num_electrodes;
     e_sep = e_sep*1000;
@@ -92,7 +92,7 @@ function result = axonsim_call(varin)
         case "McNeal"
             model_nr = 3;
     end
-    
+
     %Modified code from axonsim_mod
     % Handling single strings as arrays
     fun_type_array = NaN(1, n_sources);
@@ -109,7 +109,7 @@ function result = axonsim_call(varin)
             case "intracellular"
                 e_type_array(i) = 4;
         end
-        
+
         switch string(fun_type(i))
             case {"single_pulse", "single pulse"}
                 fun_type_array(i) = 1;
@@ -127,7 +127,7 @@ function result = axonsim_call(varin)
     fun_type = fun_type_array;
     e_pos = e_pos * 1000;  %um
     phi = phi*100000; % ohm um
-    
+
     for i=1:n_sources
         if e_type(i) ~= 4
             I(i) = I(i) /1000; %A
@@ -182,7 +182,7 @@ function result = axonsim_call(varin)
     szy = size(Y);
 
     m = 16;
-    
+
     Yp=zeros(szy(1),N-m);
 
     for i = 1:N-m
@@ -219,9 +219,9 @@ function result = axonsim_call(varin)
     tosave.stimuli = stimuli;
     tosave.ts = ts;
 
-    
+
     currentFolder = pwd;
-    relativeFolder = fullfile(currentFolder, '../../simulations/axonsim_nerve_block/full_mats/');
+    relativeFolder = fullfile(currentFolder, '../../simulations/axonsim_nerve_block/full_mats');
 
     fname = sprintf('%s/simulation_%s.mat', relativeFolder, datestr(now,'mm-dd-yyyy HH-MM'));
     %display(fname)
