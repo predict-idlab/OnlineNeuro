@@ -13,7 +13,7 @@ import gpflow
 from gpflow.models import GPR, SGPR, SVGP, VGP, GPModel
 from trieste.data import Dataset
 from trieste.space import Box, SearchSpace
-from typing import Optional, Sequence, Callable, Hashable, Tuple, TypeVar, Union
+from typing import Optional, Union
 
 TensorType = Union[tf.Tensor, tf.Variable]
 
@@ -122,7 +122,7 @@ def _get_kernel(
 def build_vgp(data: Dataset,
               search_space: SearchSpace,
               kernel_priors: bool = True,
-              likelihood_variance : Optional[float] = None,
+              likelihood_variance: Optional[float] = None,
               trainable_likelihood: bool = False,
               ) -> VGP:
     """
@@ -184,10 +184,10 @@ def build_model(init_dataset, search_space, config, **kwargs):
         # TODO extend models!
         if config['variational'] and config['sparse']:
             if config['noise_free']:
-                msg = "build_svgp by Trieste does not have a noisy version, need to rewrite this function(TODO)"
+                msg = 'build_svgp by Trieste does not have a noisy version, need to rewrite this function(TODO)'
                 warnings.warn(msg)
             gpflow_model = build_svgp(init_dataset, search_space, classification=True,
-                                      #noise_free=config['experiment']['noise_free'],
+                                      # noise_free=config['experiment']['noise_free'],
                                       trainable_likelihood=config['trainable_likelihood'],
                                       )
             model = VariationalGaussianProcess(gpflow_model)
@@ -198,7 +198,7 @@ def build_model(init_dataset, search_space, config, **kwargs):
 
             model = VariationalGaussianProcess(gpflow_model)
         else:
-            raise Exception("Classification not implemented with non variational GPs")
+            raise Exception('Classification not implemented with non variational GPs')
     else:
         if config['variational'] and config['sparse']:
             gpflow_model = build_svgp(init_dataset, search_space,
@@ -247,5 +247,5 @@ def build_model(init_dataset, search_space, config, **kwargs):
             model = GaussianProcessRegression(gpflow_model)
 
         else:
-            raise Exception("Classification not implemented with non variational GPs")
+            raise Exception('Classification not implemented with non variational GPs')
     return model

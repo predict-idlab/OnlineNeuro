@@ -1,4 +1,4 @@
-#/online_neuro/utils.py
+# /online_neuro/utils.py
 import numpy as np
 import matlab.engine
 import json
@@ -7,6 +7,10 @@ import subprocess
 import queue
 from trieste.space import Box
 from pathlib import Path
+import time
+import select
+
+
 class CustomBox(Box):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -15,7 +19,7 @@ class CustomBox(Box):
                       seed: Optional[int] = None,
                       skip: Optional[int] = None,
                       max_tries: int = 100,
-                      sampling_method: str='sobol'):
+                      sampling_method: str = 'sobol'):
         if sampling_method == 'random':
             return self.sample(num_samples, seed)
         elif sampling_method == 'halton':
@@ -29,7 +33,8 @@ class CustomBox(Box):
         elif sampling_method == 'sobol_feasible':
             return self.sample_feasible(num_samples, skip, max_tries)
         else:
-            raise ValueError(f"Unsupported sampling method: {sampling_method}")
+            raise ValueError(f'Unsupported sampling method: {sampling_method}')
+
 
 class SearchSpacePipeline:
     def __init__(self, search_space,
@@ -50,7 +55,7 @@ class SearchSpacePipeline:
         if sample_method == 'sobol':
             samples = self.search_space.sample_sobol(num_samples)
         else:
-            raise NotImplementedError(f"Sampling method {sample_method} not implemented (yet).")
+            raise NotImplementedError(f'Sampling method {sample_method} not implemented (yet).')
 
         samples = self.inverse_transform(samples.numpy())
         return samples
@@ -83,7 +88,7 @@ class SearchSpacePipeline:
     def feature_names_ixs(self):
         feature_names_ixs = []
         for fn in self.feature_names:
-            feat_ixs_list = [f"{fn}_{ix}" for ix in range(len(self.mapping[fn]))]
+            feat_ixs_list = [f'{fn}_{ix}' for ix in range(len(self.mapping[fn]))]
             feature_names_ixs.extend(feat_ixs_list)
 
         return feature_names_ixs
@@ -120,13 +125,13 @@ class CustomMinMaxScaler:
         self.feature_min = np.array(feature_min)
         self.feature_max = np.array(feature_max)
         self.feature_range = self.feature_max - self.feature_min
-        self.output_min = np.ones(self.num_features)*output_range[0]
-        self.output_max = np.ones(self.num_features)*output_range[1]
+        self.output_min = np.ones(self.num_features) * output_range[0]
+        self.output_max = np.ones(self.num_features) * output_range[1]
         self.output_range = self.output_max - self.output_min
-        self.scale_ = self.output_range/self.feature_range
+        self.scale_ = self.output_range / self.feature_range
 
         if len(self.feature_min) != len(self.feature_max):
-            raise ValueError("feature_min and feature_max must have the same length.")
+            raise ValueError('feature_min and feature_max must have the same length.')
 
     def transform(self, x):
         """
@@ -137,7 +142,7 @@ class CustomMinMaxScaler:
         - x_transformed: Transformed data with values in the range [-1, 1].
         """
         if x.shape[1] != len(self.feature_min):
-            raise ValueError(f"Expected input with {len(self.feature_min)} features, but got {x.shape[1]} features.")
+            raise ValueError(f'Expected input with {len(self.feature_min)} features, but got {x.shape[1]} features.')
 
         x = np.array(x)
         x = (x - self.feature_min) * self.scale_ + self.output_min
@@ -152,7 +157,7 @@ class CustomMinMaxScaler:
         - x_original: Data transformed back to the original feature range.
         """
         if x.shape[1] != len(self.feature_min):
-            raise ValueError(f"Expected input with {len(self.feature_min)} features, but got {x.shape[1]} features.")
+            raise ValueError(f'Expected input with {len(self.feature_min)} features, but got {x.shape[1]} features.')
 
         x = np.array(x)
         x = (x - self.output_min) / self.scale_ + self.feature_min
@@ -170,9 +175,9 @@ class CustomMinMaxScaler:
         - x_original: Data transformed back to the original feature range.
         """
         if ix >= len(self.feature_min):
-            raise IndexError("Index out of bounds for feature dimension.")
+            raise IndexError('Index out of bounds for feature dimension.')
         if len(x.shape) != 2:
-            raise ValueError("Expected 2D array for x_scaled.")
+            raise ValueError('Expected 2D array for x_scaled.')
 
         x[:, ix] = (x[:, ix] - self.output_min[ix]) / self.scale_[ix] + self.feature_min[ix]
         return x
@@ -211,11 +216,11 @@ def run_matlab(matlab_script_path, matlab_function_name='main', **kwargs):
         matlab_script_full_path = parent_directory / matlab_script_path
 
     if not matlab_script_full_path.exists():
-        raise FileNotFoundError(f"The MATLAB folder does not exist: {matlab_script_full_path}")
+        raise FileNotFoundError(f'The MATLAB folder does not exist: {matlab_script_full_path}')
 
     matlab_script_full_path = str(matlab_script_full_path)
     # Start MATLAB engine
-    print("Calling Matlab from Python engine")
+    print('Calling Matlab from Python engine')
 
     eng = matlab.engine.start_matlab()
     eng.cd(matlab_script_full_path)
@@ -228,14 +233,14 @@ def run_matlab(matlab_script_path, matlab_function_name='main', **kwargs):
         eng.quit()
 
     except Exception as e:
-        print(f"Error starting MATLAB: {e}")
+        print(f'Error starting MATLAB: {e}')
 
-
-def read_output(process, output_queue):
-    """Reads the output of the process and places it in a queue."""
-    for line in iter(process.stdout.readline, ''):
-        output_queue.put(line)  # Place each line of output in the queue
-    process.stdout.close()
+#
+# def read_output(process, output_queue):
+#     """Reads the output of the process and places it in a queue."""
+#     for line in iter(process.stdout.readline, ''):
+#         output_queue.put(line)  # Place each line of output in the queue
+#     process.stdout.close()
 
 
 def run_python_script(script_path, function_name='main.py', **kwargs):
@@ -245,7 +250,7 @@ def run_python_script(script_path, function_name='main.py', **kwargs):
     @param kwargs:
     @return:
     """
-    print("Calling Python script from within Python")
+    print('Calling Python script from within Python')
     current_directory = Path(__file__).resolve().parent
     parent_directory = current_directory.parent
 
@@ -256,11 +261,11 @@ def run_python_script(script_path, function_name='main.py', **kwargs):
         script_full_path = parent_directory / script_path
 
     if not script_full_path.exists():
-        raise FileNotFoundError(f"The Python script does not exist: {script_full_path}")
+        raise FileNotFoundError(f'The Python script does not exist: {script_full_path}')
 
-    command = ["python3", str(script_full_path / function_name)]
+    command = ['python3', str(script_full_path / function_name)]
     for key, value in kwargs.items():
-        command.append(f"--{key}")
+        command.append(f'--{key}')
         if isinstance(value, dict):
             command.append(json.dumps(value))
         else:
@@ -271,7 +276,7 @@ def run_python_script(script_path, function_name='main.py', **kwargs):
         return process
 
     except Exception as e:
-        print(f"Error starting Python (process): {e}")
+        print(f'Error starting Python (process): {e}')
 
 
 def monitor_output(output_queue):
@@ -308,35 +313,85 @@ def generate_grids(n, num_points, upper_bound=None, lower_bound=None):
     midpoints_grid = np.stack(midpoints_grids, axis=-1).reshape(-1, n)
 
     if upper_bound and lower_bound:
-        grid = lower_bound + grid*(upper_bound-lower_bound)
+        grid = lower_bound + grid * (upper_bound-lower_bound)
         midpoints_grid = lower_bound + midpoints_grid*(upper_bound-lower_bound)
 
     return grid, midpoints_grid
 
 
-def fetch_data(client_socket, size=65536):
-    received_data = client_socket.recv(size).decode()
-    received_data = json.loads(received_data)
+def write_data(client_socket, data):
+    json_data = json.dumps(data, ensure_ascii=False).encode('utf-8')
+    try:
+        client_socket.sendall(json_data)
+        return {'Message': 'Data sent to server'}
+    except Exception as e:
+        msg = e
+        return {'Message': f'Something went wrong {msg}'}
 
-    if 'tot_pckgs' in received_data:
-        tot_packages = received_data['tot_pckgs']
-        all_data = [received_data['data']]
-        for ix in range(1, tot_packages):
-            print(f"{ix}/{tot_packages}")
-            msg = client_socket.recv(size).decode()
-            msg = json.loads(msg)
-            all_data.append(msg['data'])
 
-        #all_data = [x for xs in all_data for x in xs]
-        return all_data
+def receive_data(socket, buffer_size=65536, timeout=300):
+    """
+    Receives JSON data over a socket connection.
+    @param socket: The socket to receive data from.
+    @param buffer_size: The size of the buffer for each read operation.
+    @param timeout: Timeout in seconds for receiving data.
+    @return: Decoded Python object or raises an error.
+    """
+    buffer = b''
+    end_time = time.time() + timeout
+
+    while time.time() < end_time:
+        ready_to_read, _, _ = select.select([socket], [], [], 1)
+        if ready_to_read:
+            part = socket.recv(buffer_size)
+            if part:
+                buffer += part
+                print(len(buffer))
+                print(buffer)
+            # Check for complete JSON message(s) in the buffer
+            if b'\\n' in buffer:
+                messages = buffer.split(b'\\n')
+                for message in messages[:-1]:  # Process complete messages
+                    if message.strip():  # Ignore empty messages
+                        try:
+                            return json.loads(message.decode('utf-8').strip())
+                        except json.JSONDecodeError as e:
+                            print(f'Error decoding JSON: {e}, Message: {message}')
+
+                # Retain incomplete part in the buffer
+                buffer = messages[-1]
+
+    raise TimeoutError('Timeout: No complete JSON message received.')
+
+
+def client_send_and_receive(socket, message):
+    send_result = write_data(socket, message)
+    print(send_result['Message'])
+    response = receive_data(socket)
+    return response
+
+
+def fetch_data(socket):
+
+    data = receive_data(socket)
+    print('HERE')
+    print(data)
+    # Check if the received data is a list
+    if isinstance(data, list):
+        assert isinstance(data[-1], dict), 'Not a valid format'
+        if ('tot_pckgs' in data) and ('pckgs' in data):
+            if data['tot_pckgs'] == data['pckgs']:
+                return data
+            else:
+                while(data[-1]['tot_pckgs']> data[-1]['pckgs']):
+                    msg = receive_data(socket)
+                    data.extend(msg)
+                return data  # Return the combined data
+        else:
+            return data
     else:
-        if isinstance(received_data, str):
-            received_data = json.loads(received_data)
-
-        if 'full_data' in received_data:
-            received_data = received_data['full_data']
-
-        return received_data
+        # If data is not a list (shouldn't happen) place it in a list for later handling
+        return [data]
 
 
 def array_to_list_of_dicts(array, column_names):
@@ -347,7 +402,6 @@ def array_to_list_of_dicts(array, column_names):
     @return:
     """
     if array.shape[1] != len(column_names):
-        raise ValueError("Number of columns in array must match the number of column names.")
+        raise ValueError('Number of columns in array must match the number of column names.')
 
     return [dict(zip(column_names, row)) for row in array]
-

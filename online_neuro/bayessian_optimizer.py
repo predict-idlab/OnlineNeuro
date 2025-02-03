@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-This module contains the :class:`BayesianOptimizer` class, used to perform Bayesian optimization.
+This module contains the :class:`BayesianOptimizer`
 
 @Author Diego Nieves
 Modified version of Trieste's BayesianOptimizer.
@@ -25,29 +25,82 @@ Modified version of Trieste's BayesianOptimizer.
 
 
 """
-import absl
-from trieste.bayesian_optimizer import *
-from trieste.ask_tell_optimization import AskTellOptimizer
-from trieste.acquisition.rule import ResultType
-import warnings
-from .utils import SearchSpacePipeline
-import numpy as np
+import copy
+import logging
 import pickle
+import traceback
+import warnings
+from collections import Counter
+from dataclasses import dataclass
+from pathlib import Path
+from typing import (
+    Any,
+    ClassVar,
+    Dict,
+    Generic,
+    Mapping,
+    Optional,
+    TypeVar,
+    cast,
+)
 from typing import Type
 
-AskTellOptimizerType = TypeVar("AskTellOptimizerType")
+import absl
+import dill
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from trieste.acquisition.rule import (
+    AcquisitionRule,
+    LocalDatasetsAcquisitionRule,
+)
+from trieste.acquisition.rule import ResultType
+from trieste.acquisition.utils import with_local_datasets
+from trieste.ask_tell_optimization import AskTellOptimizer
+from trieste.bayesian_optimizer import (
+    FrozenRecord,
+    OptimizationResult,
+    ProbabilisticModelType,
+    TrainableProbabilisticModelType,
+    Record
+)
+from trieste.bayesian_optimizer import StateType
+from trieste.bayesian_optimizer import (
+    observation_plot_init,
+    optimize_model_and_save_result,
+    write_summary_initial_model_fit,
+    write_summary_query_points,
+    write_summary_observations
+)
+from trieste.data import Dataset
+from trieste.models import (
+    SupportsCovarianceWithTopFidelity
+
+)
+from trieste.models import TrainableProbabilisticModel
+from trieste.observer import OBJECTIVE, Observer
+from trieste.space import (
+    SearchSpace,
+    SearchSpaceType,
+)
+from trieste.types import State, Tag, TensorType
+from trieste.utils import Err, Ok, Result, Timer
+from trieste.utils.misc import LocalizedTag, get_value_for_tag, ignoring_local_tags
+
+AskTellOptimizerType = TypeVar('AskTellOptimizerType')
+
 
 def write_summary_init(
-    observer: Observer,
-    search_space: SearchSpace,
-    feature_names: Optional[np.ndarray | list],
-    acquisition_rule: AcquisitionRule[
-        TensorType | State[StateType | None, TensorType],
-        SearchSpaceType,
-        TrainableProbabilisticModelType,
-    ],
-    datasets: Mapping[Tag, Dataset],
-    models: Mapping[Tag, TrainableProbabilisticModel]
+        observer: Observer,
+        search_space: SearchSpace,
+        feature_names: Optional[np.ndarray | list],
+        acquisition_rule: AcquisitionRule[
+            TensorType | State[StateType | None, TensorType],
+            SearchSpaceType,
+            TrainableProbabilisticModelType,
+        ],
+        datasets: Mapping[Tag, Dataset],
+        models: Mapping[Tag, TrainableProbabilisticModel]
 ) -> None:
     """Write initial BO loop TensorBoard summary.
     Modified version from Trieste, it doesn't save the number of steps as we assume
@@ -56,15 +109,15 @@ def write_summary_init(
 
     devices = tf.config.list_logical_devices()
     logging.text(
-        "metadata",
-        f"Observer: `{observer}`\n\n"
-        f"Number of initial points: "
-        f"`{dict((k, len(v)) for k, v in datasets.items())}`\n\n"
-        f"Search Space: `{search_space}`\n\n"
-        f"Features: `{feature_names}`\n\n"
-        f"Acquisition rule:\n\n    {acquisition_rule}\n\n"
-        f"Models:\n\n    {models}\n\n"
-        f"Available devices: `{dict(Counter(d.device_type for d in devices))}`",
+        'metadata',
+        f'Observer: `{observer}`\n\n'
+        f'Number of initial points: '
+        f'`{dict((k, len(v)) for k, v in datasets.items())}`\n\n'
+        f'Search Space: `{search_space}`\n\n'
+        f'Features: `{feature_names}`\n\n'
+        f'Acquisition rule:\n\n    {acquisition_rule}\n\n'
+        f'Models:\n\n    {models}\n\n'
+        f'Available devices: `{dict(Counter(d.device_type for d in devices))}`',
     )
 
 
@@ -81,7 +134,8 @@ class OptimizationResult(Generic[StateType, ProbabilisticModelType]):
     """
 
     history: list[
-        Record[StateType, ProbabilisticModelType] | FrozenRecord[StateType, ProbabilisticModelType]
+        Record[StateType, ProbabilisticModelType]
+        | FrozenRecord[StateType, ProbabilisticModelType]
     ]
     r"""
     The history of the :class:`Record`\ s from each step of the optimization process. These
@@ -92,13 +146,13 @@ class OptimizationResult(Generic[StateType, ProbabilisticModelType]):
     @staticmethod
     def step_filename(step: int) -> str:
         """Default filename for saved optimization steps."""
-        return f"step.{step:0d}.pickle"
+        return f'step.{step:0d}.pickle'
 
-    STEP_GLOB: ClassVar[str] = "step.*.pickle"
-    RESULTS_FILENAME: ClassVar[str] = "results.pickle"
+    STEP_GLOB: ClassVar[str] = 'step.*.pickle'
+    RESULTS_FILENAME: ClassVar[str] = 'results.pickle'
 
     def astuple(
-        self,
+            self,
     ) -> tuple[
         Result[Record[StateType, ProbabilisticModelType]],
         list[
@@ -147,7 +201,7 @@ class OptimizationResult(Generic[StateType, ProbabilisticModelType]):
         if len(datasets) == 1:
             return next(iter(datasets.values()))
         else:
-            raise ValueError(f"Expected a single dataset, found {len(datasets)}")
+            raise ValueError(f'Expected a single dataset, found {len(datasets)}')
 
     def try_get_optimal_point(self) -> tuple[TensorType, TensorType, TensorType]:
         """
@@ -158,14 +212,14 @@ class OptimizationResult(Generic[StateType, ProbabilisticModelType]):
         """
         dataset = self.try_get_final_dataset()
         if tf.rank(dataset.observations) != 2 or dataset.observations.shape[1] != 1:
-            raise ValueError("Expected a single objective")
+            raise ValueError('Expected a single objective')
         if tf.reduce_any(
-            [
-                isinstance(model, SupportsCovarianceWithTopFidelity)
-                for model in self.try_get_final_models()
-            ]
+                [
+                    isinstance(model, SupportsCovarianceWithTopFidelity)
+                    for model in self.try_get_final_models()
+                ]
         ):
-            raise ValueError("Expected single fidelity models")
+            raise ValueError('Expected single fidelity models')
         arg_min_idx = tf.squeeze(tf.argmin(dataset.observations, axis=0))
         return dataset.query_points[arg_min_idx], dataset.observations[arg_min_idx], arg_min_idx
 
@@ -192,7 +246,7 @@ class OptimizationResult(Generic[StateType, ProbabilisticModelType]):
         if len(models) == 1:
             return next(iter(models.values()))
         else:
-            raise ValueError(f"Expected single model, found {len(models)}")
+            raise ValueError(f'Expected single model, found {len(models)}')
 
     @property
     def loaded_history(self) -> list[Record[StateType, ProbabilisticModelType]]:
@@ -202,7 +256,7 @@ class OptimizationResult(Generic[StateType, ProbabilisticModelType]):
     def save_result(self, path: Path | str) -> None:
         """Save the final result to disk. Will overwrite any existing file at the same path."""
         Path(path).parent.mkdir(exist_ok=True, parents=True)
-        with open(path, "wb") as f:
+        with open(path, 'wb') as f:
             dill.dump(self.final_result, f, dill.HIGHEST_PROTOCOL)
 
     def save(self, base_path: Path | str) -> None:
@@ -216,11 +270,11 @@ class OptimizationResult(Generic[StateType, ProbabilisticModelType]):
 
     @classmethod
     def from_path(
-        cls, base_path: Path | str
+            cls, base_path: Path | str
     ) -> OptimizationResult[StateType, ProbabilisticModelType]:
         """Load a previously saved OptimizationResult."""
         try:
-            with open(Path(base_path) / cls.RESULTS_FILENAME, "rb") as f:
+            with open(Path(base_path) / cls.RESULTS_FILENAME, 'rb') as f:
                 result = dill.load(f)
         except FileNotFoundError as e:
             result = Err(e)
@@ -242,19 +296,23 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                  feature_names: Optional[np.ndarray | list] = None,
                  track_state: bool = True,
                  track_path: Optional[Path | str] = None,
-                 acquisition_rule: AcquisitionRule[
-                                       TensorType | State[StateType | None, TensorType],
-                                       SearchSpaceType,
-                                       TrainableProbabilisticModelType
-                                   ] |
-                                   AcquisitionRule[
-                                       State[StateType | None, TensorType],
-                                       SearchSpaceType,
-                                       TrainableProbabilisticModelType
-                                   ] |
-                                   AcquisitionRule[
-                                       TensorType, SearchSpaceType, TrainableProbabilisticModelType
-                                   ] = None,
+                 acquisition_rule: (
+                         AcquisitionRule[
+                             TensorType | State[StateType | None, TensorType],
+                             SearchSpaceType,
+                             TrainableProbabilisticModelType,
+                         ]
+                         | AcquisitionRule[
+                             State[StateType | None, TensorType],
+                             SearchSpaceType,
+                             TrainableProbabilisticModelType,
+                         ]
+                         | AcquisitionRule[
+                             TensorType,
+                             SearchSpaceType,
+                             TrainableProbabilisticModelType
+                         ]
+                 ) = None,
                  acquisition_state: StateType | None = None,
 
                  ):
@@ -312,7 +370,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
 
     def __repr__(self) -> str:
         """"""
-        return f"BayesianOptimizer({self._observer!r}, {self._search_space!r})"
+        return f'BayesianOptimizer({self._observer!r}, {self._search_space!r})'
 
     def request_query_points(self,
                              datasets: Mapping[Tag, Dataset] | Dataset,
@@ -359,7 +417,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         """
         # Copy the dataset, so we don't change the one provided by the user.
         datasets = copy.deepcopy(datasets)
-        #new_sample = Dataset(query_points=query_points, observations=observer_output)
+        # new_sample = Dataset(query_points=query_points, observations=observer_output)
 
         if isinstance(datasets, Dataset):
             datasets = {OBJECTIVE: datasets}
@@ -377,11 +435,11 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         models_keys = {LocalizedTag.from_tag(tag).global_tag for tag in self._models.keys()}
         if datasets_keys != models_keys:
             raise ValueError(
-                f"datasets and models should contain the same keys. Got {datasets_keys} and"
-                f" {models_keys} respectively."
+                f'datasets and models should contain the same keys. Got {datasets_keys} and'
+                f' {models_keys} respectively.'
             )
         if not self._datasets:
-            raise ValueError("dicts of datasets and models must be populated.")
+            raise ValueError('dicts of datasets and models must be populated.')
 
         if self.observation_plot_dfs is None:
             self.observation_plot_dfs = observation_plot_init(self._datasets)
@@ -395,7 +453,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                                    self._acquisition_rule,
                                    self._datasets,
                                    self._models
-                                )
+                                   )
 
         self._steps += 1
         logging.set_step_number(self._steps)
@@ -422,18 +480,18 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                         self.history.append(record.save(track_path / file_name))
                 except Exception as e:
                     raise NotImplementedError(
-                        "Failed to save the optimization state. Some models do not support "
-                        "deep-copying or serialization and cannot be saved. "
-                        "(This is particularly common for deep neural network models, though "
-                        "some of the model wrappers accept a model closure as a workaround.) "
-                        "For these models, the `track_state`` argument of the "
-                        ":meth:`~trieste.bayesian_optimizer.BayesianOptimizer.optimize` method "
-                        "should be set to `False`. This means that only the final model "
-                        "will be available."
+                        'Failed to save the optimization state. Some models do not support '
+                        'deep-copying or serialization and cannot be saved. '
+                        '(This is particularly common for deep neural network models, though '
+                        'some of the model wrappers accept a model closure as a workaround.) '
+                        'For these models, the `track_state`` argument of the '
+                        ':meth:`~trieste.bayesian_optimizer.BayesianOptimizer.optimize` method '
+                        'should be set to `False`. This means that only the final model '
+                        'will be available.'
                     ) from e
 
             if self._steps == 1:
-                #Fit should only occur while querying during the first iteration!
+                # Fit should only occur while querying during the first iteration!
 
                 # See explanation in AskTellOptimizer.__init__().
                 if isinstance(self._acquisition_rule, LocalDatasetsAcquisitionRule):
@@ -446,7 +504,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                             # Prefer local dataset if available.
                             tags = [tag, LocalizedTag.from_tag(tag).global_tag]
                             _, dataset = get_value_for_tag(filtered_datasets, *tags)
-                            
+
                             assert dataset is not None
                             model.update(dataset)
                             optimize_model_and_save_result(model, dataset)
@@ -474,7 +532,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                 else:
                     query_points = points_or_stateful
 
-            #TODO improve this
+            # TODO improve this
             try:
                 if self._scaler:
                     qp_dict, qp_array = self._search_space_pipe.inverse_transform(query_points.numpy(), with_array=True)
@@ -498,20 +556,20 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
 
         except Exception as error:  # pylint: disable=broad-except
             tf.print(
-                f"\nQuerying failed at step {self._steps}, encountered error with traceback:"
-                f"\n{traceback.format_exc()}"
-                f"\nTerminating querying and storing the optimization history in self._crash_result. You may "
-                f"be able to use the history to restart the process from a previous successful "
-                f"retrieve via method retrieve_result()"
-                f"optimization step.\n",
+                f'\nQuerying failed at step {self._steps}, encountered error with traceback:'
+                f'\n{traceback.format_exc()}'
+                f'\nTerminating querying and storing the optimization history in self._crash_result. You may '
+                f'be able to use the history to restart the process from a previous successful '
+                f'retrieve via method retrieve_result()'
+                f'optimization step.\n',
                 output_stream=absl.logging.ERROR,
             )
             if isinstance(error, MemoryError):
                 tf.print(
-                    "\nOne possible cause of memory errors is trying to evaluate acquisition "
-                    "\nfunctions over large datasets, e.g. when initializing optimizers. "
-                    "\nYou may be able to word around this by splitting up the evaluation "
-                    "\nusing split_acquisition_function or split_acquisition_function_calls.",
+                    '\nOne possible cause of memory errors is trying to evaluate acquisition '
+                    '\nfunctions over large datasets, e.g. when initializing optimizers. '
+                    '\nYou may be able to word around this by splitting up the evaluation '
+                    '\nusing split_acquisition_function or split_acquisition_function_calls.',
                     output_stream=absl.logging.ERROR,
                 )
             result = OptimizationResult(Err(error), self.history)
@@ -523,7 +581,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         if self._crash_result is not None:
             return self._crash_result
         else:
-            msg = "Nothing to be seen here. \nResults are only stored internally if querying or optimization fail"
+            msg = 'Nothing to be seen here. \nResults are only stored internally if querying or optimization fail'
             warnings.warn(msg)
             return None
 
@@ -540,7 +598,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         # observer_output = observer(query_points)
 
         if self._scaler:
-            #TODO, check this is valid for batch samples(?)
+            # TODO, check this is valid for batch samples(?)
             query_points = self._scaler.transform(query_points)
 
         new_sample = Dataset(query_points=query_points,
@@ -586,23 +644,23 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
                     )
                 logging.set_step_number(self._steps)
             if verbose:
-                tf.print("Optimization completed without errors", output_stream=absl.logging.INFO)
+                tf.print('Optimization completed without errors', output_stream=absl.logging.INFO)
 
         except Exception as error:  # pylint: disable=broad-except
             tf.print(
-                f"\nOptimization failed at step {self._steps}, encountered error with traceback:"
-                f"\n{traceback.format_exc()}"
-                f"\nTerminating optimization and returning the optimization history. You may "
-                f"be able to use the history to restart the process from a previous successful "
-                f"optimization step.\n",
+                f'\nOptimization failed at step {self._steps}, encountered error with traceback:'
+                f'\n{traceback.format_exc()}'
+                f'\nTerminating optimization and returning the optimization history. You may '
+                f'be able to use the history to restart the process from a previous successful '
+                f'optimization step.\n',
                 output_stream=absl.logging.ERROR,
             )
             if isinstance(error, MemoryError):
                 tf.print(
-                    "\nOne possible cause of memory errors is trying to evaluate acquisition "
-                    "\nfunctions over large datasets, e.g. when initializing optimizers. "
-                    "\nYou may be able to word around this by splitting up the evaluation "
-                    "\nusing split_acquisition_function or split_acquisition_function_calls.",
+                    '\nOne possible cause of memory errors is trying to evaluate acquisition '
+                    '\nfunctions over large datasets, e.g. when initializing optimizers. '
+                    '\nYou may be able to word around this by splitting up the evaluation '
+                    '\nusing split_acquisition_function or split_acquisition_function_calls.',
                     output_stream=absl.logging.ERROR,
                 )
             result = OptimizationResult(Err(error), self.history)
@@ -618,10 +676,10 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         self.result = result
 
     def continue_optimization(
-        self,
-        optimization_result: OptimizationResult[StateType, TrainableProbabilisticModelType],
-        *args: Any,
-        **kwargs: Any,
+            self,
+            optimization_result: OptimizationResult[StateType, TrainableProbabilisticModelType],
+            *args: Any,
+            **kwargs: Any,
     ) -> None:
         """
         TODO needs method to first restore OptimizationResult
@@ -647,7 +705,7 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
         if optimization_result.final_result.is_ok:
             history.append(optimization_result.final_result.unwrap())
         if not history:
-            raise ValueError("Cannot continue from empty optimization result")
+            raise ValueError('Cannot continue from empty optimization result')
 
         self.request_query_points(  # type: ignore[call-overload]
             history[-1].datasets,
@@ -658,9 +716,9 @@ class BayesianOptimizer(Generic[SearchSpaceType]):
 
 
 class AskTellOptimizerHistory(AskTellOptimizer):
-    def __init__(self, observer: str = "default",
+    def __init__(self, observer: str = 'default',
                  track_path: Optional[Path | str] = None,
-                 overwrite: bool=False,
+                 overwrite: bool = False,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._observer = observer
@@ -674,7 +732,6 @@ class AskTellOptimizerHistory(AskTellOptimizer):
 
         self.overwrite = overwrite
 
-
     def ask_and_save(self, save_acq_fn=False, *args, **kwargs):
         """
         Single method to request samples, but also backup state, acquisition_function
@@ -684,43 +741,54 @@ class AskTellOptimizerHistory(AskTellOptimizer):
         self.history.append(record)
 
         if self.track_path:
-            filename = f"state_step_{self.steps}.pickle"
+            filename = f'state_step_{self.steps}.pickle'
             record.save(self.track_path / filename)
 
         if save_acq_fn:
             acq_fn = self._acquisition_rule.acquisition_function
             if acq_fn is not None:
-                filename = f"acq_fn_step_{self.steps}.pickle"
-                with open(self.track_path / filename, "wb") as f:
+                filename = f'acq_fn_step_{self.steps}.pickle'
+                with open(self.track_path / filename, 'wb') as f:
                     pickle.dump(acq_fn, f)
 
         if not self.overwrite:
             self.steps += 1
         return query_points
 
-    def save(self, save_acq_fn=False):
+    def save(self, fname: str = '', save_acq_fn: bool = False):
+        if fname:
+            state_name = f'state_{fname}.pickle'
+            acq_name = f'acq_{fname}.pickle'
+
+        else:
+            state_name = 'state_final.pickle'
+            acq_name = 'acq_final.pickle'
+
         state = self.to_record()
-        state.save(self.track_path / f'state_final.pickle')
+        state.save(self.track_path / state_name)
         if save_acq_fn:
             acq_fn = self._acquisition_rule.acquisition_function
             if acq_fn is not None:
-                filename = f"acq_fn_final.pickle"
-                with open(self.track_path / filename, "wb") as f:
+                with open(self.track_path / acq_name, 'wb') as f:
                     pickle.dump(acq_fn, f)
 
     @classmethod
     def from_record(
-        cls: Type[AskTellOptimizerType],
-        record: Record[StateType, ProbabilisticModelType]
-        | FrozenRecord[StateType, ProbabilisticModelType],
-        search_space: SearchSpaceType,
-        acquisition_rule: AcquisitionRule[
-            TensorType | State[StateType | None, TensorType],
-            SearchSpaceType,
-            ProbabilisticModelType,
-        ]
-        | None = None,
-        track_path: Optional[Path | str] = None,
+            cls: Type[AskTellOptimizerType],
+            record: (
+                    Record[StateType, ProbabilisticModelType]
+                    | FrozenRecord[StateType, ProbabilisticModelType]
+            ),
+            search_space: SearchSpaceType,
+            acquisition_rule: (
+                    AcquisitionRule[
+                        TensorType | State[StateType | None, TensorType],
+                        SearchSpaceType,
+                        ProbabilisticModelType,
+                    ]
+                    | None
+            ) = None,
+            track_path: Optional[Path | str] = None,
             overwrite: bool = False,
     ) -> AskTellOptimizerType:
         """Creates new :class:`~AskTellOptimizer` instance from provided optimization state.
@@ -732,8 +800,10 @@ class AskTellOptimizerHistory(AskTellOptimizer):
             on each optimization step. Defaults to
             :class:`~trieste.acquisition.rule.EfficientGlobalOptimization` with default
             arguments.
+        :param track_path: Path to file's location
+        :param overwrite: Whether file is overwritten
         :return: New instance of :class:`~AskTellOptimizer`.
-        # TODO We currently don't load the history, but doe actually need it?
+        # TODO We currently don't load the history, but do we actually need it?
 
         """
         # we are recovering previously saved optimization state

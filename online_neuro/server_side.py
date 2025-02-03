@@ -1,42 +1,33 @@
-#online_neuro/server_side.py
+# online_neuro/server_side.py
 import argparse
+import atexit
 import json
-import os
-import threading
-from pathlib import Path
 import socket
 import sys
+import threading
 import time
-import warnings
-from threading import Thread
 import timeit
+import warnings
+from pathlib import Path
+from threading import Thread
 
 import numpy as np
 import pandas as pd
+import requests
 import tensorflow as tf
-import trieste
+from gpflow.likelihoods import Bernoulli as bern
 from trieste.acquisition.function import BayesianActiveLearningByDisagreement, \
     NegativePredictiveMean, PredictiveVariance, ExpectedHypervolumeImprovement
 from trieste.acquisition.rule import EfficientGlobalOptimization
 from trieste.acquisition.rule import OBJECTIVE
 from trieste.data import Dataset
 
+from common.plotting import update_plot
 from common.utils import load_json
 from online_learning import build_model
-from online_neuro.bayessian_optimizer import BayesianOptimizer, AskTellOptimizerHistory
-from trieste.ask_tell_optimization import (
-    AskTellOptimizer,
-    AskTellOptimizerNoTraining,
-)
-from online_neuro.utils import CustomMinMaxScaler, run_matlab, run_python_script, fetch_data, array_to_list_of_dicts
+from online_neuro.bayessian_optimizer import AskTellOptimizerHistory
 from online_neuro.utils import CustomBox
-
-from common.plotting import update_plot
-import requests
-
-from gpflow.likelihoods import Bernoulli as bern
-
-import atexit
+from online_neuro.utils import CustomMinMaxScaler, run_matlab, run_python_script, fetch_data, array_to_list_of_dicts
 
 GRID_POINTS = 10
 # AugmentedExpectedImprovement
@@ -93,11 +84,11 @@ def start_connection(connection_config, problem_config):
 
     # Listen for incoming connections
     server_socket.listen(1)
-    print("Waiting for a connection...")
+    print('Waiting for a connection...')
     # Start Matlab process via engine and threading
 
-    if connection_config['target'] == "MATLAB":
-        #TODO, improve this
+    if connection_config['target'] == 'MATLAB':
+        # TODO, improve this
         matlab_payload = dict()
         matlab_payload['connection_config'] = connection_config.copy()
         matlab_payload['problem_name'] = problem_config['experiment']['name']
@@ -108,19 +99,19 @@ def start_connection(connection_config, problem_config):
         if len(other_keys) > 0:
             matlab_payload['problem_config'] = {k: problem_config[k] for k in other_keys}
         else:
-            raise Exception("Problem configuration contains no features to optimize")
+            raise Exception('Problem configuration contains no features to optimize')
 
         print('Starting Matlab with Payload:')
         print(matlab_payload)
-        matlab_payload['script_path'] = str(Path("simulators") / "matlab")
+        matlab_payload['script_path'] = str(Path('simulators') / 'matlab')
 
-        t = Thread(target=run_matlab, kwargs={"matlab_script_path": matlab_payload['script_path'],
-                                              "matlab_function_name": "main",
+        t = Thread(target=run_matlab, kwargs={'matlab_script_path': matlab_payload['script_path'],
+                                              'matlab_function_name': 'main',
                                               **matlab_payload
                                               })
         t.start()
 
-    elif connection_config['target'] == "Python":
+    elif connection_config['target'] == 'Python':
         python_payload = dict()
         python_payload['connection_config'] = connection_config.copy()
         python_payload['problem_name'] = problem_config['experiment']['name']
@@ -131,11 +122,11 @@ def start_connection(connection_config, problem_config):
         if len(other_keys) > 0:
             python_payload['problem_config'] = {k: problem_config[k] for k in other_keys}
         else:
-            raise Exception("Problem configuration contains no features to optimize")
+            raise Exception('Problem configuration contains no features to optimize')
 
-        print("Starting Python with Payload:")
+        print('Starting Python with Payload:')
         print(python_payload)
-        python_script_path = Path("simulators") / "python"
+        python_script_path = Path('simulators') / 'python'
         process = run_python_script(script_path=python_script_path,
                                     function_name='main.py',
                                     **python_payload)
@@ -153,44 +144,45 @@ def start_connection(connection_config, problem_config):
 
     # Accept a connection
     client_socket, client_address = server_socket.accept()
-    print("Connection from:", client_address)
+    print('Connection from:', client_address)
 
     return server_socket, client_socket
 
 
-def handshake_check(client_socket):
+def handshake_check(client_socket, size_lim=65536):
     """
     @param client_socket:
+    @param size_lim per package
     @return:
     """
     # Receive data
     try:
-        data = client_socket.recv(1024).decode()
+        data = client_socket.recv(size_lim).decode()
         data = json.loads(data)
-        print("Received data:", data)
+        print('Received data:', data)
 
         # Respond back
-        response = {"message": "Hello from Python",
-                    "randomNumber": data['dummyNumber']}
+        response = {'message': 'Hello from Python',
+                    'randomNumber': data['dummyNumber']}
 
-        response_json = json.dumps(response) + "\n"
+        response_json = json.dumps(response) + '\n'
         client_socket.sendall(response_json.encode())
-        print("Data sent back to matlab", response_json.encode())
+        print('Data sent back to matlab', response_json.encode())
 
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f'An error occurred: {e}')
         raise
     return None
 
 
 def cleanup_server_socket(client_sock, server_sock):
-    print("Cleaning up server socket...")
+    print('Cleaning up server socket...')
     try:
         client_sock.close()
         server_sock.close()
-        print("Server socket closed.")
+        print('Server socket closed.')
     except Exception as e:
-        print(f"Error closing server socket: {e}")
+        print(f'Error closing server socket: {e}')
 
 
 def define_scaler_search_space(problem_config,
@@ -213,27 +205,58 @@ def define_scaler_search_space(problem_config,
     lower_bound = []
     upper_bound = []
 
-    for k, v in problem_config.items():
-        if not isinstance(problem_config[k], dict):
-            fixed_features[k] = v
-        else:
-            if 'min_value' in problem_config[k] and 'max_value' in problem_config[k]:
-                for ix in range(len(problem_config[k]['value'])):
-                    if len(problem_config[k]['value']) == 1:
-                        feat_name = k
-                    else:
-                        feat_name = f"{k}_{ix + 1}"
-                    if problem_config[k]['min_value'][ix] == problem_config[k]['max_value'][ix]:
-                        fixed_features[feat_name] = v
-                    else:
-                        variable_features[feat_name] = v
-                        lower_bound.append(problem_config[k]['min_value'][ix])
-                        upper_bound.append(problem_config[k]['max_value'][ix])
+    for key, value in problem_config.items():
+        print(key, value)
+        if isinstance(value, list):
+            for ix in range(len(value)):
+                element = value[ix]
+                if isinstance(element, dict):
+                    for k1, v1 in element.items():
+                        feat_name = f'{key}_{ix + 1}_{k1}'
+                        if 'min_value' in v1 and 'max_value' in v1:
+                            if v1['min_value'] == v1['max_value']:
+                                fixed_features[feat_name] = v1['min_value']
+                            else:
+                                variable_features[feat_name] = 0
+                                lower_bound.append(v1['min_value'])
+                                upper_bound.append(v1['max_value'])
+                        elif 'value' in v1:
+                            fixed_features[feat_name] = v1['value']
+                        else:
+                            msg = f"Feature '{key}' does not have a valid formatting, skipping"
+                            warnings.warn(msg)
+                else:
+                    # Contains a fixed list, no need to iterate through each element
+                    fixed_features[key] = value
+                    continue
 
-            elif 'value' in problem_config[k]:
-                fixed_features[k] = v
+        elif isinstance(value, dict):
+            if 'min_value' in problem_config[key] and 'max_value' in problem_config[key]:
+                for ix in range(len(problem_config[key]['value'])):
+                    if len(problem_config[key]['value']) == 1:
+                        feat_name = key
+                    else:
+                        feat_name = f'{key}_{ix + 1}'
+
+                    if problem_config[key]['min_value'][ix] == problem_config[key]['max_value'][ix]:
+                        fixed_features[feat_name] = value
+                    else:
+                        variable_features[feat_name] = 0
+                        lower_bound.append(problem_config[key]['min_value'][ix])
+                        upper_bound.append(problem_config[key]['max_value'][ix])
+            elif 'value' in problem_config[key]:
+                fixed_features[key] = value
             else:
-                warnings.warn(f"Feature: {k} does not have a valid formatting, skipping")
+                msg = f"Feature '{key}' does not have a valid formatting, skipping"
+                warnings.warn(msg)
+
+        elif isinstance(value, (list, float, int, str)):
+            fixed_features[key] = value
+
+        else:
+            ty = type(value)
+            msg = f"Feature '{key}' does not have a valid type '{ty}', skipping"
+            warnings.warn(msg)
 
     if scale_inputs:
         num_features = len(lower_bound)
@@ -250,7 +273,7 @@ def define_scaler_search_space(problem_config,
                                         feature_max=upper_bound,
                                         output_range=output_range)
         else:
-            raise NotImplementedError(f"{scaler} has not been implemented")
+            raise NotImplementedError(f'{scaler} has not been implemented')
     else:
         search_space = CustomBox(lower=lower_bound,
                                  upper=upper_bound)
@@ -265,12 +288,13 @@ def plot_flask(sample, plot_type, post_url):
     json_message = dict()
     json_message['data'] = sample.to_json(orient='records')
     json_message['plot_type'] = plot_type
-    response = requests.post(post_url + "/update_data", json=json_message)
+    response = requests.post(post_url + '/update_data', json=json_message)
     # Check the response
     if response.status_code == 200:
         print(response.json())
     else:
-        print("Error updating data:", response.status_code, response.text)
+        print('Error updating data:', response.status_code, response.text)
+
 
 def main(connection_config: dict, model_config: dict, path_config: dict,
          problem_config: dict, *args, **kwargs) -> None:
@@ -284,20 +308,21 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     @return:
     """
 
-    default_dict = load_json("config.json")
+    default_dict = load_json('config.json')
 
-    print("problem_config")
+    print('problem_config')
     print(problem_config)
 
     connection_config = {**default_dict['connection_config'], **connection_config}
     model_config = {**default_dict['model_config'], **model_config}
     path_config = {**default_dict['path_config'], **path_config}
 
-    #Port Flask indicates that a UI is listening to the process. We can send partial results and other info to this interface
+    # Port Flask indicates that a UI is listening to the process.
+    # We can send partial results and other info to this interface
     port_flask = connection_config.get('port_flask', False)
 
     if port_flask:
-        post_url = f"http://localhost:{port_flask}"
+        post_url = f'http://localhost:{port_flask}'
     # TODO
     #  - verify here that the problem can be solved by the simulator (target)
     # i.e. matlab, axonsim, neuron, python, each need to have a simulator file for the given problem.
@@ -305,24 +330,25 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     # i.e. prevent multiobjective or regression to be solved with classification, etc...
     server_socket, client_socket = start_connection(connection_config=connection_config,
                                                     problem_config=problem_config)
-
+    print('Doing a handhsake')
     handshake_check(client_socket=client_socket)
+
     atexit.register(cleanup_server_socket, client_sock=client_socket, server_sock=server_socket)
     package_size = connection_config['SizeLimit']
 
-    print("Loaded problem config")
+    print('Loaded problem config')
     print(problem_config)
     search_space, scaler, feat_dict = define_scaler_search_space(problem_config=problem_config,
-                                                                     scale_inputs=model_config["scale_inputs"])
+                                                                 scale_inputs=model_config['scale_inputs'])
 
     feature_names = list(feat_dict['variable_features'].keys())
     fixed_features = feat_dict['fixed_features']
 
-    print("Fixed features")
+    print('Fixed features')
     print(fixed_features)
-    print("Variable features")
+    print('Variable features')
     print(feature_names)
-    msg = json.dumps({"Fixed_features": fixed_features}) + "\n"
+    msg = json.dumps({'Fixed_features': fixed_features}) + '\n'
     client_socket.sendall(msg.encode())
 
     if len(feature_names) == 2:
@@ -347,26 +373,21 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
 
     qp_json = array_to_list_of_dicts(qp, feature_names)
 
-    print("First batch")
+    print('First batch')
     print(qp_json)
     response = {'message': 'first queried points using Sobol method',
                 'query_points': qp_json}
 
-    response_json = json.dumps(response) + "\n"
+    response_json = json.dumps(response) + '\n'
 
     client_socket.sendall(response_json.encode())
-    received_json = fetch_data(client_socket, size=package_size)
+    print('>>>>>')
 
-    if isinstance(received_json, list):
-        if isinstance(received_json[0], dict):
-            pass
-        else:
-            print(received_json)
-            raise Exception("Expected dict!")
-    elif isinstance(received_json, dict):
-        received_json = [received_json]
+    received_data = fetch_data(client_socket)
+    print(received_data)
+    print('<<<<<<')
 
-    observations = [r['observations'] for r in received_json]
+    observations = [r['observations'] for r in received_data]
 
     # TODO check if this is correct for MOO
     if isinstance(observations[0], list):
@@ -387,8 +408,8 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
         response_cols = ['response']
 
     save_path = Path(f"{path_config['save_path']}") / f"{problem_config['experiment']['name']}"
-    csv_path = Path(save_path) / "results.csv"
-    model_store_path = Path(save_path) / "models"
+    csv_path = Path(save_path) / 'results.csv'
+    model_store_path = Path(save_path) / 'models'
 
     save_path.mkdir(parents=True, exist_ok=True)
     model_store_path.mkdir(parents=True, exist_ok=True)
@@ -411,18 +432,20 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     if model_config['batch_sampling']:
         if 'num_query_points' in model_config:
             if model_config['num_query_points'] == 1:
-                warnings.warn(f"Batch querying was specified, but config specifies only 1 sample")
+                msg = f"""'Batch querying was specified to {model_config['num_query_points']},
+                but config specifies only 1 sample'"""
+                warnings.warn(msg)
         else:
-            warnings.warn(
-                f"Batch querying was specified, but config file does not specify batch size, defaulting to three")
+            msg = 'Batch querying was specified, but not batch size was specified, defaulting to three'
+            warnings.warn(msg)
             model_config['num_query_points'] = 3
 
     if problem_config['experiment']['type'] in ['multiobjective', 'moo']:
         acq = ExpectedHypervolumeImprovement()
-        print("Multi-objective model using HyperVolumes")
+        print('Multi-objective model using HyperVolumes')
     elif problem_config['experiment']['type'] in ['classification']:
         acq = BayesianActiveLearningByDisagreement()
-        print("using Classification BALD")
+        print('using Classification BALD')
     elif problem_config['experiment']['type'] in ['regression']:
         if 'acquisition' in problem_config:
             if problem_config['acquisition'] == 'negative_predictive_mean':
@@ -430,15 +453,16 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
             elif problem_config['acquisition'] == 'predictive_variance':
                 acq = PredictiveVariance()
             else:
-                msg = f"Acquisition [{problem_config['experiment']['acquisition']}] not identified, defaulting to Predictive Variance (Global Search)"
+                msg = f"""Acquisition {problem_config['experiment']['acquisition']}] not identified,
+                defaulting to Predictive Variance (Global Search)"""
                 warnings.warn(msg)
                 acq = PredictiveVariance()
         else:
-            msg = f"No Acquisition specified in the problem configuration --flags. Default is minimizing Predictive Variance"
+            msg = 'No Acquisition specified. Defaulting to minimizing Predictive Variance'
             warnings.warn(msg)
             acq = PredictiveVariance()
     else:
-        msg = f"No Acquisition specified in the problem configuration --flags. Default is minimizing Predictive Variance"
+        msg = 'No Acquisition specified. Defaulting to minimizing Predictive Variance'
         warnings.warn(msg)
         acq = PredictiveVariance()
 
@@ -466,12 +490,12 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     if port_flask:
         plot_flask(results_df, 'pairplot', post_url)
 
-        if 'time' in received_json[0]:
-            #Only sending the last case
+        if 'time' in received_data[0]:
+            # Only sending the last case for plotting
             pulse_data = pd.DataFrame()
-            pulse_data['pulse_a'] = received_json[-1]['pulse_a']
-            pulse_data['pulse_b'] = received_json[-1]['pulse_b']
-            pulse_data['time'] = received_json[-1]['time']
+            pulse_data['pulse_a'] = received_data[-1]['pulse_a']
+            pulse_data['pulse_b'] = received_data[-1]['pulse_b']
+            pulse_data['time'] = received_data[-1]['time']
 
             plot_flask(pulse_data, 'pulses', post_url)
 
@@ -493,15 +517,15 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
             json_message['data'] = data.to_json(orient='records')
             json_message['plot_type'] = 'contour'
 
-            response = requests.post(post_url + "/update_data",
+            response = requests.post(post_url + '/update_data',
                                      json=json_message,
                                      headers={'Content-Type': 'application/json'}
                                      )
             # Check the response
             if response.status_code != 200:
-                warnings.warn("Error updating data:", response.status_code, response.text)
+                warnings.warn('Error updating data:', response.status_code, response.text)
 
-    print("Init dataset")
+    print('Init dataset')
     print(init_dataset)
     terminate_flag = False
 
@@ -517,7 +541,8 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     with_plots = False
     count = 0
     exit_message = None
-    # TODO, use this ?
+
+    # TODO, use this
     start = timeit.default_timer()
 
     while not terminate_flag:
@@ -526,7 +551,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
 
         qp_orig = bo.ask_and_save()
         if qp is None:
-            raise Exception(f"Terminated at step {count} before optimization started")
+            raise Exception(f'Terminated at step {count} before optimization started')
 
         qp_orig = qp_orig.numpy()
         if scaler:
@@ -536,31 +561,23 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
 
         # Respond back
         qp_json = array_to_list_of_dicts(qp, feature_names)
-        message = {"query_points": qp_json,
-                   "terminate_flag": terminate_flag}
+        message = {'query_points': qp_json,
+                   'terminate_flag': terminate_flag}
 
-        print(f"Count {count}")
-        response_json = json.dumps(message) + "\n"
+        print(f'Count {count}')
+        response_json = json.dumps(message) + '\n'
         client_socket.sendall(response_json.encode())
 
-        received_json = fetch_data(client_socket, size=package_size)
-        print("Received")
-        print(received_json)
-
-        if isinstance(received_json, list):
-            if isinstance(received_json[0], dict):
-                pass
-            else:
-                raise Exception("Expected dict!")
-        elif isinstance(received_json, dict):
-            received_json = [received_json]
+        received_data = fetch_data(client_socket)
+        print('Received')
+        print(received_data)
 
         # Check if termination signal received from simulator
-        if "terminate_flag" in received_json[0]:
-            terminate_flag = received_json['terminate_flag']
-            exit_message = "Termination signal received from MATLAB \n Saving results... \n Closing connection..."
+        if 'terminate_flag' in received_data[0]:
+            terminate_flag = received_data['terminate_flag']
+            exit_message = 'Termination signal received from MATLAB \n Saving results... \n Closing connection...'
 
-        observations = [r['observations'] for r in received_json]
+        observations = [r['observations'] for r in received_data]
         observations = np.atleast_2d(observations).T
 
         # Save results
@@ -592,11 +609,11 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
 
         if port_flask:
             plot_flask(new_sample, 'pairplot', post_url)
-            if 'time' in received_json[0]:
+            if 'time' in received_data[0]:
                 pulse_data = pd.DataFrame()
-                pulse_data['pulse_a'] = received_json[-1]['pulse_a']
-                pulse_data['pulse_b'] = received_json[-1]['pulse_b']
-                pulse_data['time'] = received_json[-1]['time']
+                pulse_data['pulse_a'] = received_data[-1]['pulse_a']
+                pulse_data['pulse_b'] = received_data[-1]['pulse_b']
+                pulse_data['time'] = received_data[-1]['time']
 
                 plot_flask(pulse_data, 'pulses', post_url)
             if len(feature_names) == 2:
@@ -607,7 +624,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
                 Z = mean.numpy().reshape(meshgrid_x.shape)
                 Z_var = variance.numpy().reshape(meshgrid_x.shape)
                 json_message = dict()
-                #Only the first time, to see axis in their original scale (Maybe this should be ticks, to prevent
+                # Only the first time, to see axis in their original scale (Maybe this should be ticks, to prevent
                 # plot distortions?
                 data = pd.DataFrame(plot_inputs, columns=['x', 'y'])
                 json_message['z'] = Z.tolist()
@@ -615,7 +632,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
                 json_message['data'] = data.to_json(orient='records')
                 json_message['plot_type'] = 'contour'
 
-                response = requests.post(post_url + "/update_data",
+                response = requests.post(post_url + '/update_data',
                                          json=json_message,
                                          headers={'Content-Type': 'application/json'}
                                          )
@@ -623,7 +640,7 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
                 if response.status_code == 200:
                     print(response.json())
                 else:
-                    print("Error updating data:", response.status_code, response.text)
+                    print('Error updating data:', response.status_code, response.text)
 
         tagged_output = Dataset(query_points=tf.cast(qp_orig, tf.float64),
                                 observations=tf.cast(observations, tf.float64))
@@ -669,7 +686,7 @@ def process_dict(temp_dict):
                     print(v)
                     raise Exception("This doesn't seem to be a path nor a valid JSON")
         else:
-            print(f"Unhandled type for value {v}")
+            print(f'Unhandled type for value {v}')
 
     return temp_dict
 
@@ -699,7 +716,7 @@ def process_args(args, unknown_args):
 
         temp_dict = dict()
         if isinstance(args, dict):
-            for k in ['connection_config', 'model_config', 'path_config','problem_config']:
+            for k in ['connection_config', 'model_config', 'path_config', 'problem_config']:
                 temp_dict[k] = args.get(k, {})
         else:
             for k in ['connection_config', 'model_config', 'path_config', 'problem_config']:
@@ -716,8 +733,8 @@ def process_args(args, unknown_args):
 
     else:
         args_dict = vars(args)
-        print(f"Known args: {args_dict}")
-        print(f"Unknown args: {unknown_args}")
+        print(f'Known args: {args_dict}')
+        print(f'Unknown args: {unknown_args}')
 
         unknown_args_dict = {}
         i = 0
@@ -747,11 +764,12 @@ def process_args(args, unknown_args):
 
         for k, v in unknown_args_dict.items():
             try:
-                key_split = k.split("_")
+                key_split = k.split('_')
                 k_beginning = key_split[0]
                 actual_key = '_'.join(key_split[1:])
-            except Exception as e:
-                warnings.warn(f"{k} seems to not be a valid formatted flag, passing it directly to main")
+            except ValueError as exception:
+                msg = exception(f'{k}. seems to not be a valid formatted flag, passing it directly to main')
+                warnings.warn(msg)
 
             if k_beginning == 'conn':
                 connection_config[actual_key] = v
@@ -771,12 +789,12 @@ def process_args(args, unknown_args):
     return connection_config, model_config, path_config, problem_config, other_params
 
 
-if __name__ == "__main__":
-    print("PYTHONPATH:", sys.path)
-    parser = argparse.ArgumentParser(description="Controller to start Python or MATLAB process.")
+if __name__ == '__main__':
+    print('PYTHONPATH:', sys.path)
+    parser = argparse.ArgumentParser(description='Controller to start Python or MATLAB process.')
 
     group1 = parser.add_argument_group('Global configuration')
-    group1.add_argument('--config', type=str, help="Path to or JSON of the global configuration file")
+    group1.add_argument('--config', type=str, help='Path to or JSON of the global configuration file')
 
     group2 = parser.add_argument_group('Specific configurations')
 
@@ -788,7 +806,7 @@ if __name__ == "__main__":
     parser.add_argument('--target', choices=['Python', 'MATLAB'], required=False,
                         help="Specify the target simulator: 'Python' or 'MATLAB'")
     parser.add_argument('--flask_port', required=False,
-                        help="If provided, partial results are sent to the flask server for plotting and reporting")
+                        help='If provided, partial results are sent to the flask server for plotting and reporting')
 
     # Unknown args allow for external calls from Streamlit or other frontends
     args, unknown_args = parser.parse_known_args()
@@ -796,16 +814,16 @@ if __name__ == "__main__":
     group2_args = [args.connection_config, args.model_config, args.problem_config, args.path_config]
     # Check that either --config is provided or any of group2, but not both
     if args.config and any(group2_args):
-        parser.error("--config cannot be used with any of --connection_config, --model_config, --problem_config, or --path_config")
+        parser.error('--config cannot be used with any of --connection_config, --model_config, --problem_config, or --path_config')
     elif not args.config and not any(group2_args):
-        parser.error("You must provide either --config or at least one of --connection_config, --model_config, --problem_config, or --path_config")
+        parser.error('You must provide either --config or at least one of --connection_config, --model_config, --problem_config, or --path_config')
 
     try:
         conn_config, mod_config, path_config, prob_config, other_params = process_args(args, unknown_args)
     except Exception as e:
         print(e)
 
-    print("Rearranged configs:")
+    print('Rearranged configs:')
     print(conn_config, mod_config, path_config, prob_config, other_params)
 
     try:
@@ -816,5 +834,5 @@ if __name__ == "__main__":
              **other_params)
 
     except Exception as e:
-        print(f"Error occurred: {e}")
+        print(f'Error occurred: {e}')
         sys.exit(1)

@@ -10,4 +10,3 @@ def load_json(json_file: Union[str, Path]) -> Union[Dict[str, Any], List[Any]]:
     """
     with open(json_file) as f:
         return json.load(f)
-

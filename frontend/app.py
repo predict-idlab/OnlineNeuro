@@ -14,9 +14,10 @@ from flask_socketio import SocketIO
 from pathlib import Path
 import warnings
 
+# Added to prevent unused warning
+start_time = time.time()
 app = Flask(__name__)
-socketio = SocketIO(app, async_mode='eventlet')  # Initialize SocketIO
-#CORS(app)  # This will allow CORS for all routes and origins
+socketio = SocketIO(app, async_mode='eventlet')
 
 FLASK_PORT = 9000
 
@@ -82,13 +83,13 @@ def get_fun_parameters():
     data = request.json
     function = data.get('function')
     if not function:
-        return jsonify({"error": "No experiment provided"}), 400
+        return jsonify({'error': 'No experiment provided'}), 400
     try:
         fun_config = config_function(function)
         return jsonify(fun_config)
     except Exception as e:
         msg = str(e)
-        return jsonify({"error": msg}), 400
+        return jsonify({'error': msg}), 400
 
 
 @app.route('/get_parameters', methods=['POST'])
@@ -96,7 +97,7 @@ def get_parameters():
     data = request.json
     experiment = data.get('experiment')
     if not experiment:
-        return jsonify({"error": "No experiment provided"}), 400
+        return jsonify({'error': 'No experiment provided'}), 400
 
     if experiment in matlab_experiments:
         exp_params = config_problem(matlab_experiments[experiment])
@@ -123,33 +124,52 @@ def plot():
     elif plot_type == 'plotly':
         return render_template('plotly.html', port=port)
     else:
-        warnings.warn(f"Not a valid plot {plot_type}")
+        warnings.warn(f'Not a valid plot {plot_type}')
         pass
 
 
-def collapse_lists(data):
+def collapse_lists(data, max_depth=0):
     if not isinstance(data, dict):
-        raise ValueError("Input must be a dictionary")
+        raise ValueError('Input must be a dictionary')
 
     result = {}
     for key, value in data.items():
-        if isinstance(value, list):
+        if isinstance(value, dict):
+            if max_depth > 0:
+                result[key] = collapse_lists(value, max_depth - 1)
+            else:
+                result[key] = value
+        elif isinstance(value, list):
             result[key] = value[0] if len(value) == 1 else value
         else:
             result[key] = value
 
     return result
 
-# Thread function to run the experiment
+
 @app.route('/start', methods=['POST'])
 def prepare_experiment():
     global process
     global process_lock
 
     data = request.json
-    print("data received from frontend")
+    # TODO Quick fix. make this more robust later
+    if 'pulse_parameters' not in data:
+        data = data['other_parameters']
+    else:
+        for k, v in data['other_parameters'].items():
+            if k not in data.keys():
+                data[k] = v
+            else:
+                raise Exception(f"Key {k} is duplicated in data['other_parameters']")
+        del data['other_parameters']
+
+    print('data received from frontend')
     print(data)
+
     data = collapse_lists(data)
+    print('Collapsed')
+    print(data)
     if 'experiment' in data:
         exp_orig = data['experiment']
         if data['experiment'] in python_experiments:
@@ -163,10 +183,11 @@ def prepare_experiment():
         data['experiment']['name'] = exp_name
         data['experiment']['type'] = experiments_types[exp_name]
     else:
-        warnings.warn(f"No experiment in {data.keys()}")
+        keys = list(data.keys())
+        raise NotImplementedError(f'No experiment in {keys}')
 
-    main_path = str(Path("online_neuro") / "server_side.py")
-    base_command = ["python3", main_path]
+    main_path = str(Path('online_neuro') / 'server_side.py')
+    base_command = ['python3', main_path]
 
     if exp_orig in matlab_experiments:
         connection_payload = {
@@ -187,12 +208,12 @@ def prepare_experiment():
     prob_load = convert_strings_to_numbers(data)
     prob_load = json.dumps(prob_load)
 
-    command = base_command + ["--problem_config", prob_load] + ["--connection_config", connection_payload]
+    command = base_command + ['--problem_config', prob_load] + ['--connection_config', connection_payload]
 
     try:
         with process_lock:
             if process is None:
-                print("Command")
+                print('Command')
                 print(command)
                 process = subprocess.Popen(command)  # Start the process with the given command
                 threading.Thread(target=monitor_process, args=(process,),
@@ -203,9 +224,9 @@ def prepare_experiment():
 
     except Exception as e:
         # Handle exceptions
-        print(f"An unexpected error occurred: {e}")  # Optionally log the error
+        print(f'An unexpected error occurred: {e}')  # Optionally log the error
         traceback.print_exec()
-        return jsonify({"status": "Unexpected error", "error": str(e)}), 500
+        return jsonify({'status': 'Unexpected error', 'error': str(e)}), 500
 
 
 @app.route('/status', methods=['GET'])
@@ -217,8 +238,8 @@ def check_experiment():
                 return jsonify({'status': 'not running'})
             return jsonify({'status': 'running'})
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")  # Optionally log the error
-        return jsonify({"status": "Unexpected error", "error": str(e)}), 500
+        print(f'An unexpected error occurred: {e}')  # Optionally log the error
+        return jsonify({'status': 'Unexpected error', 'error': str(e)}), 500
 
 
 # Function to handle stopping the experiment
@@ -239,8 +260,8 @@ def stop_experiment() -> None:
 
             return jsonify({'status': 'not running'})
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")  # Optionally log the error
-        return jsonify({"status": "Unexpected error", "error": str(e)}), 500
+        print(f'An unexpected error occurred: {e}')  # Optionally log the error
+        return jsonify({'status': 'Unexpected error', 'error': str(e)}), 500
 
 
 @app.route('/get_data')
@@ -260,9 +281,10 @@ def update_data():
     plot_type = data.get('plot_type')
     try:
         if isinstance(plot_data, str):
+            # TODO replace this to prevent pandas deprecation warning
             plot_data = pd.read_json(plot_data)
 
-        if plot_type == "pairplot":
+        if plot_type == 'pairplot':
             first_column = plot_data.columns[0]
             second_column = plot_data.columns[1]
 
@@ -290,21 +312,20 @@ def update_data():
             })
 
         else:
-            return jsonify({"message": f"Plot type {plot_type} not implemented"}), 501
+            return jsonify({'message': f'Plot type {plot_type} not implemented'}), 501
         # Return a success response
-        return jsonify({"message": "Data updated successfully"}), 200
+        return jsonify({'message': 'Data updated successfully'}), 200
 
     except Exception as e:
         # Handle exceptions and return an error response
-        return jsonify({"error": str(e)}), 400
+        return jsonify({'error': str(e)}), 400
 
 
 if __name__ == '__main__':
     # Start the background thread to check the cache for new data
-    parser = argparse.ArgumentParser(description="Process arguments")
+    parser = argparse.ArgumentParser(description='Process arguments')
     parser.add_argument('--port', type=int, default=9000, help='Flask port.')
     args = parser.parse_args()
 
-    print(f"http://localhost:{args.port}")
+    print(f'http://localhost:{args.port}')
     socketio.run(app, port=args.port, debug=False)
-
