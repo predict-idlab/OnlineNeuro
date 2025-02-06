@@ -47,16 +47,12 @@ figures/*.eps
 *.mldatx
 *.mlexport
 *.mltbx
-*.mlapp
 *.mltbxproj
-*.mlproj
 *.mexw32
 *.mexw64
 
 # MATLAB session-specific files
 .matlab
-*.asv
-*.autosave
 
 # MATLAB binary files
 *.p
@@ -81,8 +77,8 @@ Thumbs.db
 *.swp
 
 # Logs and databases
-*.log
 *.sqlite
+*.brt
 
 # Compiled source files
 *.out
@@ -93,9 +89,7 @@ Thumbs.db
 # Distribution / packaging
 .Python
 *.dist-info/
-*.egg-info/
 .installed.cfg
-*.egg
 
 # Unit test / coverage reports
 .coverage
@@ -113,4 +107,3 @@ coverage.xml
 *.code-workspace
 *.sublime-project
 *.sublime-workspace
-
