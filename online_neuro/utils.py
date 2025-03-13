@@ -9,6 +9,7 @@ from trieste.space import Box
 from pathlib import Path
 import time
 import select
+import warnings
 
 
 class CustomBox(Box):
@@ -235,13 +236,6 @@ def run_matlab(matlab_script_path, matlab_function_name='main', **kwargs):
     except Exception as e:
         print(f'Error starting MATLAB: {e}')
 
-#
-# def read_output(process, output_queue):
-#     """Reads the output of the process and places it in a queue."""
-#     for line in iter(process.stdout.readline, ''):
-#         output_queue.put(line)  # Place each line of output in the queue
-#     process.stdout.close()
-
 
 def run_python_script(script_path, function_name='main.py', **kwargs):
     """
@@ -313,20 +307,22 @@ def generate_grids(n, num_points, upper_bound=None, lower_bound=None):
     midpoints_grid = np.stack(midpoints_grids, axis=-1).reshape(-1, n)
 
     if upper_bound and lower_bound:
-        grid = lower_bound + grid * (upper_bound-lower_bound)
-        midpoints_grid = lower_bound + midpoints_grid*(upper_bound-lower_bound)
-
+        grid = lower_bound + grid * (upper_bound - lower_bound)
+        midpoints_grid = lower_bound + midpoints_grid * (upper_bound - lower_bound)
+    else:
+        msg = "Both upper_bound and lower_bound need to be defined. Scaling was ignored"
+        warnings.warn(msg)
     return grid, midpoints_grid
 
 
-def write_data(client_socket, data):
-    json_data = json.dumps(data, ensure_ascii=False).encode('utf-8')
-    try:
-        client_socket.sendall(json_data)
-        return {'Message': 'Data sent to server'}
-    except Exception as e:
-        msg = e
-        return {'Message': f'Something went wrong {msg}'}
+# def write_data(client_socket, data):
+#     json_data = json.dumps(data, ensure_ascii=False).encode('utf-8')
+#     try:
+#         client_socket.sendall(json_data)
+#         return {'Message': 'Data sent to server'}
+#     except Exception as e:
+#         msg = e
+#         return {'Message': f'Something went wrong {msg}'}
 
 
 def receive_data(socket, buffer_size=65536, timeout=300):
@@ -364,35 +360,37 @@ def receive_data(socket, buffer_size=65536, timeout=300):
     raise TimeoutError('Timeout: No complete JSON message received.')
 
 
-def client_send_and_receive(socket, message):
-    send_result = write_data(socket, message)
-    print(send_result['Message'])
-    response = receive_data(socket)
-    return response
+def receive_data(socket, size_lim=65536):
+    """ Placeholder function, assumes data is received fully. """
+    data = socket.recv(size_lim)  # Read from socket
+    return json.loads(data.decode())  # Decode JSON properly
 
 
 def fetch_data(socket):
-
     data = receive_data(socket)
-    print('HERE')
-    print(data)
-    # Check if the received data is a list
-    if isinstance(data, list):
-        assert isinstance(data[-1], dict), 'Not a valid format'
-        if ('tot_pckgs' in data) and ('pckgs' in data):
-            if data['tot_pckgs'] == data['pckgs']:
-                return data
-            else:
-                while(data[-1]['tot_pckgs']> data[-1]['pckgs']):
-                    msg = receive_data(socket)
-                    data.extend(msg)
-                return data  # Return the combined data
-        else:
-            return data
-    else:
-        # If data is not a list (shouldn't happen) place it in a list for later handling
+
+    # If it's a single package, return it as a list
+    if isinstance(data, dict):
         return [data]
 
+    # Check if we are dealing with chunked messages
+    if isinstance(data, list) and isinstance(data[-1], dict):
+        if 'tot_pckgs' in data[-1] and 'current_pckg' in data[-1]:
+            total_packages = data[-1]['tot_pckgs']
+            received_packages = len(data)
+
+            # Keep receiving if we haven't gotten all packages
+            while received_packages < total_packages:
+                msg = receive_data(socket)
+                data.append(msg)
+                received_packages += 1
+
+            return data  # Return full data
+        else:
+            return data  # Return as is
+
+    # If data format is unexpected, wrap it in a list
+    return [data]
 
 def array_to_list_of_dicts(array, column_names):
     """
@@ -405,3 +403,109 @@ def array_to_list_of_dicts(array, column_names):
         raise ValueError('Number of columns in array must match the number of column names.')
 
     return [dict(zip(column_names, row)) for row in array]
+
+
+def define_scaler_search_space(problem_config,
+                               scale_inputs: bool = True,
+                               scaler: str = 'minmax',
+                               output_range: tuple = (-1, 1)):
+    """
+    @param problem_config: Information concerning the search space as defined by the user.
+                The gui boundaries should be within the problem_config range.
+                If not the case, these are ignored.
+    @param scale_inputs: bool, I don't see a scenario where this wouldn't be the case.
+    @param scaler : string to specify the scaling type
+    @param output_range : tuple indicating min and max value in the output
+    @return: instance : SearchSpacePipeline
+    """
+    # TODO extend to handle categorical and boolean features (i.e. they have to bypass the feature normalization
+    fixed_features = {}
+    variable_features = {}
+
+    lower_bound = []
+    upper_bound = []
+
+    for key, value in problem_config.items():
+        if isinstance(value, list):
+            for ix in range(len(value)):
+                element = value[ix]
+                if isinstance(element, dict):
+                    for k1, v1 in element.items():
+                        feat_name = f'{key}_{ix + 1}_{k1}'
+                        if 'min_value' in v1 and 'max_value' in v1:
+                            if v1['min_value'] == v1['max_value']:
+                                fixed_features[feat_name] = v1['min_value']
+                            else:
+                                variable_features[feat_name] = 0
+                                lower_bound.append(v1['min_value'])
+                                upper_bound.append(v1['max_value'])
+                        elif 'value' in v1:
+                            fixed_features[feat_name] = v1['value']
+                        else:
+                            msg = f"Feature '{key}' does not have a valid formatting, skipping"
+                            warnings.warn(msg)
+                else:
+                    # Contains a fixed list, no need to iterate through each element
+                    fixed_features[key] = value
+                    continue
+        elif isinstance(value, dict):
+            if 'min_value' in problem_config[key] and 'max_value' in problem_config[key]:
+                if isinstance(problem_config[key]['value'], list):
+                    for ix in range(len(problem_config[key]['value'])):
+                        if len(problem_config[key]['value']) == 1:
+                            feat_name = key
+                        else:
+                            feat_name = f'{key}_{ix + 1}'
+
+                        if problem_config[key]['min_value'][ix] == problem_config[key]['max_value'][ix]:
+                            fixed_features[feat_name] = value
+                        else:
+                            variable_features[feat_name] = 0
+                            lower_bound.append(problem_config[key]['min_value'][ix])
+                            upper_bound.append(problem_config[key]['max_value'][ix])
+                else:
+                    feat_name = key
+                    if problem_config[key]['min_value'] == problem_config[key]['max_value']:
+                        fixed_features[feat_name] = value
+                    else:
+                        variable_features[feat_name] = 0
+                        lower_bound.append(problem_config[key]['min_value'])
+                        upper_bound.append(problem_config[key]['max_value'])
+            elif 'value' in problem_config[key]:
+                fixed_features[key] = value
+            else:
+                msg = f"Feature '{key}' does not have a valid formatting, skipping"
+                warnings.warn(msg)
+
+        elif isinstance(value, (list, float, int, str)):
+            fixed_features[key] = value
+
+        else:
+            ty = type(value)
+            msg = f"Feature '{key}' does not have a valid type '{ty}', skipping"
+            warnings.warn(msg)
+
+    if scale_inputs:
+        num_features = len(lower_bound)
+
+        # TODO, implement other types of normalization
+        if scaler == 'minmax':
+            lb = num_features * [output_range[0]]
+            ub = num_features * [output_range[1]]
+
+            search_space = CustomBox(lower=lb,
+                                     upper=ub)
+
+            scaler = CustomMinMaxScaler(feature_min=lower_bound,
+                                        feature_max=upper_bound,
+                                        output_range=output_range)
+        else:
+            raise NotImplementedError(f'{scaler} has not been implemented')
+    else:
+        search_space = CustomBox(lower=lower_bound,
+                                 upper=upper_bound)
+        scaler = None
+
+    feat_dict = {'fixed_features': fixed_features,
+                 'variable_features': variable_features}
+    return search_space, scaler, feat_dict

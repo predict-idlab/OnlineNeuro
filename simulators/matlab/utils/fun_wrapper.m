@@ -1,54 +1,52 @@
-function out_struct = fun_wrapper(fun, qp,  feat_struct, operator, channel, full_response)
+function out_struct = fun_wrapper(save_path, fun, qp, feat_struct, operator, channel)
     % TODO. handle putting multi-input vectors in the correct struct
-    if nargin < 2
-        error('Fun Wrapper requires at least two input arguments.');
+    if nargin < 3
+        error('Fun Wrapper requires at least three input arguments.');
     end
 
     % Toy problems
-    if nargin <= 2
+    if nargin <= 3
         display(qp)
         response = fun(qp);
         out_struct = struct('observations', response);
 
-    elseif nargin <3
+    elseif nargin < 4
             error(" A feature structure needs to be provided")
     else
-        if nargin < 4
+        if nargin < 5
             operator = 'default';
         end
 
-        if nargin < 5
+        if nargin < 6
             channel = 8;
         end
 
-        if nargin < 6
-            full_response = false;
-        end
-
         fieldNames = fieldnames(qp);
+        display(qp)
         for i=1:length(fieldNames)
             fN = fieldNames{i};
             feat_struct.(fN) = qp.(fN);
         end
+        display(feat_struct)
 
         feat_struct = preprocess_struct(feat_struct);
-        display(feat_struct)
         y = fun(feat_struct);
-        out_struct = struct();
 
-        % Operator applied to only a node
+        out_struct = struct();
+        fname = sprintf('%s/simulation_%s.mat', save_path, datestr(now,'mm-dd-yyyy HH-MM'));
+
+        out_struct.('full_observations') = fname;
+        save(fname, 'y');
+
         % TODO, extend what else to do here.
         switch operator
+            % Notice some operators applied to only a node
             case 'min_global'
                 % Pass the entire signal (i.e. modelling AP over time)
-                response = y.Yp(:,channel);
-                out_struct.('observations') = response;
+                out_struct.('observations') = y.Yp(:,channel);
 
             case 'min_max'
-                y_min = min(y.Yp(:,channel));
-                y_max = max(y.Yp(:,channel));
-                response = -(y_max - y_min);
-                out_struct.('observations') = response;
+                out_struct.('observations') = max(y.Yp(:,channel)) - min(y.Yp(:,channel));
 
             case 'threshold'
                 y_max = max(y.Yp(:,channel));
@@ -78,16 +76,15 @@ function out_struct = fun_wrapper(fun, qp,  feat_struct, operator, channel, full
                 else
                     response=0;
                 end
-
-                out_struct.('full_observations') = y.fname;
                 out_struct.('observations') = response;
 
-
-            otherwise
+            otherwise % Returning the complete series
                 y_min = min(y.Yp(:,channel));
                 y_max = max(y.Yp(:,channel));
                 response = -(y_max - y_min);
-                out_struct.('observations') = response;
+                display(response)
+                out_struct.('full_observations') = fname;
+                %out_struct.('observations') = y.Yp;
 
         end
 

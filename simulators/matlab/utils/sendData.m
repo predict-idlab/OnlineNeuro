@@ -1,27 +1,30 @@
 function sendData(dataToSend, tcpipClient, size_lim)
     display(dataToSend)
     jsonData = jsonencode(dataToSend);
-    if length(jsonData)>size_lim
-        fprintf("breaking down message")
-        pckgs = floor(length(dataToSend)/size_lim) + 1;
-        row_per_pckg = ceil(length(jsonData)/pckgs);
 
-        for i=1:pckgs
-            fprintf("pakage %d", i)
-            start_ix = (i-1)*row_per_pckg + 1;
-            end_ix = min(i*row_per_pckg , length(jsonData));
+    if length(jsonData) > size_lim
+        fprintf("Breaking down message\n");
+        
+        % Calculate number of packages
+        pckgs = ceil(length(jsonData) / size_lim);
+
+        for i = 1:pckgs
+            fprintf("Package %d of %d\n", i, pckgs);
+            start_ix = (i - 1) * size_lim + 1;
+            end_ix = min(i * size_lim, length(jsonData));
+
+            % Send JSON chunks properly
             chunk = struct();
-            chunk.('package') = i;
-            chunk.('data') = dataToSend(start_ix:end_ix);
-            chunk.('tot_pckgs') = pckgs;
+            chunk.package = i;
+            chunk.data = jsonData(start_ix:end_ix); % Slice JSON string
+            chunk.tot_pckgs = pckgs;
 
-            jsonChunk = jsonencode(chunk);
-            jsonChunk = strcat(jsonChunk, '\n');
-            write(tcpipClient, jsonChunk);
+            jsonChunk = jsonencode(chunk); % Encode full structure
+            %jsonChunk = strcat(jsonChunk, '\n'); % Ensure newline separation
+            write(tcpipClient, jsonChunk, 'char');
         end
     else
-        jsonData = strcat(jsonData, '\n');
-        write(tcpipClient, jsonData);
+        %jsonData = strcat(jsonData, '\n');
+        write(tcpipClient, jsonData, 'char');
     end
-
 end

@@ -36,6 +36,7 @@ from .custom_architectures import KerasDropout
 from trieste.models.keras.models import DeepEnsemble
 
 
+
 class DeepDropout(DeepEnsemble):
     """
     A child from :class:`~trieste.model.TrainableProbabilisticModel` wrapper for neural networks
@@ -179,7 +180,7 @@ class DeepDropout(DeepEnsemble):
         raise NotImplementedError
 
     def predict_estimation(self, query_points: TensorType, num_samples=100) -> TensorType:
-        return self._model.model.model.predict_with_dropout(query_points, num_samples=num_samples)
+        return self._model.predict_with_dropout(query_points, num_samples=num_samples)
 
     def ensemble_distributions(self, query_points: TensorType) -> tuple[tfd.Distribution, ...]:
         """
@@ -205,7 +206,7 @@ class DeepDropout(DeepEnsemble):
         """
         # handle leading batch dimensions, while still allowing `Functional` to
         # "allow (None,) and (None, 1) Tensors to be passed interchangeably"
-        input_dims = min(len(query_points.shape), len(self.model.input_shape[0]))
+        input_dims = min(len(query_points.shape), len(self.model.layers[0].input_shape[0]))
         flat_x, unflatten = flatten_leading_dims(query_points, output_dims=input_dims)
         mean, variance = self.predict_estimation(flat_x)
 

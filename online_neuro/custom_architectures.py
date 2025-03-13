@@ -51,19 +51,6 @@ class MonteCarloDropoutNetwork:
         """Returns built but uncompiled Keras ensemble model."""
         return self._model
 
-    def predict_with_dropout(self, query_points: TensorType, num_samples: int = 100) -> Tuple[TensorType, TensorType]:
-        """
-        Perform MC Dropout inference to estimate mean and variance.
-
-        @param query_points: Input data (shape: [num_points, input_dim])
-        @param num_samples: Number of MC forward passes for uncertainty estimation
-
-        @return: Tuple (mean, variance) of the predictions
-        """
-        f_samples = np.stack([self.model(query_points, training=True) for _ in range(num_samples)], axis=0)
-        mean = tf.math.reduce_mean(f_samples, axis=0)
-        variance = tf.math.reduce_variance(f_samples, axis=0)
-        return mean, variance
 
     def update(self, dataset, epochs: int = 100, verbose: int = 0):
         """
@@ -82,7 +69,7 @@ class MonteCarloDropoutNetwork:
         """
         Optimize the model using the provided dataset.
 
-        :param dataset: A `Dataset` object from Trieste
+        :@param dataset: A `Dataset` object from Trieste
         """
         self.update(dataset)
 
@@ -183,6 +170,19 @@ class KerasDropout:
                 model.set_weights(weights)
                 self._model.history.set_model(model)
 
+    def predict_with_dropout(self, query_points: TensorType, num_samples: int = 100) -> Tuple[TensorType, TensorType]:
+        """
+        Perform MC Dropout inference to estimate mean and variance.
+
+        @param query_points: Input data (shape: [num_points, input_dim])
+        @param num_samples: Number of MC forward passes for uncertainty estimation
+
+        @return: Tuple (mean, variance) of the predictions
+        """
+        f_samples = np.stack([self.model(query_points, training=True) for _ in range(num_samples)], axis=0)
+        mean = tf.math.reduce_mean(f_samples, axis=0)
+        variance = tf.math.reduce_variance(f_samples, axis=0)
+        return mean, variance
 
 class ProbabilisticNetwork(GaussianNetwork):
     def __init__(self, distribution_type, *args, **kwargs):

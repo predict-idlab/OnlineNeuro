@@ -2,7 +2,7 @@ import tensorflow as tf
 from typing import Tuple, Union, List
 
 from trieste.data import Dataset
-from trieste.models.keras import KerasEnsemble
+from trieste.models.keras.architectures import KerasEnsemble
 from trieste.models.keras.utils import get_tensor_spec_from_data
 
 from .custom_architectures import MonteCarloDropoutNetwork, KerasDropout, ProbabilisticNetwork
@@ -11,10 +11,10 @@ import warnings
 
 def build_keras_mc_dropout(
         data: Dataset,
-        hidden_layers: Union[int, Tuple[int, ...], List[Tuple[int, ...]]] = (32, 32),
-        dropout_rates: Union[float, List[float]] = 0.20,
-        activations: Union[str, tf.keras.layers.Activation, List[Union[str, tf.keras.layers.Activation]]] = 'relu'
-) -> MonteCarloDropoutNetwork:
+        hidden_layers: int | Tuple[int, ...] | List[Tuple[int, ...]] = (32, 32),
+        dropout_rates: float | List[float] = 0.20,
+        activations: str | tf.keras.layers.Activation | List[ str | tf.keras.layers.Activation] = 'relu'
+) -> KerasDropout:
     """
     Builds a Neural Network with MonterCarlo Dropout enabled compatible with Trieste.
     @param data: Data for training, used for extracting input and output tensor specifications.
@@ -32,14 +32,16 @@ def build_keras_mc_dropout(
         """)
         hidden_layers = [(hidden_layers,)]
     elif isinstance(hidden_layers, tuple):
-        hidden_layers = list(hidden_layers)  # Convert single tuple to list for consistency
+        hidden_layers = [(x,) if isinstance(x, int) else x for x in hidden_layers]
+    else:
+        hidden_layers = hidden_layers
 
     num_layers = len(hidden_layers)
 
     if isinstance(activations, (str, tf.keras.layers.Activation)):
         activations = [activations] * num_layers
 
-    if isinstance(dropout_rates, (float, int)):  # Allow int for dropout = 0
+    if isinstance(dropout_rates, float):  # Allow int for dropout = 0
         dropout_rates = [dropout_rates] * num_layers
     elif isinstance(dropout_rates, tuple):
         dropout_rates = list(dropout_rates)
@@ -64,6 +66,7 @@ def build_keras_ensemble_prob_output(
     distribution_type: str = 'Gaussian',
 ) -> KerasEnsemble:
     """
+    TODO, change nu
     Function based on Trieste's version. It allows to specify other type of output distributions,
     such as Gaussian (original), Bernoulli (Binary Classification) and Categorical (Multiclass classification)
 

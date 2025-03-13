@@ -210,24 +210,23 @@ function result = axonsim_call(varin)
     % fname = sprintf('stimf_%s.mat', datestr(now,'mm-dd-yyyy HH-MM'));
     % save(fname, "st");
 
-    tosave = struct;
-    tosave.varin = varin;
-    tosave.N = N;
-    tosave.Yp = Yp;
-    tosave.V_tot = V_tot;
-    tosave.af = af;
-    tosave.stimuli = stimuli;
-    tosave.ts = ts;
+    result = struct;
+    result.varin = varin;
+    result.N = N;
+    result.Yp = Yp;
+    result.V_tot = V_tot;
+    result.af = af;
+    result.stimuli = stimuli;
+    result.ts = ts;
 
 
-    currentFolder = pwd;
-    relativeFolder = fullfile(currentFolder, '../../simulations/axonsim_nerve_block/full_mats');
+%    currentFolder = pwd;
+%    relativeFolder = fullfile(currentFolder, '../../simulations/axonsim_nerve_block/full_mats');
+%
+%    fname = sprintf('%s/simulation_%s.mat', relativeFolder, datestr(now,'mm-dd-yyyy HH-MM'));
+%    %display(fname)
+%    result.fname = fname;
+%    save(fname,'result');
 
-    fname = sprintf('%s/simulation_%s.mat', relativeFolder, datestr(now,'mm-dd-yyyy HH-MM'));
-    %display(fname)
-    tosave.fname = fname;
-    save(fname,'tosave');
-
-    result = tosave;
 
 end

@@ -54,8 +54,6 @@ function [eval_fun, eval_dict] = axon_problem(problem_setting, varargin)
     fields = fieldnames(experiment_params);
     eval_dict = struct();
 
-    %This is just to allow the code to be debugged. In general num of
-    %electrodes needs to be specified!
     array_size = experiment_params.('num_electrodes');
 
     if isstring(array_size)
@@ -68,6 +66,8 @@ function [eval_fun, eval_dict] = axon_problem(problem_setting, varargin)
             eval_dict.(fields{i}) = experiment_params.(fields{i}).value;
             % If it doesn't contain a value then is not part of the problem requirements i.e. booleans passed from the GUI
             %eval_dict.(fields{i}) = value;
+        else
+            eval_dict.(fields{i}) = experiment_params.(fields{i});
         end
     end
 end
