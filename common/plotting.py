@@ -56,8 +56,8 @@ def plot_log_reg(model, initial_data, search_space, scaler=None,
         assert ground_truth_function is not None
 
     fig = plt.figure(figsize=(6, 3))
-    plt.plot(initial_data[0].values[:, 0],
-             initial_data[1].values[:, 0],
+    plt.plot(initial_data[0].to_numpy()[:, 0],
+             initial_data[1].to_numpy()[:, 0],
              'ro', mew=2, label='Initial samples')
 
     if plot_ground_truth:
@@ -134,8 +134,8 @@ def plot_circle(model, initial_data, search_space, scaler, test_data=None, sampl
         ax.plot_surface(xx, yy, Z, cmap=cm.coolwarm)
 
     # Highlighting initial data points
-    x = initial_data[0].values
-    locs = (initial_data[1] == 1).values.squeeze()
+    x = initial_data[0].to_numpy()
+    locs = (initial_data[1] == 1).to_numpy().squeeze()
 
     ax.scatter(x[locs, 0], x[locs, 1], marker='o', c='k', label='Train-pos')
     ax.scatter(x[~locs, 0], x[~locs, 1], marker='x', c='k', label='Train-neg')
@@ -143,7 +143,7 @@ def plot_circle(model, initial_data, search_space, scaler, test_data=None, sampl
     # Plotting the data that has been sampled ~ Without the "observed" labels
 
     if len(sampled_data) > 0:
-        ax.scatter(sampled_data[0].values[:, 0], sampled_data[0].values[:, 1],
+        ax.scatter(sampled_data[0].to_numpy()[:, 0], sampled_data[0].to_numpy()[:, 1],
                    marker='x', c='r', label='Sampled datapoints')
 
     # Plotting the ground truth
@@ -340,7 +340,7 @@ def plot_pareto_2d(model, search_space, scaler, initial_data, test_data=None, sa
     ax[2].set_xlabel('Objective #1')
     ax[2].set_xlabel('Objective #2')
 
-    ref_point = calculate_reference_point(initial_data[1].values)
+    ref_point = calculate_reference_point(initial_data[1].to_numpy())
 
     _idxs = np.arange(1, len(Z_stack) + 1)
     log_vol = [log_hv(Z_stack[:i, :], ref_point) for i in _idxs]
@@ -440,8 +440,8 @@ def plot_nerve_block(model, initial_data, search_space=None, scaler=None, sample
         ax[i].set_xlabel(f'feat_{x_ix}')
         ax[i].set_title(f'{i}')
 
-    x = initial_data[0].values
-    y = initial_data[1].values
+    x = initial_data[0].to_numpy()
+    y = initial_data[1].to_numpy()
 
     if scaler:
         x = scaler.inverse_transform(x)

@@ -1,0 +1,33 @@
+{
+  "layers": {
+    "user_fixed": true,
+    "value": "Write a list of valid shapes[(),()]",
+    "type": "complex"
+  },
+  "fit_batch_size": {
+    "user_fixed": true,
+    "value": 16,
+    "min_value": 16,
+    "max_value": 64,
+    "type": "int"
+  },
+  "fit_epochs": {
+    "user_fixed": true,
+    "value": 20,
+    "min_value": 50,
+    "max_value": 100,
+    "type": "int"
+  },
+  "fit_verbose": {
+    "user_fixed": true,
+    "value": false,
+    "type": "boolean"
+  },
+  "fit_early_stopping": {
+    "user_fixed": true,
+    "value": 5,
+    "min_value": 5,
+    "max_value": 25,
+    "type": "int"
+  }
+}

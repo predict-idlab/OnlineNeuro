@@ -1,14 +1,13 @@
-from abc import ABC, abstractmethod
-from typing import Callable, Generic
+from typing import Callable
+from typing import overload, Optional, Mapping
 
 import tensorflow as tf
-from trieste.types import TensorType
-from trieste.acquisition.sampler import ThompsonSampler
 from trieste.acquisition.rule import AcquisitionRule, SearchSpace
+from trieste.acquisition.sampler import ThompsonSampler
 from trieste.models.interfaces import ProbabilisticModel, ProbabilisticModelType
-from trieste.acquisition.utils import select_nth_output
-from typing import overload, Optional, Mapping
+from trieste.observer import OBJECTIVE
 from trieste.types import Tag
+from trieste.types import TensorType
 
 
 class DiscreteMaxVarianceSampler(ThompsonSampler[ProbabilisticModel]):
@@ -34,12 +33,12 @@ class DiscreteMaxVarianceSampler(ThompsonSampler[ProbabilisticModel]):
         :return: The sampled points, shape `[S, D]`.
         """
         tf.debugging.assert_positive(sample_size)
-        tf.debugging.assert_shapes([(at, ["N", None])])
+        tf.debugging.assert_shapes([(at, ['N', None])])
 
         mean, variance = model.predict(at)  # Compute mean and variance at given points
         selected_variance = select_output(variance, axis=-1)  # Select the relevant output
-        # Select indices with highest variance
-        indices = tf.argsort(selected_variance, direction="DESCENDING")
+        # Select indices with the highest variance
+        indices = tf.argsort(selected_variance, direction='DESCENDING')
         indices = indices[:sample_size]
         return tf.gather(at, indices)  # Return the most uncertain points
 
@@ -60,7 +59,7 @@ class DiscreteMaxVarianceSampling(AcquisitionRule[TensorType, SearchSpace, Proba
 
     @overload
     def __init__(
-            self: "DiscreteMaxVarianceSampling[ProbabilisticModel]",
+            self: 'DiscreteMaxVarianceSampling[ProbabilisticModel]',
             num_search_space_samples: int,
             num_query_points: int,
             thompson_sampler: None = None,
@@ -70,7 +69,7 @@ class DiscreteMaxVarianceSampling(AcquisitionRule[TensorType, SearchSpace, Proba
 
     @overload
     def __init__(
-            self: "DiscreteMaxVarianceSampling[ProbabilisticModelType]",
+            self: 'DiscreteMaxVarianceSampling[ProbabilisticModelType]',
             num_search_space_samples: int,
             num_query_points: int,
             thompson_sampler: Optional[ThompsonSampler[ProbabilisticModelType]] = None,
@@ -94,11 +93,11 @@ class DiscreteMaxVarianceSampling(AcquisitionRule[TensorType, SearchSpace, Proba
             :func:~`trieste.acquisition.utils.select_nth_output` function with output dimension 0.
         """
         if not num_search_space_samples > 0:
-            raise ValueError(f"Search space must be greater than 0, got {num_search_space_samples}")
+            raise ValueError(f'Search space must be greater than 0, got {num_search_space_samples}')
 
         if not num_query_points > 0:
             raise ValueError(
-                f"Number of query points must be greater than 0, got {num_query_points}"
+                f'Number of query points must be greater than 0, got {num_query_points}'
             )
 
         if thompson_sampler is None:
@@ -137,7 +136,7 @@ class DiscreteMaxVarianceSampling(AcquisitionRule[TensorType, SearchSpace, Proba
         """
         if models.keys() != {OBJECTIVE}:
             raise ValueError(
-                f"dict of models must contain the single key {OBJECTIVE}, got keys {models.keys()}"
+                f'dict of models must contain the single key {OBJECTIVE}, got keys {models.keys()}'
             )
 
         if datasets is None or datasets.keys() != {OBJECTIVE}:

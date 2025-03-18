@@ -25,7 +25,7 @@ pip install -r requirements.txt
 ```
 
 ### Matlab
-In case you want to solve Matlab problems (i.e. Axonsim), install the required matlab engine (the default pip wheel is currently Matlab 2024a). 
+In case you want to solve Matlab problems (i.e. Axonsim), install the required matlab engine (the default pip wheel is currently Matlab 2024a).
 
 You can check the version by opening MATLAB and run the command: version
 
@@ -106,7 +106,7 @@ Using the GUI there's no need of writing any code. However, you may want to modi
 The code is written in a way that minimum changes are required in the script.
 
 All parameters (connection and optimization) are selected in the config.json.
-Bellow is the example of the config.json 
+Bellow is the example of the config.json
 
 Note: Right now (Nov 2024) the model is fully in the backend, to modify it use the global configuration file: config.json
 More details on the config files are in the [config readme.md](config/README.md)
@@ -155,7 +155,7 @@ More details on the config files are in the [config readme.md](config/README.md)
 
 A classification problem that can be modelled with SVGP and log-likelihood.
 
-<img src="figures/circle.jpg" alt="circle" height="250"/> 
+<img src="figures/circle.jpg" alt="circle" height="250"/>
 <img src="animations/animation_circle.gif" alt="circle_opt" height="250"/>
 
 <!-- ![circle.jpg](circle.jpg) ![animation_circle.gif](animations%2Fanimation_circle.gif) -->
@@ -163,7 +163,7 @@ A classification problem that can be modelled with SVGP and log-likelihood.
 ### Rosenbrock
 A regression problem with smooth surfaces approximated with GP.
 
-<img src="figures/rose.jpg" alt="rose" height="250"/> 
+<img src="figures/rose.jpg" alt="rose" height="250"/>
 <img src="animations/animation_rose.gif" alt="rose_opt" height="250"/>
 
 <!-- ![rose.jpg](rose.jpg)![animation1.gif](animations%2Fanimation_rose.gif) -->

@@ -16,7 +16,7 @@ def circle(x0, x1, radius=0.5, noise=0, center=np.array([0, 0]), *args, **kwargs
     @param center: [x, y] coordinates for the circle center.
     @return:
     """
-    print(kwargs)
+
     if isinstance(noise, list):
         noise = np.array(noise)
     if isinstance(center, list):
@@ -55,7 +55,7 @@ def multiple_circles(x0, x1, radius, noise, center, *args, **kwargs):
     radius (list of float): List of radii for the circles.
     noise (list of float): List of noise values for each circle.
     center (list of np.ndarray): List of [x, y] center coordinates for each circle.
-        
+
     Returns:
     np.ndarray: Combined binary results for all circles, shape (n_points,).
     """
@@ -63,8 +63,8 @@ def multiple_circles(x0, x1, radius, noise, center, *args, **kwargs):
 
     for r, n, c in zip(radius, noise, center):
         result = circle(x0, x1, radius=r, noise=n, center=c)
-        results.append(result)
-    
+        results.append(result['observations'])
+
     # Sum the results from all circles and return binary results
     combined_results = np.sum(results, axis=0) - (len(radius) - 1)
     binary_results = (combined_results > 0).astype(int)
@@ -96,15 +96,16 @@ def multiple_hyperspheres(points, radii, noises, centers, *args, **kwargs):
     @param radii: List of radii for the hyperspheres.
     @param noises: List of noise values for each hypersphere.
     @param centers:  List of center coordinates for each hypersphere, each of shape (n_dimensions,).
-    @return: 
+    @return:
     """
     results = []
 
     for r, n, c in zip(radii, noises, centers):
         result = hypersphere(points, radius=r, noise=n, center=c)
-        results.append(result)
+        results.append(result['observations'])
 
     # Sum the results from all hyperspheres and return binary results
+
     combined_results = np.sum(results, axis=0) - (len(radii) - 1)
     binary_results = (combined_results > 0).astype(int)
     binary_results = binary_results.tolist()

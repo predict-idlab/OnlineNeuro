@@ -4,7 +4,7 @@ function sendData(dataToSend, tcpipClient, size_lim)
 
     if length(jsonData) > size_lim
         fprintf("Breaking down message\n");
-        
+
         % Calculate number of packages
         pckgs = ceil(length(jsonData) / size_lim);
 

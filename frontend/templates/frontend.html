@@ -174,6 +174,7 @@
             display:flex;
             align-items:center;
             margin-bottom: 10px;
+            justify-content: space-between;
             width: 100%;
         }
         .block-title{
@@ -213,12 +214,6 @@
         }
         .dim-label{
             color:white
-        }
-        .parameter-row{
-            display: flex;
-            /*flex-wrap: wrap;*/
-            gap: 10px;
-            max-width: 100%;
         }
         .box {
             width: 100%;
@@ -260,6 +255,10 @@
         let optimizableFeatures
         let userDefinedFeatures
         let defaultFeatures
+
+        let globalModelData
+        let userDefinedModelFeatures
+        let defaultModelFeatures
 
         //let sortedKeys
         function toggleSidebar() {
@@ -502,8 +501,6 @@
             // Collect all inputs from the "sidebar-frame" div
             let parameters = collectInputs('sidebar-left')
 
-            console.log("Collected params")
-            console.log(parameters)
             parameters.other_parameters = restructureParameters(parameters.other_parameters)
             console.log("Restructured params")
             console.log(parameters)
@@ -546,24 +543,44 @@
         }
 
         // Function to display the selected experiment
-        async function fetchExperiments() {
+        // async function fetchExperiments() {
+        //     try {
+        //         const response = await fetch('/experiments');  // API route that returns JSON
+        //         const experiments = await response.json();  // Ensure the response is parsed as JSON
+        //         const experimentSelector = document.getElementById('experiment');
+        //
+        //         // Clear existing options (if any)
+        //         experimentSelector.innerHTML = '<option value="">Select Experiment</option>'; // Reset to default option
+        //
+        //         // Populate the select element with the fetched experiments
+        //         experiments.forEach(exp => {
+        //             const option = document.createElement('option');
+        //             option.value = exp; // Set the value for the option
+        //             option.innerText = exp; // Display the experiment name
+        //             experimentSelector.appendChild(option); // Append the option to the select
+        //         });
+        //     } catch (error) {
+        //         console.error("Error fetching data:", error);
+        //     }
+        // }
+        async function fetchData(endpoint, selectId, defaultText) {
             try {
-                const response = await fetch('/experiments');  // API route that returns JSON
-                const experiments = await response.json();  // Ensure the response is parsed as JSON
-                const experimentSelector = document.getElementById('experiment');
+                const response = await fetch(`/${endpoint}`); // API route that returns JSON
+                const items = await response.json(); // Ensure the response is parsed as JSON
+                const selectElement = document.getElementById(selectId);
 
-                // Clear existing options (if any)
-                experimentSelector.innerHTML = '<option value="">Select Experiment</option>'; // Reset to default option
+                // Clear existing options
+                selectElement.innerHTML = `<option value="">${defaultText}</option>`; // Reset to default option
 
-                // Populate the select element with the fetched experiments
-                experiments.forEach(exp => {
+                // Populate the select element with the fetched items
+                items.forEach(item => {
                     const option = document.createElement('option');
-                    option.value = exp; // Set the value for the option
-                    option.innerText = exp; // Display the experiment name
-                    experimentSelector.appendChild(option); // Append the option to the select
+                    option.value = item; // Set the value for the option
+                    option.innerText = item; // Display the item name
+                    selectElement.appendChild(option); // Append the option to the select
                 });
             } catch (error) {
-                console.error("Error fetching data:", error);
+                console.error(`Error fetching ${endpoint}:`, error);
             }
         }
         function sortFeatures(features, dataDic) {
@@ -611,8 +628,6 @@
                 }
             });
 
-            let pulseCount = {}
-
             for (let [i, pulseConfig] of configs.entries()) {
                 let pulse_key = `pulse_${i}`
                 // globalData[pulse_key] = {}; // Initialize as an empty object
@@ -659,6 +674,9 @@
             await updatePulseParameters()
         }
 
+        async function updateModelParameters(){
+            await updateFixedParameters(userDefinedModelFeatures, globalModelData, 'parameters-model')
+        }
         async function updateElectrodeListeners(){
             const e_pos_inputs = document.querySelectorAll('[id^="e_pos"]');
             // e_pos_inputs.forEach(input => {
@@ -695,6 +713,9 @@
                 console.log("No electrodes to plot.");
             }
         }
+        async function modelChange(){
+            await loadModelParameters()
+        }
         async function loadParameters() {
             const selectedExperiment = document.getElementById('experiment').value;
 
@@ -720,14 +741,16 @@
                 const response = await fetch('/get_parameters', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({experiment: selectedExperiment}) // Pass the experiment as JSON in the body
+                    body: JSON.stringify({
+                        type: "problem_parameters",
+                        experiment: selectedExperiment}) // Pass the experiment as JSON in the body
                 });
 
                 if (!response.ok) {
                     console.error("Error fetching parameters:", response.statusText);
                     return;
                 }
-
+                console.log(response)
                 globalData = await response.json();
 
                 console.log("Received load")
@@ -789,7 +812,7 @@
                     // TODO This would be a hard requirements and needs to be documented.
                     console.log("Data has multiple sets")
                     const row = document.createElement('div');
-                    row.classList.add('parameter-row')
+                    row.classList.add('parameter-container')
                     row.id = 'electrode-sets-row'
 
                     const label = document.createElement('div');
@@ -814,6 +837,53 @@
             }
         }
 
+        async function loadModelParameters() {
+            const selectedModel = document.getElementById('model').value;
+            const container = document.getElementById('parameters-model');
+            container.innerHTML = '';  // Clear existing modelparameters
+            console.log("here")
+            console.log(selectedModel)
+            if (selectedModel===""){
+                globalModelData = false
+
+            } else{
+                const response = await fetch('/get_parameters', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+
+                    body: JSON.stringify({
+                        type: "model_parameters",
+                        model: selectedModel,
+                    })
+                });
+                if (!response.ok) {
+                    console.error("Error fetching parameters:", response.statusText);
+                    return;
+                }
+                globalModelData = await response.json();
+
+                console.log("Received load")
+                console.log(globalModelData)
+
+                userDefinedModelFeatures = Object.keys(globalModelData).filter(key => globalModelData[key].user_fixed ===true)
+
+                // Non GUI values (see the model .json for non-user_fixed values.)
+                defaultModelFeatures = Object.fromEntries(
+                    Object.entries(globalModelData)
+                        .filter(([key, value]) => value.user_fixed === false)
+                        .map(([key, value]) => [key, value.value]) // Keep only the 'value' key
+                );
+
+                console.log("Default features")
+                console.log(defaultModelFeatures)
+
+                // const fixedTitle = document.getElementById('parameters-header-fixed');
+                // const variableTitle = document.getElementById('parameters-header-rest');
+                // TODO you are here
+                await updateModelParameters()
+            }
+        }
+
         // Helper functions
         function createParameterContainer() {
             const container = document.createElement('div');
@@ -824,10 +894,8 @@
         function createLabel(key, type, data) {
             const label = document.createElement('div');
             label.classList.add('parameter-label');
-            if (type === 'boolean') {
-                label.innerText = `${key} boolean`;
-            } else if (type === 'cat' || type === 'cat-mult') {
-                label.innerText = `${key} options`;
+            if (type === 'boolean' || type === 'cat' || type === 'cat-mult' || type === 'complex') {
+                label.innerText = `${key}`;
             } else {
                 label.innerText = `${key} [${data.min_value}, ${data.max_value}]`;
             }
@@ -934,7 +1002,7 @@
 
             if (insertBoolean) {
                 // Create a checkbox for boolean inputs
-                rowLabel.innerText = "set (True)"
+                //rowLabel.innerText = "set (True)"
                 const booleanInput = document.createElement('input');
                 booleanInput.type = 'checkbox';
                 booleanInput.id = index=== null? `${key}` : `${key}_${index}`;
@@ -1011,7 +1079,6 @@
                 const inputRow = createInputRow(`e_${i + 1}`);
                 dimensions.forEach((dim, dimIndex) => {
                     inputRow.appendChild(createDimensionLabel(dim));
-
                     inputRow.appendChild(createNumericInput(key, paramData, i, 'min', dimIndex));
                     inputRow.appendChild(createNumericInput(key, paramData, i, 'max', dimIndex));
                 });
@@ -1024,6 +1091,18 @@
             const inputRow = createInputRow(key, true);
             //inputRow.appendChild(inputRow);
             container.appendChild(inputRow);
+        }
+        function addComplexInput(container, key, paramData, index){
+            //inputsContainer, key, selData[key], numColumnsValue
+            const inputRow = document.createElement('div');
+            inputRow.classList.add('input-row')
+            const input = document.createElement('input');
+            input.type = 'text'
+            input.name = 'param_${key}'
+            if (paramData.value !== null) {input.placeholder = paramData.value} else {input.placeholder = '${key}'};
+
+            inputRow.appendChild(input)
+            container.appendChild(inputRow)
         }
 
         // Create numeric inputs with min/max handling
@@ -1078,12 +1157,15 @@
             const inputActions = {
                 'int-mult': addFixedNumericMultipleInputs,
                 'float-mult': addFixedNumericMultipleInputs,
+                'cat-mult': addCatMultInputs,
                 'int': addSingleNumericInput,
                 'float': addSingleNumericInput,
-                'cat-mult': addCatMultInputs,
                 'cat': addSingleCatInput,
                 'array': addArrayInputs,
-                'boolean': addBooleanInput
+                'boolean': addBooleanInput,
+                //'complex-mult' : addComplexMultipleInputs
+                'complex': addComplexInput,
+
             };
 
             keyList.forEach(key => {
@@ -1323,13 +1405,23 @@
             jsonDisplay.innerHTML = ''; // Clear previous content
             renderJSON(jsonDisplay, structuredData);
         }
+        async function fetchExperimentsAndModels() {
+            await fetchData('experiments', 'experiment', 'Select Experiment');
+            await fetchData('models', 'model', 'Select Model');
+        }
+
     </script>
     <script>
-        document.addEventListener('DOMContentLoaded', fetchExperiments)
-        const jsonInputs = document.querySelectorAll('#sidebar-left input');
-        jsonInputs.forEach(input => {
+        document.addEventListener('DOMContentLoaded', fetchExperimentsAndModels)
+        const jsonInputsLeft = document.querySelectorAll('#sidebar-left input');
+        jsonInputsLeft.forEach(input => {
             input.addEventListener('input', updateJSONDisplay);
         });
+        const jsonInputsRight = document.querySelectorAll('#sidebar-right input');
+        jsonInputsRight.forEach(input => {
+            input.addEventListener('input', updateJSONDisplay);
+        });
+
     </script>
 
     <script>
@@ -1416,13 +1508,20 @@
     <div id="spinner" class="spinner"></div>
 
     <div class="content" id="iframeContainer"></div>
-    <div class="sidebar-right" id="sidebar-model">
+    <div class="sidebar-right" id="sidebar-right">
         <div class="header">
             <h2>Problem config</h2>
         </div>
         <div class="sidebar-frame" id="toggle-btn-right">
             <button class="toggle-btn" onclick="toggleSidebarRight()">☰</button>
         </div>
+        <div class="sidebar-frame" id="model-selector">
+            <select id="model" class="styled-select" onchange="modelChange()">
+            <option value="">Select Model...</option>
+            <!-- Options generated dynamically -->
+            </select>
+        </div>
+        <div id="parameters-model"></div>
     </div>
 
 </body>

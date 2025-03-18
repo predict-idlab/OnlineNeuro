@@ -10,7 +10,8 @@ import numpy as np
 from simulators.python.pulses.pulse_definitions import PulseRamp
 
 # TODO
-CajalBackend.dt = 0.005*ms #The default is one (this could be modified when calling the simulator).
+# The default is one (this could be modified when calling the simulator).
+CajalBackend.dt = 0.005*ms
 
 
 def generate_circular_arc(radius, num_nodes, total_angle):
@@ -23,7 +24,6 @@ def generate_circular_arc(radius, num_nodes, total_angle):
     angles = np.linspace(0, total_angle, num_nodes)
     positions = [(radius * np.sin(theta), radius * (1 - np.cos(theta)), 0) for theta in angles]
     return positions
-
 
 
 def ensure_lists(func):
@@ -47,7 +47,7 @@ def create_axon(diameter: float = 5.7,
                 y: float = 0,
                 z: float = 0,
                 v_init: float = -80.0,
-                verbose: bool=False):
+                verbose: bool = False):
     """
     Note: The unit handling is done by Cajal using @unitdispatch decorator
     Review default units if needed. Defaults:
@@ -69,30 +69,28 @@ def create_axon(diameter: float = 5.7,
     last_node_y = mrg.node[-1].y3d(0)
     total_length = (last_node_y - first_node_y) / 1000
     if verbose:
-        print(f"Computed number of Nodes: {len(mrg.node)}")
-        print(f"Computed Axon Length: {total_length:.2f} mm")
+        print(f'Computed number of Nodes: {len(mrg.node)}')
+        print(f'Computed Axon Length: {total_length:.2f} mm')
     return mrg
 
 def create_monitors(mrg, ap_node_0=0, ap_node_1=1):
     # TODO AP monitors can be added here
-    #i.e.
-    ap_monitor_0 = APMonitor(mrg.node[ap_node_0], threshold=-20*mV)
-    ap_monitor_1 = APMonitor(mrg.node[ap_node_1], threshold=-20*mV)
+    ap_monitor_0 = APMonitor(mrg.node[ap_node_0], threshold=-20 * mV)
+    ap_monitor_1 = APMonitor(mrg.node[ap_node_1], threshold=-20 * mV)
     # or State monitors
-    v_rec = StateMonitor(mrg.node, "v")
+    v_rec = StateMonitor(mrg.node, 'v')
     # TODO in general it may be better to use StateMonitors to get a better idea of
     # what type of block is happening
     # More detailed ap_block function is needed here.
 
-    monitors = {"node_0": ap_monitor_0,
-                "node_1": ap_monitor_1,
-                "state": v_rec}
+    monitors = {'node_0': ap_monitor_0,
+                'node_1': ap_monitor_1,
+                'state': v_rec}
 
     return monitors
 
 
 def create_pulse(type, *args, **kwargs):
-    print(kwargs)
     if type in ['monophasic', 'single_pulse']:
         amp = kwargs.get('amp', None)
         pw = kwargs.get('pw', None)
@@ -105,11 +103,11 @@ def create_pulse(type, *args, **kwargs):
     return stim
 
 
-def create_stimulus(pos: list, stimulus_params, rhoe:float=500, monitors=None, **kwargs):
+def create_stimulus(pos: list, stimulus_params, rhoe: float=500, monitors=None, **kwargs):
     point_sources = []
     for ix in range(len(pos)):
         if 'source_type' not in kwargs:
-            #Default to Isotropic
+            # Default to Isotropic
             # TODO, allow adjusting res / rhoe
             g = pos[ix]
             point_source = IsotropicPoint(x=g[0] * mm,
@@ -131,7 +129,7 @@ def create_stimulus(pos: list, stimulus_params, rhoe:float=500, monitors=None, *
     stimuli = []
     for ix in range(num_electrodes):
         pattern = re.compile(r'_([1-9])$')
-        filtered_keys = {key.split("_")[0]: value for key, value in stimulus_params.items() if pattern.search(key)}
+        filtered_keys = {key.split('_')[0]: value for key, value in stimulus_params.items() if pattern.search(key)}
         stim = create_pulse(type=stimulus_params['fun_type'][ix], **filtered_keys)
         stimuli.append(stim)
 
@@ -139,6 +137,8 @@ def create_stimulus(pos: list, stimulus_params, rhoe:float=500, monitors=None, *
         electrodes.append(electrode)
 
     return electrodes, stimuli
+
+
 @ensure_lists
 def create_simulation(axons, stimulus, monitors):
     env = SimulationEnvironment(
@@ -164,16 +164,16 @@ def ap_block(ap_monitor_stimulus, ap_monitor_block, start_time, end_time, verbos
     ap_count_end = ap_monitor_block.n(t=start_time)
     ap_count_start_end = ap_monitor_stimulus.n(t=end_time)
     ap_count_start_start = ap_monitor_stimulus.n(t=start_time)
-    ap_count_left = ap_count_start_start - ap_count_start_end # Never less than zero
+    ap_count_left = ap_count_start_start - ap_count_start_end  # Never less than zero
     ap_times_end = ap_monitor_block.spikes()
 
     if verbose:
-        print(f"Number of APs between {start_time} and {end_time} ms at start node: {ap_count_left}")
-        print(f"All spike times at end node: {ap_times_end}")
+        print(f'Number of APs between {start_time} and {end_time} ms at start node: {ap_count_left}')
+        print(f'All spike times at end node: {ap_times_end}')
 
     if ap_count_end > 0:
         if verbose:
-            print("AP NOT blocked")
+            print('AP NOT blocked')
         return 1
     else:
         if ap_count_left == 0:
@@ -182,8 +182,9 @@ def ap_block(ap_monitor_stimulus, ap_monitor_block, start_time, end_time, verbos
             return 1
         else:
             if verbose:
-                print("AP is blocked")
+                print('AP is blocked')
             return 0
+
 
 def ap_block_2(v_monitor, threshold=20, left_node=15, right_node=-15, verbose=False) -> int:
     """
@@ -201,9 +202,9 @@ def ap_block_2(v_monitor, threshold=20, left_node=15, right_node=-15, verbose=Fa
     b = b2 and b3
 
     if a:
-        print("Right block")
+        print('Right block')
     if b:
-        print("Left block (?)")
+        print('Left block (?)')
     return int(a or b)
 
 
@@ -232,29 +233,29 @@ def cajal_fun(e_pos: list,
         'axon_length': axon_length,
         **{key: value for key, value in all_params.items() if key.startswith('axon')}
     }
-    axon_params = {"_".join(k.split("_")[1:]): v for k, v in axon_params.items()}
+    axon_params = {'_'.join(k.split('_')[1:]): v for k, v in axon_params.items()}
 
     electrode_params = {
         **{key: value for key, value in all_params.items() if key.startswith('e_')}
     }
-    electrode_params = {"_".join(k.split("_")[1:]): v for k, v in electrode_params.items()}
+    electrode_params = {'_'.join(k.split('_')[1:]): v for k, v in electrode_params.items()}
 
     stimulus_params = {
         **{key: value for key, value in all_params.items() if key.startswith('s_')}
     }
-    stimulus_params = {"_".join(k.split("_")[1:]): v for k, v in stimulus_params.items()}
+    stimulus_params = {'_'.join(k.split('_')[1:]): v for k, v in stimulus_params.items()}
     stimulus_params['fun_type'] = fun_type
 
-    print("Axon params")
+    print('Axon params')
     print(axon_params)
 
     axon_model = create_axon(**axon_params)
     monitors = create_monitors(axon_model)
 
-    print("Stimulus params")
+    print('Stimulus params')
     print(stimulus_params)
 
-    print("Electrode params")
+    print('Electrode params')
     electrode_params['pos'] = np.array(electrode_params['pos']).T
     print(electrode_params)
 
@@ -262,12 +263,11 @@ def cajal_fun(e_pos: list,
                                        rhoe=electrode_params['rhoe'],
                                        stimulus_params=stimulus_params, monitors=monitors)
 
-
     env = create_simulation(axons=axon_model,
                             stimulus=stimulus,
                             monitors=list(monitors.values()))
 
-    env.run(sim_params['dur']*ms, early_stopping=sim_params['early_stopping'])
+    env.run(sim_params['dur'] * ms, early_stopping=sim_params['early_stopping'])
 
     if post_processing == 'ap_block':
         y = ap_block(ap_monitor_stimulus=monitors['node_0'],
@@ -277,13 +277,12 @@ def cajal_fun(e_pos: list,
                      verbose=verbose
                      )
     else:
-        raise NotImplementedError(f"Post processing method {post_processing} not implemented")
-    data_package = {'observations': y,
-                   # "time": monitors['state'].t.tolist(),
-                   # "v": monitors['state'].v.tolist(),
-                   # "pulse_a": pulses[0](monitors['state'].t).tolist(),
-                   # "pulse_b": pulses[1](monitors['state'].t).tolist()
-    }
+        msg = f'Post processing method {post_processing} not implemented'
+        raise NotImplementedError(msg)
+    data_package = {'observations': y}
+    # "time": monitors['state'].t.tolist(),
+    # "v": monitors['state'].v.tolist(),
+    # "pulse_a": pulses[0](monitors['state'].t).tolist(),
+    # "pulse_b": pulses[1](monitors['state'].t).tolist()
 
     return data_package
-

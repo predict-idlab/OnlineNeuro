@@ -16,8 +16,8 @@ function feat_struct = preprocess_struct(feat_struct)
     feat_struct.pulse_dur = zeros(numel(funTypes), 1);
     % TODO Update this later Currently only using single electrodes
     feat_struct.e_type = repmat("single", numel(funTypes), 1);
-    
-    
+
+
     for i = 1:numel(funTypes)
         currentType = funTypes(i);
         if ismember(currentType, {'single_pulse','double_pulse'})

@@ -15,16 +15,16 @@ class PulseRamp(Stimulus):
     A class to produce a pulse followed by a decaying exponenital and balanced with a ramp function.
 
     """
-    name = "pulse_ramp"
+    name = 'pulse_ramp'
 
     @unitdispatch
-    def __init__(self, delay: "ms", interphase_gap: "ms",
-                 decay_width: "ms", k: float,
+    def __init__(self, delay: 'ms', interphase_gap: 'ms',
+                 decay_width: 'ms', k: float,
                  tau: float = 1,
                  amplitude=None, amp=None,
-                 pw: "ms" = None, pulse_width: "ms" = None,
-                 ramp_width: "ms" = None,
-                 ramp_amplitude: "V" = None, balanced_charge: bool = True,
+                 pw: 'ms' = None, pulse_width: 'ms' = None,
+                 ramp_width: 'ms' = None,
+                 ramp_amplitude: 'V' = None, balanced_charge: bool = True,
                  offset=0, *args, **kwargs):
         """
         @param delay:
@@ -47,16 +47,16 @@ class PulseRamp(Stimulus):
         if balanced_charge:
             if (ramp_width is None) == (ramp_amplitude is None):
                 raise ValueError(
-                    "When balanced_charge is True, exactly one of ramp_width or ramp_amplitude must be defined."
+                    'When balanced_charge is True, exactly one of ramp_width or ramp_amplitude must be defined.'
                 )
 
         if (amp is None) == (amplitude is None):
             raise ValueError(
-                "Exactly one of amp or amplitude must be defined."
+                'Exactly one of amp or amplitude must be defined.'
             )
         if (pw is None) == (pulse_width is None):
             raise ValueError(
-                "Exactly one of pw or pulse_width must be defined."
+                'Exactly one of pw or pulse_width must be defined.'
             )
 
         self.amp = amp if amp is not None else amplitude
@@ -74,7 +74,7 @@ class PulseRamp(Stimulus):
     def timecourse(self, t):
         tstop = self.pw + self.delay + self.interphase_gap + self.decay_width + self.ramp_width
         if tstop >= t[-1]:
-            logger.info("The pulse ends after the simulation end time.")
+            logger.info('The pulse ends after the simulation end time.')
 
         y = strip_units(np.zeros_like(t))
         # Pulse phase
@@ -96,7 +96,7 @@ class PulseRamp(Stimulus):
             else:
                 # Exponential decay
                 raw_exp_decay = self.amp * np.exp(-decay_time * (1 - self.k) * self.tau)
-                normalized_exp_decay = raw_exp_decay - raw_exp_decay[-1]  # Ensures it ends at offset
+                normalized_exp_decay = raw_exp_decay - raw_exp_decay[-1]  # End to zero
                 normalized_exp_decay *= self.amp / np.abs(normalized_exp_decay[0])  # Scale to the desired `amp`
                 y[decay_mask] += normalized_exp_decay
 
@@ -151,4 +151,3 @@ class PulseRamp(Stimulus):
                          ramp_width=self.ramp_width,
                          ramp_amplitude=ramp_amplitude, balanced_charge=self.balanced_charge,
                          offset=self.offset)
-

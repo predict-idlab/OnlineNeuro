@@ -16,5 +16,3 @@ for i=1:500
 end
 plot(t, y)
 hold on
-
-

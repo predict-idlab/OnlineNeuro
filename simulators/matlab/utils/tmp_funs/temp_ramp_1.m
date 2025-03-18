@@ -1,15 +1,15 @@
 % template_pulse_exp_ramp.m
 function y = tmp_ramp(t)
-    delay = 0.17911;
-    amplitude = -0.58621;
-    pulse_width = -0.56107;
-    interphase_gap = 0.98221;
-    decay_width = -0.27261;
-    k = 0.42935;
-    ramp_width = 0.37143;
+    delay = 0.22366;
+    amplitude = -2.7084;
+    pulse_width = 0.62424;
+    interphase_gap = 0.026665;
+    decay_width = 0.94047;
+    k = 0.3781;
+    ramp_width = 0.88888;
 
     % Initialize output
-    %Default duration is 5 ms with 0.01 steps 
+    %Default duration is 5 ms with 0.01 steps
     % dur/dtout = 500
     dtout = 0.01;
     dur = 5;
@@ -17,7 +17,7 @@ function y = tmp_ramp(t)
     %t = (1:dur/dtout);
 
     y = 0;
-    
+
     %% Pulse signal (rectangular)
     pulse_start = delay;
     pulse_end = pulse_start + pulse_width;
@@ -59,10 +59,10 @@ function y = tmp_ramp(t)
     end
     %% RAMP
     % Calculate the area of the initial pulse for matching the ramp
-    
+
     ramp_start = decay_end + interphase_gap;
     ramp_end = ramp_start + ramp_width;
-    
+
     if t>= ramp_start && t < ramp_end
         %pulse_area = (amplitude * pulse_width) + sum(e_decay);
         pulse_area = (amplitude * pulse_width);
@@ -74,19 +74,19 @@ function y = tmp_ramp(t)
             yvec = amplitude *exp_decay(time_constant, 1-k, decay_width/dtout);
             decay_area = sum(yvec)/(decay_width/dtout);
         end
-        
+
         total_area = pulse_area + decay_area;
         max_ramp_value = total_area*2/ramp_width;
         ramp_fraction = (t-ramp_start)/ramp_width;
-        
+
         y = max_ramp_value*ramp_fraction;
-        
+
         if amplitude > 0
             y=-y;
         end
         %y((t >= ramp_start) & (t < ramp_end)) = ramp;
         return;
-    
+
     end
 
 end

@@ -79,6 +79,14 @@ function main(json_data)
 
     num_points = length(query_points);
     fvalues = cell(1,length(query_points));
+    
+    if isfield(receivedData, 'save_path')
+        save_path = receivedData.save_path;
+    else
+        currentFolder = pwd;
+        save_path = sprintf('../../simulations/%s/full_mats', problem_name);
+        save_path = fullfile(currentFolder, save_path);
+    end
 
     %TODO adjust operators as needed.
     for i = 1:num_points
@@ -88,18 +96,13 @@ function main(json_data)
             qp = query_points{i};
         end
         switch problem_name
-            case {'axonsim','axonsim_single','axonsim_double','axonsim_regression'}
-                fvalues{i} = fun_wrapper(eval_fun, qp, eval_dict);
+            case {'axonsim','axonsim_regression'}
+                fvalues{i} = fun_wrapper(save_path, eval_fun, qp, eval_dict);
             case {'axonsim_threshold','axonsim_nerve_block'}
-                fvalues{i} = fun_wrapper(eval_fun, qp, eval_dict, 'nerve_block');
+                fvalues{i} = fun_wrapper(save_path, eval_fun, qp, eval_dict, 'nerve_block');
             otherwise
-                fvalues{i} = fun_wrapper(eval_fun, qp);
+                fvalues{i} = fun_wrapper(save_path, eval_fun, qp);
         end
-    end
-
-    %Sending first (large batch)
-    if nargin == 0
-        quit()
     end
 
     display("Sending data to Python ...")
@@ -118,31 +121,35 @@ function main(json_data)
     while ~terminateFlag
         % Receive data from Python
         receivedData = readData(tcpipClient);
-        qp = receivedData.query_points; %TODO Reshape if needed (batch_sampling may need this)
+        query_points = receivedData.query_points; %TODO Reshape if needed (batch_sampling may need this)
 
-        num_points = length(qp);
+        num_points = length(query_points);
         % Check if termination signal received from Python
 
-        terminateFlag = receivedData.terminate_flag;
-
+        if isfield(receivedData, 'terminate_flag')
+            terminateFlag = receivedData.terminate_flag;
+        else
+            terminateFlag = false;
+        end
         if terminateFlag
             fprintf('Termination signal received from Python \n Saving data ... \n Closing connection...');
         else
             fprintf("requested query points \n")
             fvalues = cell(num_points, 1);
-            switch problem_name
-                case {'axonsim','axonsim_single','axonsim_double','axonsim_regression'}
-                    for i = 1:num_points
-                        fvalues{i} = fun_wrapper(eval_fun, query_points(i), eval_dict);
-                    end
-                case {'axonsim_threshold','axonsim_nerve_block'}
-                    for i =1:num_points
-                        fvalues{i} = fun_wrapper(eval_fun, query_points(i), eval_dict, 'nerve_block');
-                    end
-                otherwise
-                    for i = 1:num_points
-                        fvalues{i} = fun_wrapper(eval_fun, query_points(i));
-                    end
+            for i = 1:num_points
+                if isstruct(query_points)
+                    qp = query_points(i);
+                else
+                    qp = query_points{i};
+                end
+                switch problem_name
+                    case {'axonsim','axonsim_regression'}
+                        fvalues{i} = fun_wrapper(save_path, eval_fun, qp, eval_dict);
+                    case {'axonsim_threshold','axonsim_nerve_block'}
+                        fvalues{i} = fun_wrapper(save_path, eval_fun, qp, eval_dict, 'nerve_block');
+                    otherwise
+                        fvalues{i} = fun_wrapper(save_path, eval_fun, qp);
+                end
             end
             sendData(fvalues, tcpipClient, SizeLimit);
         end

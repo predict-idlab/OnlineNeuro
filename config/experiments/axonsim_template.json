@@ -113,5 +113,13 @@
         "user_fixed" : false,
         "value":"stim_sin(t, 20000, 1)",
         "type": "complex"
- }
+ },
+  "frq":
+  { "optimizable": false,
+    "user_fixed": false,
+    "value": 1.0,
+    "min_value": 0.0,
+    "max_value": 100.0,
+    "type": "float"
+  }
 }

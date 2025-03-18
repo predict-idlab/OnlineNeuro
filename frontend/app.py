@@ -5,11 +5,14 @@ from flask import Flask, request, jsonify, render_template
 import threading
 import time
 import subprocess
-import atexit
 import argparse
 import traceback
 import pandas as pd
-from frontend.components.config_forms import config_problem, config_function, python_experiments, experiments_types, matlab_experiments
+from frontend.components.config_forms import (
+    config_problem, config_function, python_experiments,
+    experiments_types, matlab_experiments,
+    config_model, model_map
+)
 from flask_socketio import SocketIO
 from pathlib import Path
 import warnings
@@ -29,6 +32,7 @@ process_lock = threading.Lock()  # Lock to ensure thread safety
 cache_lock = threading.Lock()
 
 experiment_list = list(matlab_experiments.keys()) + list(python_experiments.keys())
+model_list = list(model_map.keys())
 
 
 def convert_strings_to_numbers(data):
@@ -78,6 +82,11 @@ def get_experiments():
     return jsonify(experiment_list)
 
 
+@app.route('/models', methods=['GET'])
+def get_models():
+    return jsonify(model_list)
+
+
 @app.route('/get_fun_parameters', methods=['POST'])
 def get_fun_parameters():
     data = request.json
@@ -95,17 +104,30 @@ def get_fun_parameters():
 @app.route('/get_parameters', methods=['POST'])
 def get_parameters():
     data = request.json
-    experiment = data.get('experiment')
-    if not experiment:
-        return jsonify({'error': 'No experiment provided'}), 400
+    parameters_type = data.get('type')
 
-    if experiment in matlab_experiments:
-        exp_params = config_problem(matlab_experiments[experiment])
-    elif experiment in python_experiments:
-        exp_params = config_problem(python_experiments[experiment])
+    if not parameters_type:
+        return jsonify({'error': "No parameters' type provided"}), 400
+
+    if parameters_type == 'problem_parameters':
+        experiment = data.get('experiment')
+        if not experiment:
+            return jsonify({'error': 'No experiment provided'}), 400
+
+        if experiment in matlab_experiments:
+            params = config_problem(matlab_experiments[experiment])
+        elif experiment in python_experiments:
+            params = config_problem(python_experiments[experiment])
+        else:
+            raise NotImplementedError
+
+    elif parameters_type == 'model_parameters':
+        model = data.get('model')
+        params = config_model(model)
     else:
         raise NotImplementedError
-    return jsonify(exp_params)
+
+    return jsonify(params)
 
 
 @app.route('/plot', methods=['GET'])
@@ -140,7 +162,13 @@ def collapse_lists(data, max_depth=0):
             else:
                 result[key] = value
         elif isinstance(value, list):
-            result[key] = value[0] if len(value) == 1 else value
+            # Check if any dictionary inside the list contains 'min_value' or 'max_value'
+            if any(isinstance(item, dict) and ('min_value' in item or 'max_value' in item) for item in value):
+                result[key] = value  # Preserve the list
+            elif len(value) == 1:
+                result[key] = value[0]  # Collapse single-element list
+            else:
+                result[key] = value  # Keep multi-element lists unchanged
         else:
             result[key] = value
 
@@ -154,22 +182,22 @@ def prepare_experiment():
 
     data = request.json
     # TODO Quick fix. make this more robust later
+
     if 'pulse_parameters' not in data:
         data = data['other_parameters']
     else:
         for k, v in data['other_parameters'].items():
             if k not in data.keys():
-                data[k] = v
+                if isinstance(v, dict):
+                    data[k] = [v]
+                else:
+                    data[k] = v
             else:
                 raise Exception(f"Key {k} is duplicated in data['other_parameters']")
         del data['other_parameters']
 
-    print('data received from frontend')
-    print(data)
-
     data = collapse_lists(data)
-    print('Collapsed')
-    print(data)
+
     if 'experiment' in data:
         exp_orig = data['experiment']
         if data['experiment'] in python_experiments:
@@ -186,18 +214,17 @@ def prepare_experiment():
         keys = list(data.keys())
         raise NotImplementedError(f'No experiment in {keys}')
 
+    # TODO this call will be eventually moved to the frontend and not online_neuro
     main_path = str(Path('online_neuro') / 'server_side.py')
     base_command = ['python3', main_path]
 
     if exp_orig in matlab_experiments:
         connection_payload = {
-            'initiator': 'Python',
             'target': 'MATLAB',
             'port_flask': str(FLASK_PORT)
         }
     elif exp_orig in python_experiments:
         connection_payload = {
-            'initiator': 'Python',
             'target': 'Python',
             'port_flask': str(FLASK_PORT)
         }

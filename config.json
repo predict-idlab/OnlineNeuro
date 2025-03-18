@@ -4,8 +4,7 @@
     "port": 10005,
     "Timeout": 20,
     "ConnectTimeout": 30,
-    "SizeLimit": 1048576,
-    "initiator": "Python",
+    "SizeLimit": 65536,
     "target": "MATLAB"
   },
   "problem_config": {
@@ -17,14 +16,14 @@
   },
   "model_config": {
     "type": "VGP",
-    "classification": true,
+    "classification": false,
     "scale_inputs": true,
     "constrains": false,
     "sparse": false,
     "variational": true,
     "noise_free": true,
     "trainable_likelihood": false,
-    "init_samples":25,
+    "init_samples":1,
     "batch_sampling": false,
     "num_query_points": 1
   },

@@ -310,7 +310,7 @@ def generate_grids(n, num_points, upper_bound=None, lower_bound=None):
         grid = lower_bound + grid * (upper_bound - lower_bound)
         midpoints_grid = lower_bound + midpoints_grid * (upper_bound - lower_bound)
     else:
-        msg = "Both upper_bound and lower_bound need to be defined. Scaling was ignored"
+        msg = 'Both upper_bound and lower_bound need to be defined. Scaling was ignored'
         warnings.warn(msg)
     return grid, midpoints_grid
 

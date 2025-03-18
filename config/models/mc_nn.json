@@ -1,0 +1,16 @@
+{
+  "dropout": {
+    "user_fixed": true,
+    "value": 0.5,
+    "min_value": 0,
+    "max_value": 1,
+    "type": "float"
+  },
+  "inference_steps":{
+    "user_fixed": true,
+    "value": 15,
+    "min_value": 5,
+    "max_value": 50,
+    "type": "int"
+  }
+}

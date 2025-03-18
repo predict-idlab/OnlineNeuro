@@ -249,3 +249,5 @@ def build_model(init_dataset, search_space, config, **kwargs):
         else:
             raise Exception('Classification not implemented with non variational GPs')
     return model
+
+

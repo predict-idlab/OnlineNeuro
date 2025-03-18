@@ -1,4 +1,4 @@
-function out_struct = fun_wrapper(save_path, fun, qp, feat_struct, operator, channel)
+function out_struct = fun_wrapper(fname, fun, qp, feat_struct, operator, channel)
     % TODO. handle putting multi-input vectors in the correct struct
     if nargin < 3
         error('Fun Wrapper requires at least three input arguments.');
@@ -22,7 +22,6 @@ function out_struct = fun_wrapper(save_path, fun, qp, feat_struct, operator, cha
         end
 
         fieldNames = fieldnames(qp);
-        display(qp)
         for i=1:length(fieldNames)
             fN = fieldNames{i};
             feat_struct.(fN) = qp.(fN);
@@ -33,8 +32,6 @@ function out_struct = fun_wrapper(save_path, fun, qp, feat_struct, operator, cha
         y = fun(feat_struct);
 
         out_struct = struct();
-        fname = sprintf('%s/simulation_%s.mat', save_path, datestr(now,'mm-dd-yyyy HH-MM'));
-
         out_struct.('full_observations') = fname;
         save(fname, 'y');
 
@@ -82,7 +79,6 @@ function out_struct = fun_wrapper(save_path, fun, qp, feat_struct, operator, cha
                 y_min = min(y.Yp(:,channel));
                 y_max = max(y.Yp(:,channel));
                 response = -(y_max - y_min);
-                display(response)
                 out_struct.('full_observations') = fname;
                 %out_struct.('observations') = y.Yp;
 

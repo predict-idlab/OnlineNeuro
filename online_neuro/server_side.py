@@ -2,14 +2,11 @@
 import argparse
 import atexit
 import json
-import socket
 import sys
-import threading
 import time
 import timeit
 import warnings
 from pathlib import Path
-from threading import Thread
 
 import numpy as np
 import pandas as pd
@@ -26,8 +23,9 @@ from common.plotting import update_plot
 from common.utils import load_json
 from online_learning import build_model
 from online_neuro.bayessian_optimizer import AskTellOptimizerHistory
-from online_neuro.utils import CustomBox
-from online_neuro.utils import CustomMinMaxScaler, run_matlab, run_python_script, fetch_data, array_to_list_of_dicts
+from online_neuro.connection_utils import start_connection, handshake_check, cleanup_server_socket
+from online_neuro.utils import define_scaler_search_space
+from online_neuro.utils import fetch_data, array_to_list_of_dicts
 
 GRID_POINTS = 10
 # AugmentedExpectedImprovement
@@ -46,245 +44,14 @@ GRID_POINTS = 10
 # MultipleOptimismNegativeLowerConfidenceBound
 
 
-def find_available_port(socket, ip, port):
+def plot_flask(sample: pd.DataFrame, plot_type: str, post_url: str)->None:
     """
-    @param ip: ip adress
-    @param starting_port:
+    Send data to plot to Flask server.
+    @param sample: pd.DataFrame with features and observations
+    @param plot_type: string specifying the plot type to serve
+    @param post_url: the url specifying which plot to update
     @return:
     """
-    while True:
-        try:
-            socket.bind((ip, port))
-            return socket, port
-
-        except OSError:
-            port += 1
-
-
-def start_connection(connection_config, problem_config):
-    """
-    @param connection_config:
-    @param problem_config:
-    @return:
-    """
-    # Create a TCP/IP socket
-    server_socket = socket.socket(family=socket.AF_INET,
-                                  type=socket.SOCK_STREAM)
-
-    print(f"Establishing connection at port {connection_config['ip']} with port {connection_config['port']}")
-    # Bind the socket to the address and port
-    server_socket, new_port = find_available_port(socket=server_socket,
-                                                  ip=connection_config['ip'],
-                                                  port=connection_config['port'])
-
-    if new_port != connection_config['port']:
-        msg = f"Selected port {connection_config['port']} not available, port {new_port} assigned instead."
-        warnings.warn(msg)
-        connection_config['port'] = new_port
-
-    # Listen for incoming connections
-    server_socket.listen(1)
-    print('Waiting for a connection...')
-    # Start Matlab process via engine and threading
-
-    if connection_config['target'] == 'MATLAB':
-        # TODO, improve this
-        matlab_payload = dict()
-        matlab_payload['connection_config'] = connection_config.copy()
-        matlab_payload['problem_name'] = problem_config['experiment']['name']
-        matlab_payload['problem_type'] = problem_config['experiment']['type']
-
-        omit_keys = ['experiment']
-        other_keys = [k for k in problem_config.keys() if k not in omit_keys]
-        if len(other_keys) > 0:
-            matlab_payload['problem_config'] = {k: problem_config[k] for k in other_keys}
-        else:
-            raise Exception('Problem configuration contains no features to optimize')
-
-        print('Starting Matlab with Payload:')
-        print(matlab_payload)
-        matlab_payload['script_path'] = str(Path('simulators') / 'matlab')
-
-        t = Thread(target=run_matlab, kwargs={'matlab_script_path': matlab_payload['script_path'],
-                                              'matlab_function_name': 'main',
-                                              **matlab_payload
-                                              })
-        t.start()
-
-    elif connection_config['target'] == 'Python':
-        python_payload = dict()
-        python_payload['connection_config'] = connection_config.copy()
-        python_payload['problem_name'] = problem_config['experiment']['name']
-        python_payload['problem_type'] = problem_config['experiment']['type']
-
-        omit_keys = ['experiment']
-        other_keys = [k for k in problem_config.keys() if k not in omit_keys]
-        if len(other_keys) > 0:
-            python_payload['problem_config'] = {k: problem_config[k] for k in other_keys}
-        else:
-            raise Exception('Problem configuration contains no features to optimize')
-
-        print('Starting Python with Payload:')
-        print(python_payload)
-        python_script_path = Path('simulators') / 'python'
-        process = run_python_script(script_path=python_script_path,
-                                    function_name='main.py',
-                                    **python_payload)
-
-        def lock_process(proc):
-            lock = threading.Lock()
-            with lock:
-                proc.wait()
-
-        Thread(target=lock_process, args=(process,), daemon=True).start()
-
-    else:
-        msg = f"No implementation available for simulator: {connection_config['target']}"
-        raise NotImplementedError(msg)
-
-    # Accept a connection
-    client_socket, client_address = server_socket.accept()
-    print('Connection from:', client_address)
-
-    return server_socket, client_socket
-
-
-def handshake_check(client_socket, size_lim=65536):
-    """
-    @param client_socket:
-    @param size_lim per package
-    @return:
-    """
-    # Receive data
-    try:
-        data = client_socket.recv(size_lim).decode()
-        data = json.loads(data)
-        print('Received data:', data)
-
-        # Respond back
-        response = {'message': 'Hello from Python',
-                    'randomNumber': data['dummyNumber']}
-
-        response_json = json.dumps(response) + '\n'
-        client_socket.sendall(response_json.encode())
-        print('Data sent back to matlab', response_json.encode())
-
-    except Exception as e:
-        print(f'An error occurred: {e}')
-        raise
-    return None
-
-
-def cleanup_server_socket(client_sock, server_sock):
-    print('Cleaning up server socket...')
-    try:
-        client_sock.close()
-        server_sock.close()
-        print('Server socket closed.')
-    except Exception as e:
-        print(f'Error closing server socket: {e}')
-
-
-def define_scaler_search_space(problem_config,
-                               scale_inputs: bool = True,
-                               scaler: str = 'minmax',
-                               output_range: tuple = (-1, 1)):
-    """
-    @param problem_config: Information concerning the search space as defined by the user.
-                The gui boundaries should be within the problem_config range.
-                If not the case, these are ignored.
-    @param scale_inputs: bool, I don't see a scenario where this wouldn't be the case.
-    @param scaler : string to specify the scaling type
-    @param output_range : tuple indicating min and max value in the output
-    @return: instance : SearchSpacePipeline
-    """
-    # TODO extend to handle categorical and boolean features (i.e. they have to bypass the feature normalization
-    fixed_features = {}
-    variable_features = {}
-
-    lower_bound = []
-    upper_bound = []
-
-    for key, value in problem_config.items():
-        print(key, value)
-        if isinstance(value, list):
-            for ix in range(len(value)):
-                element = value[ix]
-                if isinstance(element, dict):
-                    for k1, v1 in element.items():
-                        feat_name = f'{key}_{ix + 1}_{k1}'
-                        if 'min_value' in v1 and 'max_value' in v1:
-                            if v1['min_value'] == v1['max_value']:
-                                fixed_features[feat_name] = v1['min_value']
-                            else:
-                                variable_features[feat_name] = 0
-                                lower_bound.append(v1['min_value'])
-                                upper_bound.append(v1['max_value'])
-                        elif 'value' in v1:
-                            fixed_features[feat_name] = v1['value']
-                        else:
-                            msg = f"Feature '{key}' does not have a valid formatting, skipping"
-                            warnings.warn(msg)
-                else:
-                    # Contains a fixed list, no need to iterate through each element
-                    fixed_features[key] = value
-                    continue
-
-        elif isinstance(value, dict):
-            if 'min_value' in problem_config[key] and 'max_value' in problem_config[key]:
-                for ix in range(len(problem_config[key]['value'])):
-                    if len(problem_config[key]['value']) == 1:
-                        feat_name = key
-                    else:
-                        feat_name = f'{key}_{ix + 1}'
-
-                    if problem_config[key]['min_value'][ix] == problem_config[key]['max_value'][ix]:
-                        fixed_features[feat_name] = value
-                    else:
-                        variable_features[feat_name] = 0
-                        lower_bound.append(problem_config[key]['min_value'][ix])
-                        upper_bound.append(problem_config[key]['max_value'][ix])
-            elif 'value' in problem_config[key]:
-                fixed_features[key] = value
-            else:
-                msg = f"Feature '{key}' does not have a valid formatting, skipping"
-                warnings.warn(msg)
-
-        elif isinstance(value, (list, float, int, str)):
-            fixed_features[key] = value
-
-        else:
-            ty = type(value)
-            msg = f"Feature '{key}' does not have a valid type '{ty}', skipping"
-            warnings.warn(msg)
-
-    if scale_inputs:
-        num_features = len(lower_bound)
-
-        # TODO, implement other types of normalization
-        if scaler == 'minmax':
-            lb = num_features * [output_range[0]]
-            ub = num_features * [output_range[1]]
-
-            search_space = CustomBox(lower=lb,
-                                     upper=ub)
-
-            scaler = CustomMinMaxScaler(feature_min=lower_bound,
-                                        feature_max=upper_bound,
-                                        output_range=output_range)
-        else:
-            raise NotImplementedError(f'{scaler} has not been implemented')
-    else:
-        search_space = CustomBox(lower=lower_bound,
-                                 upper=upper_bound)
-        scaler = None
-
-    feat_dict = {'fixed_features': fixed_features,
-                 'variable_features': variable_features}
-    return search_space, scaler, feat_dict
-
-
-def plot_flask(sample, plot_type, post_url):
     json_message = dict()
     json_message['data'] = sample.to_json(orient='records')
     json_message['plot_type'] = plot_type
@@ -297,21 +64,17 @@ def plot_flask(sample, plot_type, post_url):
 
 
 def main(connection_config: dict, model_config: dict, path_config: dict,
-         problem_config: dict, *args, **kwargs) -> None:
+         problem_config: dict, **kwargs) -> None:
     """
     @param connection_config:
     @param model_config:
     @param path_config:
     @param problem_config:
-    @param args:
     @param kwargs:
     @return:
     """
 
     default_dict = load_json('config.json')
-
-    print('problem_config')
-    print(problem_config)
 
     connection_config = {**default_dict['connection_config'], **connection_config}
     model_config = {**default_dict['model_config'], **model_config}
@@ -330,14 +93,15 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
     # i.e. prevent multiobjective or regression to be solved with classification, etc...
     server_socket, client_socket = start_connection(connection_config=connection_config,
                                                     problem_config=problem_config)
-    print('Doing a handhsake')
-    handshake_check(client_socket=client_socket)
+
+    handshake_check(client_socket=client_socket, verbose=True)
 
     atexit.register(cleanup_server_socket, client_sock=client_socket, server_sock=server_socket)
     package_size = connection_config['SizeLimit']
 
-    print('Loaded problem config')
+    print("problem config")
     print(problem_config)
+
     search_space, scaler, feat_dict = define_scaler_search_space(problem_config=problem_config,
                                                                  scale_inputs=model_config['scale_inputs'])
 
@@ -379,13 +143,10 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
                 'query_points': qp_json}
 
     response_json = json.dumps(response) + '\n'
-
     client_socket.sendall(response_json.encode())
-    print('>>>>>')
 
     received_data = fetch_data(client_socket)
     print(received_data)
-    print('<<<<<<')
 
     observations = [r['observations'] for r in received_data]
 
@@ -648,7 +409,6 @@ def main(connection_config: dict, model_config: dict, path_config: dict,
         bo.tell(tagged_output)
 
     print(exit_message)
-
     cleanup_server_socket(client_sock=client_socket, server_sock=server_socket)
 
 
@@ -693,6 +453,7 @@ def process_dict(temp_dict):
 
 def process_args(args, unknown_args):
     """
+    TODO update this function
     @param args:
     @param unknown_args:
     @return:
@@ -781,10 +542,6 @@ def process_args(args, unknown_args):
                 path_config[actual_key] = v
             else:
                 other_params[k] = v
-
-    # def convert_string_numeric(data):
-    #     if isinstance(data, dict):
-    #         return {key:convert_string_numeric()}
 
     return connection_config, model_config, path_config, problem_config, other_params
 

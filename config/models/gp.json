@@ -1,0 +1,22 @@
+{
+  "sparse": {
+    "user_fixed": true,
+    "value": true,
+    "type": "boolean"
+  },
+  "variational": {
+    "user_fixed": true,
+    "value": true,
+    "type": "boolean"
+  },
+  "noise_free": {
+    "user_fixed": true,
+    "value": true,
+    "type": "boolean"
+  },
+  "trainable_likelihood": {
+    "user_fixed": true,
+    "value": true,
+    "type": "boolean"
+  }
+}

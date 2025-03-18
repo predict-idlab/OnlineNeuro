@@ -1,0 +1,9 @@
+{
+  "num_models": {
+    "user_fixed": true,
+    "value": 10,
+    "min_value": 5,
+    "max_value": 50,
+    "type": "int"
+  }
+}

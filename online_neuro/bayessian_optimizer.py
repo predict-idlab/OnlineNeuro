@@ -21,7 +21,8 @@ Modified version of Trieste's AskTell.
 - TODO
 """
 
-import logging
+from trieste import logging
+
 import pickle
 from collections import Counter
 from pathlib import Path
@@ -31,6 +32,7 @@ from typing import (
     TypeVar,
 )
 from typing import Type
+
 import numpy as np
 import tensorflow as tf
 from trieste.acquisition.rule import AcquisitionRule
@@ -39,17 +41,20 @@ from trieste.bayesian_optimizer import (
     FrozenRecord,
     ProbabilisticModelType,
     TrainableProbabilisticModelType,
-    Record
+    Record,
+    write_summary_initial_model_fit
 )
 from trieste.bayesian_optimizer import StateType
 from trieste.data import Dataset
-from trieste.models import TrainableProbabilisticModel
+from trieste.models.interfaces import TrainableProbabilisticModel
 from trieste.observer import Observer
 from trieste.space import (
     SearchSpace,
     SearchSpaceType,
 )
 from trieste.types import State, Tag, TensorType
+from trieste.utils import Timer
+from trieste.utils.misc import LocalizedTag, get_value_for_tag
 
 AskTellOptimizerType = TypeVar('AskTellOptimizerType')
 
@@ -89,8 +94,9 @@ class AskTellOptimizerHistory(AskTellOptimizer):
     def __init__(self, observer: str = 'default',
                  track_path: Optional[Path | str] = None,
                  overwrite: bool = False,
+                 fit_model: bool = True,
                  *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(fit_model=fit_model, *args, **kwargs)
         self._observer = observer
         self.history: list[FrozenRecord[StateType, TrainableProbabilisticModelType]
                            | Record[StateType, TrainableProbabilisticModelType]] = []
@@ -98,9 +104,31 @@ class AskTellOptimizerHistory(AskTellOptimizer):
         if track_path:
             self.track_path = Path(track_path)
         else:
-            self.track_path = None
+            self.track_path = Path(".")
 
         self.overwrite = overwrite
+        if fit_model:
+            self._initial_fit = True
+        else:
+            self._initial_fit = False
+
+    def initial_fit(self):
+        assert not self._initial_fit, "This model was already fitted, initial_fit shouldn't be called"
+        self._initial_fit = True
+        with Timer() as initial_model_fitting_timer:
+            for tag, model in self._models.items():
+                # Prefer local dataset if available.
+                tags = [tag, LocalizedTag.from_tag(tag).global_tag]
+                _, dataset = get_value_for_tag(self._filtered_datasets, *tags)
+                assert dataset is not None
+                self.update_model(model, dataset)
+
+        summary_writer = logging.get_tensorboard_writer()
+        if summary_writer:
+            with summary_writer.as_default(step=logging.get_step_number()):
+                write_summary_initial_model_fit(
+                    self._datasets, self._models, initial_model_fitting_timer
+                )
 
     def ask_and_save(self, save_acq_fn=False, *args, **kwargs):
         """
@@ -111,7 +139,7 @@ class AskTellOptimizerHistory(AskTellOptimizer):
             assert len(self.history) == self.steps, 'The model has taken more steps than history recorded?'
         record = self.to_record()
         self.history.append(record)
-        self.save(fname=f'step_{self.step}', save_acq_fn=save_acq_fn)
+        self.save(fname=f'step_{self.steps}', save_acq_fn=save_acq_fn)
 
         if not self.overwrite:
             self.steps += 1
