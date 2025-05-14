@@ -8,9 +8,13 @@ import tensorflow as tf
 from matplotlib import cm
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.colors import Normalize
+from matplotlib.figure import Figure , SubFigure
 from mpl_toolkits.mplot3d import axes3d
 from trieste.acquisition.multi_objective.pareto import Pareto
 from trieste.observer import OBJECTIVE
+
+from pathlib import Path
+
 
 # TODO, change grid resolution to DATAPOINTS
 GRID_RESOLUTION = 0.02
@@ -34,6 +38,30 @@ def save_fig(fig, save_dir, count):
         fig.savefig(os.path.join(f'{save_dir}', f'plot_{count:02}.png'))
     return 0
 
+
+def save_figure(fig: Figure | SubFigure, save_path: str | Path, dpi: int = 300, save_svg: bool = False) -> None:
+    """Save the figure to the specified path.
+
+    :param fig: The matplotlib figure to save.
+    :param save_path: The file path to save the figure.
+    :param dpi: Dots per inch for the figure. Defaults to 300.
+    :param save_svg: Whether to save the figure as SVG. Defaults to False.
+
+    """
+    valid_extensions = {'.png', '.jpg', '.jpeg', '.tif', '.tiff', '.pdf', '.svg'}
+    save_path = Path(save_path)
+
+    if save_svg:
+        save_path = save_path.with_suffix('.svg')
+        fmt = 'svg'
+    else:
+        if save_path.suffix.lower() in valid_extensions:
+            fmt = save_path.suffix.lower().lstrip('.')
+        else:
+            save_path = save_path.with_suffix('.png')
+            fmt = 'png'
+
+    fig.savefig(save_path, dpi=dpi, format=fmt)
 
 def plot_log_reg(model, initial_data, search_space, scaler=None,
                  test_data=None, sampled_data=None,
@@ -60,7 +88,7 @@ def plot_log_reg(model, initial_data, search_space, scaler=None,
              initial_data[1].to_numpy()[:, 0],
              'ro', mew=2, label='Initial samples')
 
-    if plot_ground_truth:
+    if plot_ground_truth and ground_truth_function is not None:
         x_min = search_space._lower.numpy()
         x_max = search_space._upper.numpy()
         x = np.linspace(x_min, x_max, num=50)
@@ -89,7 +117,9 @@ def plot_log_reg(model, initial_data, search_space, scaler=None,
     plt.ylabel('Y')
     plt.legend()
     plt.title('Online \n Logistic regression')
-    save_fig(fig, save_dir, count)
+    # TODO implement
+    #save_fig(fig, save_dir, count)
+    
     plt.close()
 
 
@@ -123,7 +153,10 @@ def plot_circle(model, initial_data, search_space, scaler, test_data=None, sampl
     if scaler:
         xx_unscaled = scaler.inverse_transform_mat(xx, 0)
         yy_unscaled = scaler.inverse_transform_mat(yy, 1)
-
+    else:
+        xx_unscaled = xx
+        yy_unscaled = yy
+        
     Z, Zvar = model.predict_y(np.c_[xx.ravel(), yy.ravel()])
     Z = gpflow.likelihoods.Bernoulli().invlink(Z).numpy().squeeze()
     Z = Z.reshape(xx.shape)
@@ -171,7 +204,8 @@ def plot_circle(model, initial_data, search_space, scaler, test_data=None, sampl
                    c='C1', marker='x', label='Neg-test')
 
     ax.legend()
-    save_fig(fig, save_dir, count)
+    # TODO implement
+    #save_fig(fig, save_dir, count)
     plt.close()
 
 
@@ -231,7 +265,8 @@ def plot_surface(model, initial_data, search_space, scaler, test_data=None, samp
         ax[0].scatter(test_data[0][:, 0], test_data[0][:, 1], preds, c='k', marker='o', label='Samples added')
 
     ax[0].legend()
-    save_fig(fig, save_dir, count)
+    # TODO implement
+    # save_fig(fig, save_dir, count)
     plt.close()
 
 
@@ -362,8 +397,8 @@ def plot_pareto_2d(model, search_space, scaler, initial_data, test_data=None, sa
     ax[3].set_title('Hypervolume')
     fig.suptitle(f'Multiobjective optimization Step #{count}')
     fig.tight_layout()
-
-    save_fig(fig, save_dir, count)
+    # TODO implement
+    # save_fig(fig, save_dir, count)
     plt.close()
 
 
@@ -473,8 +508,8 @@ def plot_nerve_block(model, initial_data, search_space=None, scaler=None, sample
         #               marker='x', c='r', label='Sampled datapoints')
     # ax[0].legend()
     fig.tight_layout()
-
-    save_fig(fig, save_dir, count)
+    # TODO implement
+    #save_fig(fig, save_dir, count)
     plt.close()
 
 
