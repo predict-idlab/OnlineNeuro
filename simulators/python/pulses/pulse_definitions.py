@@ -1,8 +1,10 @@
 from typing import TypedDict
-from cajal.nrn.stimuli import Stimulus
-from cajal.units.utils import unitdispatch, strip_units
+from cajal.nrn.stimuli import Stimulus, SineWave, CosineWave, IncreasingTriangular
+from cajal.units.utils import apply_units, unitdispatch, strip_units
+from cajal.units import ms, V, mA
 from cajal.common.logging import logger
 import numpy as np
+
 
 # TODO
 # Make Conifg Dict Types ?
@@ -21,7 +23,7 @@ class PulseRamp(Stimulus):
     def __init__(self, delay: 'ms', interphase_gap: 'ms',
                  decay_width: 'ms', k: float,
                  tau: float = 1,
-                 amplitude=None, amp=None,
+                 amplitude: 'mA' = None, amp: 'mA' = None,
                  pw: 'ms' = None, pulse_width: 'ms' = None,
                  ramp_width: 'ms' = None,
                  ramp_amplitude: 'V' = None, balanced_charge: bool = True,
@@ -61,6 +63,7 @@ class PulseRamp(Stimulus):
 
         self.amp = amp if amp is not None else amplitude
         self.pw = pw if pw is not None else pulse_width
+
         self.interphase_gap = interphase_gap
         self.decay_width = decay_width
         self.k = k
@@ -144,6 +147,8 @@ class PulseRamp(Stimulus):
 
         if self.ramp_amplitude is not None:
             ramp_amplitude = scale * self.ramp_amplitude
+        else:
+            raise ValueError(f"Amplitude of PulseRamp component is not defined. This shouldn't occur")
 
         return PulseRamp(amplitude=self.amp * scale, pw=self.pw,
                          delay=self.delay, interphase_gap=self.interphase_gap,
@@ -151,3 +156,73 @@ class PulseRamp(Stimulus):
                          ramp_width=self.ramp_width,
                          ramp_amplitude=ramp_amplitude, balanced_charge=self.balanced_charge,
                          offset=self.offset)
+
+
+class IncreasingSine(Stimulus):
+    def __init__(self, amp, freq, duration, delay):
+        """
+        Initialize an IncreasingSinusoid stimulus by combining a sinusoidal waveform
+        with an increasing triangular waveform.
+
+        Parameters
+        ----------
+        amplitude : float
+            Amplitude of the sinusoidal waveform.
+        frequency : float
+            Frequency of the sinusoidal waveform in Hz.
+        duration : float
+            Total duration of the stimulus in milliseconds.
+        ramp_duration : float
+            Duration over which the triangular waveform increases.
+        """
+        super(IncreasingSine, self).__init__()
+
+        self.amp = amp
+        self.freq = freq
+        self.duration = duration
+        self.delay = delay
+
+        self.sinusoid = SineWave(amp=self.amp, freq=self.freq, delay = self.delay)
+        self.triangle = IncreasingTriangular(amp=1, pw=self.duration, delay=self.delay)
+        self.stimulus = self.sinusoid * self.triangle
+
+
+    def timecourse(self, t):
+        y0 = self.sinusoid.timecourse(t)
+        y1 = self.triangle.timecourse(t)
+
+        return y0 * y1
+
+class IncreasingCosine(Stimulus):
+    def __init__(self, amp, freq, duration, delay):
+        """
+        Initialize an IncreasingCosine stimulus by combining a sinusoidal (cosine) waveform
+        with an increasing triangular waveform.
+
+        Parameters
+        ----------
+        amplitude : float
+            Amplitude of the sinusoidal waveform.
+        frequency : float
+            Frequency of the sinusoidal waveform in Hz.
+        duration : float
+            Total duration of the stimulus in milliseconds.
+        ramp_duration : float
+            Duration over which the triangular waveform increases.
+        """
+        super(IncreasingCosine, self).__init__()
+
+        self.amp = amp
+        self.freq = freq
+        self.duration = duration
+        self.delay = delay
+
+        self.sinusoid = CosineWave(amp=self.amp, freq=self.freq, delay = self.delay)
+        self.triangle = IncreasingTriangular(amp=1, pw=self.duration, delay=self.delay)
+        self.stimulus = self.sinusoid * self.triangle
+
+    def timecourse(self, t):
+        y0 = self.sinusoid.timecourse(t)
+        y1 = self.triangle.timecourse(t)
+
+        return y0 * y1

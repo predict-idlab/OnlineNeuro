@@ -19,7 +19,7 @@ from pathlib import Path
 # TODO, change grid resolution to DATAPOINTS
 GRID_RESOLUTION = 0.02
 
-plt.style.use('ggplot')
+#plt.style.use('ggplot')
 axes3d.__dir__
 
 
@@ -119,7 +119,7 @@ def plot_log_reg(model, initial_data, search_space, scaler=None,
     plt.title('Online \n Logistic regression')
     # TODO implement
     #save_fig(fig, save_dir, count)
-    
+
     plt.close()
 
 
@@ -156,7 +156,7 @@ def plot_circle(model, initial_data, search_space, scaler, test_data=None, sampl
     else:
         xx_unscaled = xx
         yy_unscaled = yy
-        
+
     Z, Zvar = model.predict_y(np.c_[xx.ravel(), yy.ravel()])
     Z = gpflow.likelihoods.Bernoulli().invlink(Z).numpy().squeeze()
     Z = Z.reshape(xx.shape)

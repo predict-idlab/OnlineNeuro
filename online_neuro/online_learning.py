@@ -1,7 +1,7 @@
 from trieste.models.gpflow.builders import build_vgp_classifier, build_gpr, build_svgp, build_sgpr
-from trieste.models.gpflow import (SparseVariational, VariationalGaussianProcess,
-                                   SparseGaussianProcessRegression, GaussianProcessRegression)
-from trieste.models.gpflow import KMeansInducingPointSelector
+from trieste.models.gpflow.models import (SparseVariational, VariationalGaussianProcess,
+                                          SparseGaussianProcessRegression, GaussianProcessRegression)
+from trieste.models.gpflow.inducing_point_selectors import KMeansInducingPointSelector
 from trieste.models.optimizer import BatchOptimizer
 
 import tensorflow as tf
@@ -104,7 +104,7 @@ def _get_kernel(
     add_prior_to_variance: bool,
 ) -> gpflow.kernels.Kernel:
     lengthscales = _get_lengthscales(search_space)
-
+    
     kernel = gpflow.kernels.Matern52(variance=variance, lengthscales=lengthscales)
 
     if add_prior_to_lengthscale:
@@ -190,7 +190,7 @@ def build_model(init_dataset, search_space, config, **kwargs):
                                       # noise_free=config['experiment']['noise_free'],
                                       trainable_likelihood=config['trainable_likelihood'],
                                       )
-            model = VariationalGaussianProcess(gpflow_model)
+            model = SparseVariational(gpflow_model)
         elif config['variational'] and ~config['sparse']:
             gpflow_model = build_vgp_classifier(init_dataset, search_space,
                                                 noise_free=config['noise_free']
@@ -213,7 +213,6 @@ def build_model(init_dataset, search_space, config, **kwargs):
                 gpflow_model,
                 num_rff_features=1000,
                 inducing_point_selector=inducing_point_selector,
-                likelihood_variance=config['kernel_variance'],
                 optimizer=BatchOptimizer(tf.optimizers.Adam(0.1), max_iter=100,
                                          batch_size=50, compile=True),
             )
@@ -249,5 +248,3 @@ def build_model(init_dataset, search_space, config, **kwargs):
         else:
             raise Exception('Classification not implemented with non variational GPs')
     return model
-
-

@@ -1,15 +1,16 @@
 # /online_neuro/utils.py
-import numpy as np
-import matlab.engine
 import json
-from typing import List, Optional, Union
-import subprocess
 import queue
-from trieste.space import Box
-from pathlib import Path
-import time
 import select
+import subprocess
+import time
 import warnings
+from pathlib import Path
+from typing import List, Optional, Union
+
+import numpy as np
+from trieste.space import Box
+from .matlab_utils import run_matlab
 
 
 class CustomBox(Box):
@@ -39,7 +40,7 @@ class CustomBox(Box):
 
 class SearchSpacePipeline:
     def __init__(self, search_space,
-                 mapping: dict, feature_names: Union[List, np.ndarray],
+                 mapping: dict, feature_names: list | np.ndarray,
                  scaler=None):
         """
         @param search_space:
@@ -49,7 +50,7 @@ class SearchSpacePipeline:
         """
         self.search_space = search_space
         self.mapping = mapping
-        self.feature_names = feature_names
+        self._feature_names = feature_names
         self.scaler = scaler
 
     def sample(self, num_samples, sample_method='sobol'):
@@ -72,8 +73,8 @@ class SearchSpacePipeline:
 
         as_list = []
         for sample_idx in range(x.shape[0]):
-            sample_dict = {k: None for k in self.feature_names}
-            for k in self.feature_names:
+            sample_dict = {k: None for k in self.feature_names()}
+            for k in self.feature_names():
                 sample_dict[k] = x[sample_idx, self.mapping[k]]
 
             as_list.append(sample_dict)
@@ -84,11 +85,11 @@ class SearchSpacePipeline:
             return as_list
 
     def feature_names(self):
-        return self.feature_names
+        return self._feature_names
 
     def feature_names_ixs(self):
         feature_names_ixs = []
-        for fn in self.feature_names:
+        for fn in self.feature_names():
             feat_ixs_list = [f'{fn}_{ix}' for ix in range(len(self.mapping[fn]))]
             feature_names_ixs.extend(feat_ixs_list)
 
@@ -198,45 +199,6 @@ class CustomMinMaxScaler:
         return x
 
 
-def run_matlab(matlab_script_path, matlab_function_name='main', **kwargs):
-    """
-    Launch a matlab process
-    @param matlab_script_path:
-    @param matlab_function_name:
-    @return:
-
-    """
-    current_directory = Path(__file__).resolve().parent
-    parent_directory = current_directory.parent
-
-    if Path(matlab_script_path).is_absolute():
-        matlab_script_full_path = Path(matlab_script_path)
-    else:
-        # If it's a relative path, join with current_directory
-        # Here we assume that problems will be stored at ./simulators/matlab/problems
-        matlab_script_full_path = parent_directory / matlab_script_path
-
-    if not matlab_script_full_path.exists():
-        raise FileNotFoundError(f'The MATLAB folder does not exist: {matlab_script_full_path}')
-
-    matlab_script_full_path = str(matlab_script_full_path)
-    # Start MATLAB engine
-    print('Calling Matlab from Python engine')
-
-    eng = matlab.engine.start_matlab()
-    eng.cd(matlab_script_full_path)
-    eng.addpath(str(parent_directory), nargout=0)
-    # Call MATLAB function main
-    matlab_args = json.dumps(kwargs)
-
-    try:
-        eng.feval(matlab_function_name, matlab_args, nargout=0)
-        eng.quit()
-
-    except Exception as e:
-        print(f'Error starting MATLAB: {e}')
-
-
 def run_python_script(script_path, function_name='main.py', **kwargs):
     """
     @param script_path:
@@ -325,39 +287,39 @@ def generate_grids(n, num_points, upper_bound=None, lower_bound=None):
 #         return {'Message': f'Something went wrong {msg}'}
 
 
-def receive_data(socket, buffer_size=65536, timeout=300):
-    """
-    Receives JSON data over a socket connection.
-    @param socket: The socket to receive data from.
-    @param buffer_size: The size of the buffer for each read operation.
-    @param timeout: Timeout in seconds for receiving data.
-    @return: Decoded Python object or raises an error.
-    """
-    buffer = b''
-    end_time = time.time() + timeout
+# def receive_data(socket, buffer_size=65536, timeout=300):
+#     """
+#     Receives JSON data over a socket connection.
+#     @param socket: The socket to receive data from.
+#     @param buffer_size: The size of the buffer for each read operation.
+#     @param timeout: Timeout in seconds for receiving data.
+#     @return: Decoded Python object or raises an error.
+#     """
+#     buffer = b''
+#     end_time = time.time() + timeout
 
-    while time.time() < end_time:
-        ready_to_read, _, _ = select.select([socket], [], [], 1)
-        if ready_to_read:
-            part = socket.recv(buffer_size)
-            if part:
-                buffer += part
-                print(len(buffer))
-                print(buffer)
-            # Check for complete JSON message(s) in the buffer
-            if b'\\n' in buffer:
-                messages = buffer.split(b'\\n')
-                for message in messages[:-1]:  # Process complete messages
-                    if message.strip():  # Ignore empty messages
-                        try:
-                            return json.loads(message.decode('utf-8').strip())
-                        except json.JSONDecodeError as e:
-                            print(f'Error decoding JSON: {e}, Message: {message}')
+#     while time.time() < end_time:
+#         ready_to_read, _, _ = select.select([socket], [], [], 1)
+#         if ready_to_read:
+#             part = socket.recv(buffer_size)
+#             if part:
+#                 buffer += part
+#                 print(len(buffer))
+#                 print(buffer)
+#             # Check for complete JSON message(s) in the buffer
+#             if b'\\n' in buffer:
+#                 messages = buffer.split(b'\\n')
+#                 for message in messages[:-1]:  # Process complete messages
+#                     if message.strip():  # Ignore empty messages
+#                         try:
+#                             return json.loads(message.decode('utf-8').strip())
+#                         except json.JSONDecodeError as e:
+#                             print(f'Error decoding JSON: {e}, Message: {message}')
 
-                # Retain incomplete part in the buffer
-                buffer = messages[-1]
+#                 # Retain incomplete part in the buffer
+#                 buffer = messages[-1]
 
-    raise TimeoutError('Timeout: No complete JSON message received.')
+#     raise TimeoutError('Timeout: No complete JSON message received.')
 
 
 def receive_data(socket, size_lim=65536):
@@ -496,7 +458,7 @@ def define_scaler_search_space(problem_config,
             search_space = CustomBox(lower=lb,
                                      upper=ub)
 
-            scaler = CustomMinMaxScaler(feature_min=lower_bound,
+            scaler_obj = CustomMinMaxScaler(feature_min=lower_bound,
                                         feature_max=upper_bound,
                                         output_range=output_range)
         else:
@@ -504,8 +466,9 @@ def define_scaler_search_space(problem_config,
     else:
         search_space = CustomBox(lower=lower_bound,
                                  upper=upper_bound)
-        scaler = None
+        scaler_obj = None
 
     feat_dict = {'fixed_features': fixed_features,
                  'variable_features': variable_features}
-    return search_space, scaler, feat_dict
+    return search_space, scaler_obj, feat_dict
+

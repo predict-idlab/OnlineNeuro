@@ -3,18 +3,29 @@ import json
 import socket
 from pathlib import Path
 import argparse
-from problems import circle, rosenbrock, log_single_var, toy_feasbility, vlmop2, cajal_fun
+from problems import circle, rosenbrock, log_single_var, toy_feasbility, vlmop2
+import warnings
+import sys
+
 from collections import defaultdict
 import select
 import time
 import atexit
+try:
+    from problems import cajal_problems
+    cajal_problems.load_cajal()
+
+except ImportError as e:
+    warnings.warn("Cajal is not installed, Cajal problems are not loaded.")
 
 problem_dict = {
     'circle_classification': circle,
     'rose_regression': rosenbrock,
-    'moo_problem': vlmop2,
-    'cajal_ap_block': cajal_fun
+    'moo_problem': vlmop2
 }
+
+if cajal_problems in sys.modules:
+    problem_dict['cajal_ap_block'] = cajal_fun
 
 VECTORIZED_FUNS = [circle, rosenbrock, vlmop2]
 

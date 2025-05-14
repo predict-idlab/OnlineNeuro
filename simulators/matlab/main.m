@@ -5,9 +5,9 @@ function main(json_data)
     root_path = fullfile(pwd, '../../');
     addpath(genpath(pwd))
 
-    display(json_data)
+    %display(json_data)
     data = jsondecode(json_data);
-    display(data.('problem_config'))
+    %display(data.('problem_config'))
     problem_name = data.('problem_name');
     problem_type = data.('problem_type');
     connection_config = data.('connection_config');
@@ -41,7 +41,6 @@ function main(json_data)
     %end
     pause(1);
     receivedData = readData(tcpipClient);
-    display(receivedData)
     % End handshake, connection works.
 
     display("Selected problem")
@@ -79,7 +78,7 @@ function main(json_data)
 
     num_points = length(query_points);
     fvalues = cell(1,length(query_points));
-    
+
     if isfield(receivedData, 'save_path')
         save_path = receivedData.save_path;
     else
@@ -90,6 +89,8 @@ function main(json_data)
 
     %TODO adjust operators as needed.
     for i = 1:num_points
+        fname = sprintf('%s/simulation_%d_%s.mat', save_path, i, datestr(now,'mm-dd-yyyy HH-MM-SS'));
+
         if isstruct(query_points)
             qp = query_points(i);
         else
@@ -97,15 +98,15 @@ function main(json_data)
         end
         switch problem_name
             case {'axonsim','axonsim_regression'}
-                fvalues{i} = fun_wrapper(save_path, eval_fun, qp, eval_dict);
+                fvalues{i} = fun_wrapper(fname, eval_fun, qp, eval_dict);
             case {'axonsim_threshold','axonsim_nerve_block'}
-                fvalues{i} = fun_wrapper(save_path, eval_fun, qp, eval_dict, 'nerve_block');
+                fvalues{i} = fun_wrapper(fname, eval_fun, qp, eval_dict, 'nerve_block');
             otherwise
-                fvalues{i} = fun_wrapper(save_path, eval_fun, qp);
+                fvalues{i} = fun_wrapper(fname, eval_fun, qp);
         end
     end
-
-    display("Sending data to Python ...")
+    first_loop = i;
+    %display("Sending data to Python ...")
     sendData(fvalues, tcpipClient, SizeLimit);
 
     % Read values sent from Python
@@ -137,6 +138,8 @@ function main(json_data)
             fprintf("requested query points \n")
             fvalues = cell(num_points, 1);
             for i = 1:num_points
+                fname = sprintf('%s/simulation_%d_%s.mat', save_path, i+first_loop, datestr(now,'mm-dd-yyyy HH-MM-SS'));
+
                 if isstruct(query_points)
                     qp = query_points(i);
                 else
@@ -144,11 +147,11 @@ function main(json_data)
                 end
                 switch problem_name
                     case {'axonsim','axonsim_regression'}
-                        fvalues{i} = fun_wrapper(save_path, eval_fun, qp, eval_dict);
+                        fvalues{i} = fun_wrapper(fname, eval_fun, qp, eval_dict);
                     case {'axonsim_threshold','axonsim_nerve_block'}
-                        fvalues{i} = fun_wrapper(save_path, eval_fun, qp, eval_dict, 'nerve_block');
+                        fvalues{i} = fun_wrapper(fname, eval_fun, qp, eval_dict, 'nerve_block');
                     otherwise
-                        fvalues{i} = fun_wrapper(save_path, eval_fun, qp);
+                        fvalues{i} = fun_wrapper(fname, eval_fun, qp);
                 end
             end
             sendData(fvalues, tcpipClient, SizeLimit);

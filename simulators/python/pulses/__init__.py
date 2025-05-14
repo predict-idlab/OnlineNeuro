@@ -1,1 +1,1 @@
-from .pulse_definitions import PulseRamp
+from .pulse_definitions import PulseRamp, IncreasingSine, IncreasingCosine

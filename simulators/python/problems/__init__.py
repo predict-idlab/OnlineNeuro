@@ -1,4 +1,5 @@
 # simulators/python/problems/__init__.py
+import warnings
 from simulators.python.problems.toy_problems import (
     circle,
     multiple_circles,
@@ -10,6 +11,7 @@ from simulators.python.problems.toy_problems import (
     rosenbrock
 
 )
-from simulators.python.problems.cajal_problems import (
-    cajal_fun
-)
+try:
+    from simulators.python.problems import cajal_problems
+except ImportError as e:
+    warnings.warn('Cajal is not installed, Cajal problems are not loaded.')
