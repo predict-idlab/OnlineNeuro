@@ -40,7 +40,7 @@ function main(json_data)
     disp('Waiting for data...');
     %end
     pause(1);
-    receivedData = readData(tcpipClient);
+    receivedData = readClientData(tcpipClient);
     % End handshake, connection works.
 
     display("Selected problem")
@@ -63,7 +63,7 @@ function main(json_data)
             [eval_fun, eval_dict] = rosenbrock_problem('plot',true);
     end
 
-    receivedData = readData(tcpipClient);
+    receivedData = readClientData(tcpipClient);
     fieldnames_fixed = fieldnames(receivedData.("Fixed_features"));
     fieldnames_trainable = fieldnames(eval_dict);
 
@@ -73,7 +73,7 @@ function main(json_data)
         eval_dict.(missingFields{i}) = receivedData.("Fixed_features").(missingFields{i});
     end
 
-    receivedData = readData(tcpipClient);
+    receivedData = readClientData(tcpipClient);
     query_points = receivedData.query_points;
 
     num_points = length(query_points);
@@ -83,7 +83,7 @@ function main(json_data)
         save_path = receivedData.save_path;
     else
         currentFolder = pwd;
-        save_path = sprintf('../../simulations/%s/full_mats', problem_name);
+        save_path = sprintf('../../results/simulations/%s/full_mats', problem_name);
         save_path = fullfile(currentFolder, save_path);
     end
 
@@ -121,7 +121,7 @@ function main(json_data)
 
     while ~terminateFlag
         % Receive data from Python
-        receivedData = readData(tcpipClient);
+        receivedData = readClientData(tcpipClient);
         query_points = receivedData.query_points; %TODO Reshape if needed (batch_sampling may need this)
 
         num_points = length(query_points);

@@ -221,7 +221,7 @@ function result = axonsim_call(varin)
 
 
 %    currentFolder = pwd;
-%    relativeFolder = fullfile(currentFolder, '../../simulations/axonsim_nerve_block/full_mats');
+%    relativeFolder = fullfile(currentFolder, '../../results/simulations/axonsim_nerve_block/full_mats');
 %
 %    fname = sprintf('%s/simulation_%s.mat', relativeFolder, datestr(now,'mm-dd-yyyy HH-MM'));
 %    %display(fname)
