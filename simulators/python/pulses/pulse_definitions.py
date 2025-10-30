@@ -1,6 +1,5 @@
-from typing import TypedDict
 from cajal.nrn.stimuli import Stimulus, SineWave, CosineWave, IncreasingTriangular
-from cajal.units.utils import apply_units, unitdispatch, strip_units
+from cajal.units.utils import unitdispatch, strip_units
 from cajal.units import ms, V, mA
 from cajal.common.logging import logger
 import numpy as np
@@ -17,17 +16,28 @@ class PulseRamp(Stimulus):
     A class to produce a pulse followed by a decaying exponenital and balanced with a ramp function.
 
     """
-    name = 'pulse_ramp'
+
+    name = "pulse_ramp"
 
     @unitdispatch
-    def __init__(self, delay: 'ms', interphase_gap: 'ms',
-                 decay_width: 'ms', k: float,
-                 tau: float = 1,
-                 amplitude: 'mA' = None, amp: 'mA' = None,
-                 pw: 'ms' = None, pulse_width: 'ms' = None,
-                 ramp_width: 'ms' = None,
-                 ramp_amplitude: 'V' = None, balanced_charge: bool = True,
-                 offset=0, *args, **kwargs):
+    def __init__(
+        self,
+        delay: "ms",
+        interphase_gap: "ms",
+        decay_width: "ms",
+        k: float,
+        tau: float = 1,
+        amplitude: "mA" = None,
+        amp: "mA" = None,
+        pw: "ms" = None,
+        pulse_width: "ms" = None,
+        ramp_width: "ms" = None,
+        ramp_amplitude: "V" = None,
+        balanced_charge: bool = True,
+        offset=0,
+        *args,
+        **kwargs
+    ):
         """
         @param delay:
         @param interphase_gap:
@@ -49,17 +59,13 @@ class PulseRamp(Stimulus):
         if balanced_charge:
             if (ramp_width is None) == (ramp_amplitude is None):
                 raise ValueError(
-                    'When balanced_charge is True, exactly one of ramp_width or ramp_amplitude must be defined.'
+                    "When balanced_charge is True, exactly one of ramp_width or ramp_amplitude must be defined."
                 )
 
         if (amp is None) == (amplitude is None):
-            raise ValueError(
-                'Exactly one of amp or amplitude must be defined.'
-            )
+            raise ValueError("Exactly one of amp or amplitude must be defined.")
         if (pw is None) == (pulse_width is None):
-            raise ValueError(
-                'Exactly one of pw or pulse_width must be defined.'
-            )
+            raise ValueError("Exactly one of pw or pulse_width must be defined.")
 
         self.amp = amp if amp is not None else amplitude
         self.pw = pw if pw is not None else pulse_width
@@ -75,9 +81,15 @@ class PulseRamp(Stimulus):
         self.offset = offset
 
     def timecourse(self, t):
-        tstop = self.pw + self.delay + self.interphase_gap + self.decay_width + self.ramp_width
+        tstop = (
+            self.pw
+            + self.delay
+            + self.interphase_gap
+            + self.decay_width
+            + self.ramp_width
+        )
         if tstop >= t[-1]:
-            logger.info('The pulse ends after the simulation end time.')
+            logger.info("The pulse ends after the simulation end time.")
 
         y = strip_units(np.zeros_like(t))
         # Pulse phase
@@ -100,7 +112,9 @@ class PulseRamp(Stimulus):
                 # Exponential decay
                 raw_exp_decay = self.amp * np.exp(-decay_time * (1 - self.k) * self.tau)
                 normalized_exp_decay = raw_exp_decay - raw_exp_decay[-1]  # End to zero
-                normalized_exp_decay *= self.amp / np.abs(normalized_exp_decay[0])  # Scale to the desired `amp`
+                normalized_exp_decay *= self.amp / np.abs(
+                    normalized_exp_decay[0]
+                )  # Scale to the desired `amp`
                 y[decay_mask] += normalized_exp_decay
 
         # Interphase gap
@@ -126,12 +140,19 @@ class PulseRamp(Stimulus):
                 max_ramp_value = 2 * total_area / self.ramp_width
 
                 ramp_fraction = (t[ramp_mask] - ramp_start) / self.ramp_width
-                y[ramp_mask] += -max_ramp_value * ramp_fraction if self.amp > 0 else max_ramp_value * ramp_fraction
+                y[ramp_mask] += (
+                    -max_ramp_value * ramp_fraction
+                    if self.amp > 0
+                    else max_ramp_value * ramp_fraction
+                )
 
             else:
                 ramp_fraction = (t[ramp_mask] - ramp_start) / self.ramp_width
-                y[
-                    ramp_mask] += -self.ramp_amplitude * ramp_fraction if self.amp > 0 else self.ramp_amplitude * ramp_fraction
+                y[ramp_mask] += (
+                    -self.ramp_amplitude * ramp_fraction
+                    if self.amp > 0
+                    else self.ramp_amplitude * ramp_fraction
+                )
 
         y += self.offset
 
@@ -148,14 +169,23 @@ class PulseRamp(Stimulus):
         if self.ramp_amplitude is not None:
             ramp_amplitude = scale * self.ramp_amplitude
         else:
-            raise ValueError(f"Amplitude of PulseRamp component is not defined. This shouldn't occur")
+            raise ValueError(
+                "Amplitude of PulseRamp component is not defined. This shouldn't occur"
+            )
 
-        return PulseRamp(amplitude=self.amp * scale, pw=self.pw,
-                         delay=self.delay, interphase_gap=self.interphase_gap,
-                         decay_width=self.decay_width, k=self.k, tau=self.tau,
-                         ramp_width=self.ramp_width,
-                         ramp_amplitude=ramp_amplitude, balanced_charge=self.balanced_charge,
-                         offset=self.offset)
+        return PulseRamp(
+            amplitude=self.amp * scale,
+            pw=self.pw,
+            delay=self.delay,
+            interphase_gap=self.interphase_gap,
+            decay_width=self.decay_width,
+            k=self.k,
+            tau=self.tau,
+            ramp_width=self.ramp_width,
+            ramp_amplitude=ramp_amplitude,
+            balanced_charge=self.balanced_charge,
+            offset=self.offset,
+        )
 
 
 class IncreasingSine(Stimulus):
@@ -182,16 +212,16 @@ class IncreasingSine(Stimulus):
         self.duration = duration
         self.delay = delay
 
-        self.sinusoid = SineWave(amp=self.amp, freq=self.freq, delay = self.delay)
+        self.sinusoid = SineWave(amp=self.amp, freq=self.freq, delay=self.delay)
         self.triangle = IncreasingTriangular(amp=1, pw=self.duration, delay=self.delay)
         self.stimulus = self.sinusoid * self.triangle
-
 
     def timecourse(self, t):
         y0 = self.sinusoid.timecourse(t)
         y1 = self.triangle.timecourse(t)
 
         return y0 * y1
+
 
 class IncreasingCosine(Stimulus):
     def __init__(self, amp, freq, duration, delay):
@@ -217,7 +247,7 @@ class IncreasingCosine(Stimulus):
         self.duration = duration
         self.delay = delay
 
-        self.sinusoid = CosineWave(amp=self.amp, freq=self.freq, delay = self.delay)
+        self.sinusoid = CosineWave(amp=self.amp, freq=self.freq, delay=self.delay)
         self.triangle = IncreasingTriangular(amp=1, pw=self.duration, delay=self.delay)
         self.stimulus = self.sinusoid * self.triangle
 

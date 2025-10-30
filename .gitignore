@@ -1,3 +1,8 @@
+# Environment configuration
+*.env
+*.pre-commit-config.yaml
+
+
 # Python specific ignores
 __pycache__/
 *.py[cod]
@@ -26,6 +31,9 @@ figures/*.png
 figures/*.pdf
 figures/*.svg
 figures/*.eps
+
+# Model realted files (By convention config files are saved as json)
+*.pickle
 
 # MATLAB specific ignores
 *.mex*
@@ -79,6 +87,7 @@ Thumbs.db
 # Logs and databases
 *.sqlite
 *.brt
+*.btr
 
 # Compiled source files
 *.out

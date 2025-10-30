@@ -1,40 +1,31 @@
+# /online_neuro/custom_models.py
+import re
+import warnings
+from typing import Any, Dict, Mapping, Optional
+
+import dill
+import keras
+import tensorflow as tf
+import tensorflow_probability.python.distributions as tfd
+from check_shapes import inherit_check_shapes
+from keras.losses import MeanSquaredError
+from tensorflow.python.keras.callbacks import Callback
+from trieste import logging
+from trieste.data import Dataset
+from trieste.models.interfaces import TrajectorySampler
+from trieste.models.keras.architectures import MultivariateNormalTriL
+from trieste.models.keras.models import DeepEnsemble
+from trieste.models.keras.utils import sample_with_replacement
+from trieste.models.optimizer import KerasOptimizer
+from trieste.models.utils import write_summary_data_based_metrics
+from trieste.types import TensorType
+from trieste.utils.misc import flatten_leading_dims
+
+from .custom_architectures import KerasDropout
+
 # Copyright 2025 The IDLAB-imec Contributors
 # Notice that partial code is based on The Trieste repository
 # https://github.com/secondmind-labs/trieste
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-import tensorflow as tf
-from tensorflow.python.keras.callbacks import Callback
-import keras
-from keras.losses import MeanSquaredError
-from trieste.models.optimizer import KerasOptimizer
-from trieste.types import TensorType
-from trieste.data import Dataset
-from typing import Optional, Mapping, Any, Dict
-from trieste import logging
-import re
-import dill
-from trieste.models.keras.architectures import MultivariateNormalTriL
-import warnings
-from trieste.models.keras.utils import sample_with_replacement
-import tensorflow_probability.python.distributions as tfd
-from check_shapes import inherit_check_shapes
-from trieste.utils import flatten_leading_dims
-from trieste.models.interfaces import TrajectorySampler
-from trieste.models.utils import write_summary_data_based_metrics
-from .custom_architectures import KerasDropout
-from trieste.models.keras.models import DeepEnsemble
-
 
 
 class DeepDropout(DeepEnsemble):
@@ -45,14 +36,15 @@ class DeepDropout(DeepEnsemble):
     Currently, we do not support setting up the model with dictionary config.
     """
 
-    def __init__(self,
-                 model: KerasDropout,
-                 optimizer: Optional[KerasOptimizer] = None,
-                 bootstrap: bool = False,
-                 diversify: bool = False,
-                 continuous_optimisation: bool = True,
-                 compile_args: Optional[Mapping[str, Any]] = None
-                 ) -> None:
+    def __init__(
+        self,
+        model: KerasDropout,
+        optimizer: Optional[KerasOptimizer] = None,
+        bootstrap: bool = False,
+        diversify: bool = False,
+        continuous_optimisation: bool = True,
+        compile_args: Optional[Mapping[str, Any]] = None,
+    ) -> None:
         """
         :param model: A KerasDropout model with probabilistic output based on MC dropout during
             inference.
@@ -92,34 +84,38 @@ class DeepDropout(DeepEnsemble):
 
         if not isinstance(optimizer.optimizer, tf.optimizers.Optimizer):
             raise ValueError(
-                f'Optimizer for `KerasPredictor` models must be an instance of a '
-                f'`tf.optimizers.Optimizer`, received {type(optimizer.optimizer)} instead.'
+                f"Optimizer for `KerasPredictor` models must be an instance of a "
+                f"`tf.optimizers.Optimizer`, received {type(optimizer.optimizer)} instead."
             )
 
-        if not {'optimizer', 'loss', 'metrics'}.isdisjoint(compile_args):
+        if not {"optimizer", "loss", "metrics"}.isdisjoint(compile_args):
             raise ValueError(
-                'optimizer, loss and metrics arguments must not be included in compile_args.'
+                "optimizer, loss and metrics arguments must not be included in compile_args."
             )
 
         if not self.optimizer.fit_args:
             self.optimizer.fit_args = {
-                'verbose': 0,
-                'epochs': 3000,
-                'batch_size': 16,
-                'callbacks': [
+                "verbose": 0,
+                "epochs": 100,
+                "batch_size": 16,
+                "callbacks": [
                     tf.keras.callbacks.EarlyStopping(
-                        monitor='loss', patience=50, restore_best_weights=True
+                        monitor="loss", patience=10, restore_best_weights=True
                     )
                 ],
             }
 
         if self.optimizer.loss is None:
-            warnings.warn("""⚠️ Warning: `optimizer.loss` is None. Defaulting to MeanSquaredError.""")
+            warnings.warn(
+                """⚠️ Warning: `optimizer.loss` is None. Defaulting to MeanSquaredError."""
+            )
             self.optimizer.loss = MeanSquaredError
 
         if self.optimizer.metrics is None:
-            warnings.warn("""⚠️ Warning: `optimizer.metrics` is None. Defaulting to MSE.""")
-            self.optimizer.metrics = ['mse']
+            warnings.warn(
+                """⚠️ Warning: `optimizer.metrics` is None. Defaulting to MSE."""
+            )
+            self.optimizer.metrics = ["mse"]
 
         model.model.compile(
             optimizer=self.optimizer.optimizer,
@@ -129,7 +125,8 @@ class DeepDropout(DeepEnsemble):
         )
 
         if not isinstance(
-            self.optimizer.optimizer.lr, tf.keras.optimizers.schedules.LearningRateSchedule
+            self.optimizer.optimizer.lr,
+            tf.keras.optimizers.schedules.LearningRateSchedule,
         ):
             self.original_lr = self.optimizer.optimizer.lr.numpy()
         self._absolute_epochs = 0
@@ -142,9 +139,20 @@ class DeepDropout(DeepEnsemble):
     def __repr__(self) -> str:
         """"""
         return (
-            f'DeepDropout({self.model!r}, {self.optimizer!r}, {self._bootstrap!r}, '
-            f'{self._diversify!r})'
+            f"DeepDropout({self.model!r}, {self.optimizer!r}, {self._bootstrap!r}, "
+            f"{self._diversify!r})"
         )
+
+    @property
+    def ensemble_size(self) -> int:
+        """
+        Deep Dropout is not an ensemble as it only uses one network which can be viewed
+        as multiple networks.
+        @todo
+        However, Trieste uses this property and some extra work is needed to correctly adjust this class
+        to full compatibility with Trieste.
+        """
+        raise NotImplementedError
 
     def prepare_dataset(
         self, dataset: Dataset
@@ -179,10 +187,14 @@ class DeepDropout(DeepEnsemble):
         """
         raise NotImplementedError
 
-    def predict_estimation(self, query_points: TensorType, num_samples=100) -> TensorType:
+    def predict_estimation(
+        self, query_points: TensorType, num_samples=100
+    ) -> TensorType:
         return self._model.predict_with_dropout(query_points, num_samples=num_samples)
 
-    def ensemble_distributions(self, query_points: TensorType) -> tuple[tfd.Distribution, ...]:
+    def ensemble_distributions(
+        self, query_points: TensorType
+    ) -> tuple[tfd.Distribution, ...]:
         """
         Return distributions for each member of the ensemble.
 
@@ -206,7 +218,9 @@ class DeepDropout(DeepEnsemble):
         """
         # handle leading batch dimensions, while still allowing `Functional` to
         # "allow (None,) and (None, 1) Tensors to be passed interchangeably"
-        input_dims = min(len(query_points.shape), len(self.model.layers[0].input_shape[0]))
+        input_dims = min(
+            len(query_points.shape), len(self.model.layers[0].input_shape[0])
+        )
         flat_x, unflatten = flatten_leading_dims(query_points, output_dims=input_dims)
         mean, variance = self.predict_estimation(flat_x)
 
@@ -222,7 +236,9 @@ class DeepDropout(DeepEnsemble):
         """The prediction dtype."""
         return self._model.output_dtype
 
-    def predict_ensemble(self, query_points: TensorType) -> tuple[TensorType, TensorType]:
+    def predict_ensemble(
+        self, query_points: TensorType
+    ) -> tuple[TensorType, TensorType]:
         """
         Returns mean and variance at ``query_points`` for each member of the ensemble. First tensor
         is the mean and second is the variance, where each has shape [..., M, N, 1], where M is
@@ -295,15 +311,15 @@ class DeepDropout(DeepEnsemble):
         summary_writer = logging.get_tensorboard_writer()
         if summary_writer:
             with summary_writer.as_default(step=logging.get_step_number()):
-                logging.scalar('epochs/num_epochs', len(self.model.history.epoch))
+                logging.scalar("epochs/num_epochs", len(self.model.history.epoch))
                 for k, v in self.model.history.history.items():
                     KEY_SPLITTER = {
                         # map history keys to prefix and suffix
-                        'loss': ('loss', ''),
-                        r'(?P<model>model_\d+)_output_loss': ('loss', r'_\g<model>'),
-                        r'(?P<model>model_\d+)_output_(?P<metric>.+)': (
-                            r'\g<metric>',
-                            r'_\g<model>',
+                        "loss": ("loss", ""),
+                        r"(?P<model>model_\d+)_output_loss": ("loss", r"_\g<model>"),
+                        r"(?P<model>model_\d+)_output_(?P<metric>.+)": (
+                            r"\g<metric>",
+                            r"_\g<model>",
                         ),
                     }
                     for pattern, (pre_sub, post_sub) in KEY_SPLITTER.items():
@@ -314,28 +330,30 @@ class DeepDropout(DeepEnsemble):
                     else:
                         # unrecognised history key; ignore
                         continue
-                    if 'model' in post:
-                        if not logging.include_summary('_dropout'):
+                    if "model" in post:
+                        if not logging.include_summary("_dropout"):
                             break
-                        pre = pre + '/_dropout'
-                    logging.histogram(f'{pre}/epoch{post}', lambda: v)
-                    logging.scalar(f'{pre}/final{post}', lambda: v[-1])
-                    logging.scalar(f'{pre}/diff{post}', lambda: v[0] - v[-1])
-                    logging.scalar(f'{pre}/min{post}', lambda: tf.reduce_min(v))
-                    logging.scalar(f'{pre}/max{post}', lambda: tf.reduce_max(v))
+                        pre = pre + "/_dropout"
+                    logging.histogram(f"{pre}/epoch{post}", lambda: v)
+                    logging.scalar(f"{pre}/final{post}", lambda: v[-1])
+                    logging.scalar(f"{pre}/diff{post}", lambda: v[0] - v[-1])
+                    logging.scalar(f"{pre}/min{post}", lambda: tf.reduce_min(v))
+                    logging.scalar(f"{pre}/max{post}", lambda: tf.reduce_max(v))
                 if dataset:
                     write_summary_data_based_metrics(
-                        dataset=dataset, model=self, prefix='training_'
+                        dataset=dataset, model=self, prefix="training_"
                     )
-                    if logging.include_summary('_dropout'):
-                        predict_ensemble_variance = self.predict(dataset.query_points)[1]
+                    if logging.include_summary("_dropout"):
+                        predict_ensemble_variance = self.predict(dataset.query_points)[
+                            1
+                        ]
                         for i in range(predict_ensemble_variance.shape[0]):
                             logging.histogram(
-                                f'variance/_dropout/predict_variance_model_{i}',
+                                f"variance/_dropout/predict_variance_model_{i}",
                                 predict_ensemble_variance[i, ...],
                             )
                             logging.scalar(
-                                f'variance/_dropout/predict_variance_mean_model_{i}',
+                                f"variance/_dropout/predict_variance_mean_model_{i}",
                                 tf.reduce_mean(predict_ensemble_variance[i, ...]),
                             )
 
@@ -343,7 +361,7 @@ class DeepDropout(DeepEnsemble):
         # use to_json and get_weights to save any optimizer fit_arg callback models
         state = self.__dict__.copy()
         if self._optimizer:
-            callbacks: list[Callback] = self._optimizer.fit_args.get('callbacks', [])
+            callbacks: list[Callback] = self._optimizer.fit_args.get("callbacks", [])
             saved_models: list[KerasOptimizer] = []
             tensorboard_writers: list[dict[str, Any]] = []
             try:
@@ -354,29 +372,36 @@ class DeepDropout(DeepEnsemble):
                         # no need to serialize the main model, just use a special value instead
                         callback.model = ...
                     elif callback.model:
-                        callback.model = (callback.model.to_json(), callback.model.get_weights())
+                        callback.model = (
+                            callback.model.to_json(),
+                            callback.model.get_weights(),
+                        )
                     # don't pickle tensorboard writers either; they'll be recreated when needed
                     if isinstance(callback, tf.keras.callbacks.TensorBoard):
                         tensorboard_writers.append(callback._writers)
                         callback._writers = {}
-                state['_optimizer'] = dill.dumps(state['_optimizer'])
+                state["_optimizer"] = dill.dumps(state["_optimizer"])
             except Exception as e:
                 raise NotImplementedError(
-                    'Failed to copy DeepDropout optimizer due to unsupported callbacks.'
+                    "Failed to copy DeepDropout optimizer due to unsupported callbacks."
                 ) from e
             finally:
                 # revert original state, even if the pickling failed
                 for callback, model in zip(callbacks, saved_models):
                     callback.model = model
                 for callback, writers in zip(
-                    (cb for cb in callbacks if isinstance(cb, tf.keras.callbacks.TensorBoard)),
+                    (
+                        cb
+                        for cb in callbacks
+                        if isinstance(cb, tf.keras.callbacks.TensorBoard)
+                    ),
                     tensorboard_writers,
                 ):
                     callback._writers = writers
 
         # don't serialize any history optimization result
-        if isinstance(state.get('_last_optimization_result'), keras.callbacks.History):
-            state['_last_optimization_result'] = ...
+        if isinstance(state.get("_last_optimization_result"), keras.callbacks.History):
+            state["_last_optimization_result"] = ...
 
         return state
 
@@ -386,14 +411,14 @@ class DeepDropout(DeepEnsemble):
 
         # Unpickle the optimizer, and restore all the callback models
         self._optimizer = dill.loads(self._optimizer)
-        for callback in self._optimizer.fit_args.get('callbacks', []):
+        for callback in self._optimizer.fit_args.get("callbacks", []):
             if callback.model is ...:
                 callback.set_model(self.model)
             elif callback.model:
                 model_json, weights = callback.model
                 model = tf.keras.models.model_from_json(
                     model_json,
-                    custom_objects={'MultivariateNormalTriL': MultivariateNormalTriL},
+                    custom_objects={"MultivariateNormalTriL": MultivariateNormalTriL},
                 )
                 model.set_weights(weights)
                 callback.set_model(model)
@@ -401,10 +426,10 @@ class DeepDropout(DeepEnsemble):
         # Recompile the model
         self.model.compile(
             self.optimizer.optimizer,
-            loss=[self.optimizer.loss] * self._model.ensemble_size,
-            metrics=[self.optimizer.metrics] * self._model.ensemble_size,
+            loss=self.optimizer.loss,
+            metrics=self.optimizer.metrics,
         )
 
         # recover optimization result if necessary (and possible)
-        if state.get('_last_optimization_result') is ...:
-            self._last_optimization_result = getattr(self.model, 'history')
+        if state.get("_last_optimization_result") is ...:
+            self._last_optimization_result = getattr(self.model, "history")

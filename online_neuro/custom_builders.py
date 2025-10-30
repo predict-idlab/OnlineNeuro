@@ -1,19 +1,25 @@
-import tensorflow as tf
-from typing import Tuple, Union, List
+import warnings
+from typing import List, Union
 
+import tensorflow as tf
 from trieste.data import Dataset
 from trieste.models.keras.architectures import KerasEnsemble
 from trieste.models.keras.utils import get_tensor_spec_from_data
 
-from .custom_architectures import MonteCarloDropoutNetwork, KerasDropout, ProbabilisticNetwork
-import warnings
+from .custom_architectures import (
+    KerasDropout,
+    MonteCarloDropoutNetwork,
+    ProbabilisticNetwork,
+)
 
 
 def build_keras_mc_dropout(
-        data: Dataset,
-        hidden_layers: int | Tuple[int, ...] | List[Tuple[int, ...]] = (32, 32),
-        dropout_rates: float | List[float] = 0.20,
-        activations: str | tf.keras.layers.Activation | List[ str | tf.keras.layers.Activation] = 'relu'
+    data: Dataset,
+    hidden_layers: int | tuple[int, ...] | list[tuple[int, ...]] | list[int] = (32, 32),
+    dropout_rates: float | list[float] = 0.20,
+    activations: (
+        str | tf.keras.layers.Activation | List[str | tf.keras.layers.Activation]
+    ) = "relu",
 ) -> KerasDropout:
     """
     Builds a Neural Network with MonterCarlo Dropout enabled compatible with Trieste.
@@ -26,15 +32,21 @@ def build_keras_mc_dropout(
     """
     input_tensor_spec, output_tensor_spec = get_tensor_spec_from_data(data)
 
-    if isinstance(hidden_layers, int):
-        warnings.warn("""
+    if isinstance(hidden_layers, list):
+        pass
+    elif isinstance(hidden_layers, int):
+        warnings.warn(
+            """
         ⚠️ Warning: `hidden_layers` is an int, which might be misinterpreted. Use a tuple (e.g., (64,)) for a single-layer network.
-        """)
+        """
+        )
         hidden_layers = [(hidden_layers,)]
     elif isinstance(hidden_layers, tuple):
         hidden_layers = [(x,) if isinstance(x, int) else x for x in hidden_layers]
     else:
-        hidden_layers = hidden_layers
+        # TODO: From Python 3.11 onwards this is assert_never
+        msg = f"hidden_layers of type {type(hidden_layers)} cannot be interpreted."
+        raise TypeError(msg)
 
     num_layers = len(hidden_layers)
 
@@ -46,12 +58,13 @@ def build_keras_mc_dropout(
     elif isinstance(dropout_rates, tuple):
         dropout_rates = list(dropout_rates)
 
-    mc_network = MonteCarloDropoutNetwork(input_tensor_spec=input_tensor_spec,
-                                          output_tensor_spec=output_tensor_spec,
-                                          hidden_layers=hidden_layers,
-                                          dropout_rates=dropout_rates,
-                                          activations=activations
-                                          )
+    mc_network = MonteCarloDropoutNetwork(
+        input_tensor_spec=input_tensor_spec,
+        output_tensor_spec=output_tensor_spec,
+        hidden_layers=hidden_layers,
+        dropout_rates=dropout_rates,
+        activations=activations,
+    )
     model = KerasDropout(mc_network)
     return model
 
@@ -61,9 +74,9 @@ def build_keras_ensemble_prob_output(
     ensemble_size: int = 5,
     num_hidden_layers: int = 2,
     units: int = 25,
-    activation: Union[str, tf.keras.layers.Activation] = 'relu',
+    activation: Union[str, tf.keras.layers.Activation] = "relu",
     independent_normal: bool = False,
-    distribution_type: str = 'Gaussian',
+    distribution_type: str = "Gaussian",
 ) -> KerasEnsemble:
     """
     TODO, change nu
@@ -99,7 +112,7 @@ def build_keras_ensemble_prob_output(
 
     hidden_layer_args = []
     for _ in range(num_hidden_layers):
-        hidden_layer_args.append({'units': units, 'activation': activation})
+        hidden_layer_args.append({"units": units, "activation": activation})
 
     networks = [
         ProbabilisticNetwork(
@@ -107,7 +120,7 @@ def build_keras_ensemble_prob_output(
             output_tensor_spec=output_tensor_spec,
             hidden_layer_args=hidden_layer_args,
             independent=independent_normal,
-            distribution_type=distribution_type
+            distribution_type=distribution_type,
         )
         for _ in range(ensemble_size)
     ]

@@ -1,17 +1,36 @@
 # simulators/python/problems/__init__.py
 import warnings
+
+from common.utils import configure_python_paths
 from simulators.python.problems.toy_problems import (
     circle,
-    multiple_circles,
     hypersphere,
-    multiple_hyperspheres,
     log_single_var,
+    multiple_circles,
+    multiple_hyperspheres,
+    rosenbrock,
     toy_feasbility,
     vlmop2,
-    rosenbrock
-
 )
+
 try:
-    from simulators.python.problems import cajal_problems
-except ImportError as e:
-    warnings.warn('Cajal is not installed, Cajal problems are not loaded.')
+    import cajal
+except ImportError:
+    try:
+        warnings.warn("Cajal is not installed, trying to load from path in config.json")
+        configure_python_paths()
+        import cajal
+    except Exception as e:
+        raise ImportError(f"cajal is not installed. Install it to use this module: {e}")
+
+__all__ = [
+    "circle",
+    "hypersphere",
+    "log_single_var",
+    "multiple_circles",
+    "multiple_hyperspheres",
+    "rosenbrock",
+    "toy_feasbility",
+    "vlmop2",
+    "cajal",
+]

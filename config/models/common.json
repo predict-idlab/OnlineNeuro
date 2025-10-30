@@ -1,4 +1,5 @@
-{  "scale_inputs": {
+{
+  "scale_inputs": {
     "user_fixed": true,
     "value": true,
     "type": "boolean"
@@ -7,30 +8,5 @@
     "user_fixed": false,
     "value": "",
     "type": "complex"
-  },
-  "init_samples": {
-    "user_fixed": true,
-    "value": 20,
-    "min_value": 1,
-    "max_value": 100,
-    "type": "int"
-  },
-  "batch_sampling": {
-    "user_fixed": true,
-    "value": false,
-    "type": "boolean"
-  },
-  "num_query_points": {
-    "user_fixed": true,
-    "value": 1,
-    "min_value": 1,
-    "max_value": 1,
-    "type": "int"
-  },
-  "problem_type":{
-    "user_fixed": true,
-    "value": "classification",
-    "possible_values": ["classification","regression"],
-    "type": "cat"
   }
 }

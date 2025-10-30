@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pulses plot</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body style="margin: 0;">
+    <div id="pulses-div" style="width: 100%; width:300px; height: 300px;"></div>
+    <script>
+        // Adjust the port in your Flask app if needed
+        console.log("Socket connection port:", '{{ port }}');  // Add this line for debugging
+        const socket = io.connect('http://localhost:{{ port }}',  { transports: ['websocket', 'polling'] });  // Ensure port is passed by Flask or hardcoded
+
+        // This plot cant be updated once at a time, instead is generated at every call fully.
+        let data = [
+            {
+                x: [], // Time values for channel 1
+                y: [], // Data values for channel 1
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Channel 1',
+                line: { color: 'red' } // Customize line color for channel 1
+            },
+            {
+                x: [], // Time values for channel 2
+                y: [], // Data values for channel 2
+                type: 'scatter',
+                mode: 'lines',
+                name: 'Channel 2',
+                line: { color: 'blue' } // Customize line color for channel 2
+            }
+        ];
+
+        let layout = {
+            title: 'Pulses',
+            paper_bgcolor: 'black',
+            plot_bgcolor: 'black',
+            font: { color: 'white' },
+
+            xaxis: {
+                title: 'Time (ms)',
+                gridcolor: 'gray',
+                zerolinecolor: 'gray',
+                showgrid: true
+            },
+            yaxis: {
+                title: 'Amplitude (mv)',
+                gridcolor: 'gray',
+                zerolinecolor: 'gray',
+                showgrid: true
+            },
+            margin: { l: 30, r: 30, t: 30, b: 30 },
+        };
+
+        // Create the initial plot
+        Plotly.newPlot('pulses-div', data, layout);
+
+        // Listen for new data from the server via socket.io
+        socket.on('pulses', function(newData) {
+            console.log("Received pulse data:", newData);  // Log the received data for debuggin
+
+            // Update data for both channels
+            data[0].x = newData.t;
+            data[0].y = newData.y0;
+            data[1].x = newData.t;
+            data[1].y = newData.y1;
+            Plotly.react('pulses-div', data, layout);
+        });
+
+        socket.on('connect', () => console.log('Successfully connected!'));
+        socket.on('disconnect', () => console.log('Socket disconnected!'));
+
+    </script>
+</body>
+</html>

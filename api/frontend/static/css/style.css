@@ -1,0 +1,297 @@
+:root {
+    --sidebar-left-width: 350px;
+    --sidebar-padding: 15px;
+    --primary-color: #c02a4e;
+    --text-color: #e0e0e0;
+    --bg-color: #121212;
+}
+body {
+    display: grid;
+    grid-template-columns: auto 1fr auto; /* Sidebar, content, sidebar */
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+}
+h1 {
+    text-align: center;
+    color: var(--primary-color);
+}
+/* Main container for content */
+.content {
+    grid-column: 2;
+    margin-left: calc(var(--sidebar-left-width) + 2 * var(--sidebar-padding));
+    padding: 20px;
+    transition: margin-left 0.3s ease;
+}
+/* Toggle button for opening/closing sidebar */
+.sidebar-frame{
+    /*margin-bottom: 10px;*/
+    padding: 5px;
+    border-radius: 5px;
+    position: relative;
+    z-index:10;
+}
+/* Sidebar styling */
+.sidebar {
+    grid-column: 1;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--sidebar-left-width);
+    height: 100%;
+    background-color: #0e0e0e;
+    padding: var(--sidebar-padding);
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
+    transition: width 0.3s ease;
+    overflow-y: auto;
+}
+/* When the sidebar is hidden */
+.sidebar-closed {
+    width: 0;
+    overflow: hidden;
+}
+.sidebar-right {
+    grid-column: 3;
+    position: fixed;
+    top: 0;
+    right: 0; /* Changed from left: 0 to right: 0 */
+    width: 250px;
+    height: 100%;
+    background-color: #0e0e0e;
+    padding: 15px;
+    box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2); /* Adjusted the shadow to appear on the left */
+    transition: width 0.3s ease;
+}
+.sidebar::-webkit-scrollbar {
+    width: 8px; /* Width of the vertical scrollbar */
+    height: 8px; /* Height of the horizontal scrollbar */
+}
+/* Track (background of the scrollbar) */
+.sidebar::-webkit-scrollbar-track {
+    background: #1e1e1e; /* Dark background color */
+    border-radius: 4px; /* Rounded corners */
+}
+
+/* Thumb (draggable part of the scrollbar) */
+.sidebar::-webkit-scrollbar-thumb {
+    background: #555; /* Gray thumb color */
+    border-radius: 4px; /* Rounded corners */
+}
+
+/* Thumb hover (when hovered over) */
+.sidebar::-webkit-scrollbar-thumb:hover {
+    background: #888; /* Lighter gray when hovered */
+}
+.header {
+    display: flex;
+    align-items: center;
+}
+.sidebar h2 {
+    color: #6b6b6b;
+    margin-top: 0;
+}
+.sidebar .experiments-box{
+    display: contents;
+    width: 100%;
+    margin-bottom: 6px;
+    padding: 6px;
+    flex-direction: column;
+    gap: 3px;
+}
+.sidebar .control-box{
+    display: flex;
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 10px;
+    gap: 10px;
+    align-items: center;
+}
+.sidebar button {
+    display: block;
+    /*width: 100%;*/
+    margin-bottom: 10px;
+    padding: 10px;
+    background-color: #333;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: small;
+    transition: background-color 0.3s ease;
+}
+.path-inputs button{
+    display: none; /* Initially hidden */
+}
+.sidebar button:hover {
+    background-color: #e0e0e0; /* Button hover effect */
+}
+
+/* Style for the select dropdown */
+.styled-select {
+    width: 100%; /* Full width */
+    padding: 6px 10px;
+    border-radius: 5px; /* Rounded corners */
+    border: 1px solid #444;
+    background-color:  #333; /* Black background */
+    color: white; /* White text */
+    font-size: small;
+    cursor: pointer;
+    position: relative;
+    z-index: 20;
+    text-align: left; /* Align text to left */
+    transition: background-color 0.3s ease;
+    appearance: none; /* Remove default select arrow for some browsers */
+    -webkit-appearance: none; /* Safari/Chrome */
+    -moz-appearance: none; /* Firefox */
+}
+
+/* Optional: Adding an arrow indicator to match the dropdown button feel */
+.styled-select::after {
+    content: '▼';
+    position: absolute;
+    right: 10px;
+    pointer-events: none;
+}
+
+/* Hover effect to match button hover */
+.styled-select:hover {
+    background-color: #333; /* Darker background on hover */
+}
+/* Show the dropdown content when the button is clicked */
+.show {
+    display: block;
+}
+.toggle-btn {
+    display: block;
+    top: 50px;
+    left: 20px;
+    font-size: small;
+    background-color: #c02a4e;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 10px;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+iframe {
+    display: block;
+    margin: 20px auto;
+    border: none;
+    width: 100%;
+    height: 400px;
+}
+.parameter-container{
+    display:flex;
+    align-items:center;
+    margin-bottom: 4px;
+    justify-content: space-between;
+    width: 100%;
+}
+.block-title{
+    margin-bottom: 5px;
+    font-weight: bold;
+    font-size: medium;
+    color: white;
+    text-overflow: ellipsis
+}
+.parameter-label{
+    text-align: left;
+    margin-right: 8px;
+    color: white;
+    /*white-space: nowrap;*/
+    /*width: 100px;*/
+    font-size: small;
+    text-overflow: ellipsis
+}
+.inputs-container {
+    display: flex;               /* Use flexbox for the inputs */
+    flex-direction: column;
+    align-items: center
+}
+.inputs-container input{
+    width: 45px;
+    margin-right: 3px
+}
+.input-row{
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.row-ix{
+    width: 40px;
+    /*text-align: left;*/
+    font-weight: normal;
+    color:white;
+    align-content: center;
+}
+.dim-label{
+    color:white
+}
+.box {
+    width: 100%;
+    height: 150px;
+    border: 1px solid #ccc;
+    padding: 10px;
+    margin-top: 10px;
+}
+/* Loading spinner */
+.spinner {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #ff3737;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    display: none;
+    margin: 20px auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+.horizontal-line {
+    border: none; /* Remove default border */
+    height: 2px; /* Line thickness */
+    background-color: #ccc; /* Line color */
+    margin-bottom: 4px; /* Space below the line */
+}
+.white-text {
+    color: white;
+}
+span {
+    color: white;
+    font-size: small;
+}
+.input-container {
+    display: flex;
+    align-items: center; /* Aligns label, button, and text in a row */
+    gap: 10px; /* Adds spacing between elements */
+}
+.input-container label {
+    width: 150px; /* fix label width for alignment */
+    font-weight: bold;
+}
+label {
+    color: white;
+    width: 100px; /* Ensures labels have the same width */
+    text-align: left; /* Aligns text to the right */
+    font-size: small;
+}
+
+button, input {
+    width: 80px; /* Makes buttons and input fields the same width */
+    padding: 5px;
+}
+
+#folderPath {
+    color: white;
+}
+
+#iframeContainer iframe {
+    width: 100%;
+    height: 500px;
+}

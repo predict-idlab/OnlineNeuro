@@ -14,4 +14,4 @@ python -c "import sys; print(f'Python {sys.version} on {sys.platform}')"
 python -c "import os; print(os.getenv('PYTHONPATH'))"
 
 REM Run the app
-python "frontend\app.py" --port %FLASK_PORT%
+python "api\app.py" --port %FLASK_PORT%

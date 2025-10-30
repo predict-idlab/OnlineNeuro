@@ -1,19 +1,33 @@
-from trieste.models.gpflow.builders import build_vgp_classifier, build_gpr, build_svgp, build_sgpr
-from trieste.models.gpflow.models import (SparseVariational, VariationalGaussianProcess,
-                                          SparseGaussianProcessRegression, GaussianProcessRegression)
-from trieste.models.gpflow.inducing_point_selectors import KMeansInducingPointSelector
-from trieste.models.optimizer import BatchOptimizer
-
-import tensorflow as tf
-import tensorflow_probability as tfp
-
+# /online_neuro/online_learning.py
 import math
 import warnings
-import gpflow
-from gpflow.models import GPR, SGPR, SVGP, VGP, GPModel
-from trieste.data import Dataset
-from trieste.space import Box, SearchSpace
 from typing import Optional, Union
+
+import gpflow
+import tensorflow as tf
+import tensorflow_probability as tfp
+from gpflow.models import VGP, GPModel
+from trieste.data import Dataset
+from trieste.models.gpflow.builders import (
+    build_gpr,
+    build_sgpr,
+    build_svgp,
+    build_vgp_classifier,
+)
+from trieste.models.gpflow.inducing_point_selectors import KMeansInducingPointSelector
+from trieste.models.gpflow.models import (
+    GaussianProcessRegression,
+    SparseGaussianProcessRegression,
+    SparseVariational,
+    VariationalGaussianProcess,
+)
+from trieste.models.optimizer import BatchOptimizer
+from trieste.space import Box, SearchSpace
+
+# Copyright 2025 The IDLAB-imec Contributors
+# Notice that partial code is based on The Trieste repository
+# TODO specify which file
+# https://github.com/secondmind-labs/trieste
 
 TensorType = Union[tf.Tensor, tf.Variable]
 
@@ -61,13 +75,16 @@ def _set_gaussian_likelihood_variance(
     )
 
 
-def _get_inducing_points(search_space: SearchSpace,
-                         num_inducing_points: Optional[int]) -> TensorType:
+def _get_inducing_points(
+    search_space: SearchSpace, num_inducing_points: Optional[int]
+) -> TensorType:
     if num_inducing_points is not None:
         tf.debugging.assert_positive(num_inducing_points)
     else:
-        num_inducing_points = min(MAX_NUM_INDUCING_POINTS,
-                                  NUM_INDUCING_POINTS_PER_DIM * search_space.dimension)
+        num_inducing_points = min(
+            MAX_NUM_INDUCING_POINTS,
+            NUM_INDUCING_POINTS_PER_DIM * search_space.dimension,
+        )
     if isinstance(search_space, Box):
         inducing_points = search_space.sample_sobol(num_inducing_points)
     else:
@@ -89,10 +106,16 @@ def _get_mean_function(mean: TensorType) -> gpflow.mean_functions.MeanFunction:
 
 
 def _get_lengthscales(search_space: SearchSpace, default_lengthscale=2) -> TensorType:
-    lengthscales = (default_lengthscale * (search_space.upper - search_space.lower) * math.sqrt(search_space.dimension))
+    lengthscales = (
+        default_lengthscale
+        * (search_space.upper - search_space.lower)
+        * math.sqrt(search_space.dimension)
+    )
     search_space_collapsed = tf.equal(search_space.upper, search_space.lower)
     lengthscales = tf.where(
-        search_space_collapsed, tf.constant(1.0, dtype=gpflow.default_float()), lengthscales
+        search_space_collapsed,
+        tf.constant(1.0, dtype=gpflow.default_float()),
+        lengthscales,
     )
     return lengthscales
 
@@ -104,7 +127,7 @@ def _get_kernel(
     add_prior_to_variance: bool,
 ) -> gpflow.kernels.Kernel:
     lengthscales = _get_lengthscales(search_space)
-    
+
     kernel = gpflow.kernels.Matern52(variance=variance, lengthscales=lengthscales)
 
     if add_prior_to_lengthscale:
@@ -119,12 +142,13 @@ def _get_kernel(
     return kernel
 
 
-def build_vgp(data: Dataset,
-              search_space: SearchSpace,
-              kernel_priors: bool = True,
-              likelihood_variance: Optional[float] = None,
-              trainable_likelihood: bool = False,
-              ) -> VGP:
+def build_vgp(
+    data: Dataset,
+    search_space: SearchSpace,
+    kernel_priors: bool = True,
+    likelihood_variance: Optional[float] = None,
+    trainable_likelihood: bool = False,
+) -> VGP:
     """
     Build a :class:`~gpflow.models.VGP` binary classification model with sensible initial
     parameters and priors. We use :class:`~gpflow.kernels.Matern52` kernel and
@@ -173,78 +197,98 @@ def build_vgp(data: Dataset,
     return model
 
 
-def build_model(init_dataset, search_space, config, **kwargs):
+def build_model(init_dataset, search_space, config, problem_type, **kwargs):
     """
     @param init_dataset:
     @param search_space:
     @param config:
     @return:
+        'trainable_likelihood': True,
+    'noise_free': True if NOISE_LEVEL==0.0 else False,
+    'kernel_variance': None
     """
-    if config['classification']:
+    if problem_type == "classification":
         # TODO extend models!
-        if config['variational'] and config['sparse']:
-            if config['noise_free']:
-                msg = 'build_svgp by Trieste does not have a noisy version, need to rewrite this function(TODO)'
+        if config["variational"] and config["sparse"]:
+            if config["noise_free"]:
+                msg = "build_svgp by Trieste does not have a noisy version, need to rewrite this function(TODO)"
                 warnings.warn(msg)
-            gpflow_model = build_svgp(init_dataset, search_space, classification=True,
-                                      # noise_free=config['experiment']['noise_free'],
-                                      trainable_likelihood=config['trainable_likelihood'],
-                                      )
+            gpflow_model = build_svgp(
+                init_dataset,
+                search_space,
+                classification=True,
+                # noise_free=config['experiment']['noise_free'],
+                trainable_likelihood=config["trainable_likelihood"],
+            )
             model = SparseVariational(gpflow_model)
-        elif config['variational'] and ~config['sparse']:
-            gpflow_model = build_vgp_classifier(init_dataset, search_space,
-                                                noise_free=config['noise_free']
-                                                )
+        elif config["variational"] and ~config["sparse"]:
+            gpflow_model = build_vgp_classifier(
+                init_dataset, search_space, noise_free=config["noise_free"]
+            )
 
             model = VariationalGaussianProcess(gpflow_model)
         else:
-            raise Exception('Classification not implemented with non variational GPs')
-    else:
-        if config['variational'] and config['sparse']:
-            gpflow_model = build_svgp(init_dataset, search_space,
-                                      classification=False,
-                                      likelihood_variance=config['kernel_variance'],
-                                      trainable_likelihood=config['trainable_likelihood'],
-                                      num_inducing_points=20
-                                      )
+            raise Exception("Classification not implemented with non variational GPs")
+    elif problem_type == "regression":
+        if config["variational"] and config["sparse"]:
+            gpflow_model = build_svgp(
+                init_dataset,
+                search_space,
+                classification=False,
+                likelihood_variance=config["kernel_variance"],
+                trainable_likelihood=config["trainable_likelihood"],
+                num_inducing_points=20,
+            )
             inducing_point_selector = KMeansInducingPointSelector()
 
             model = SparseVariational(
                 gpflow_model,
                 num_rff_features=1000,
                 inducing_point_selector=inducing_point_selector,
-                optimizer=BatchOptimizer(tf.optimizers.Adam(0.1), max_iter=100,
-                                         batch_size=50, compile=True),
+                optimizer=BatchOptimizer(
+                    tf.optimizers.Adam(0.1), max_iter=100, batch_size=50, compile=True
+                ),
             )
-        elif config['variational'] and ~config['sparse']:
-            gpflow_model = build_vgp(init_dataset, search_space,
-                                     likelihood_variance=config['kernel_variance'],
-                                     trainable_likelihood=config['trainable_likelihood'],
-                                     )
+        elif config["variational"] and ~config["sparse"]:
+            gpflow_model = build_vgp(
+                init_dataset,
+                search_space,
+                likelihood_variance=config["kernel_variance"],
+                trainable_likelihood=config["trainable_likelihood"],
+            )
 
             model = VariationalGaussianProcess(gpflow_model)
-        elif ~config['variational'] and config['sparse']:
-            gpflow_model = build_sgpr(init_dataset, search_space,
-                                      likelihood_variance=config['kernel_variance'],
-                                      trainable_likelihood=config['trainable_likelihood'],
-                                      )
+        elif ~config["variational"] and config["sparse"]:
+            gpflow_model = build_sgpr(
+                init_dataset,
+                search_space,
+                likelihood_variance=config["kernel_variance"],
+                trainable_likelihood=config["trainable_likelihood"],
+            )
             inducing_point_selector = KMeansInducingPointSelector()
 
             model = SparseGaussianProcessRegression(
                 gpflow_model,
                 num_rff_features=1000,
                 inducing_point_selector=inducing_point_selector,
-                optimizer=BatchOptimizer(tf.optimizers.Adam(0.1), max_iter=100,
-                                         batch_size=50, compile=True)
+                optimizer=BatchOptimizer(
+                    tf.optimizers.Adam(0.1), max_iter=100, batch_size=50, compile=True
+                ),
             )
-        elif ~config['variational'] and ~config['sparse']:
-            gpflow_model = build_gpr(init_dataset, search_space,
-                                     likelihood_variance=config['kernel_variance'],
-                                     trainable_likelihood=config['trainable_likelihood'],
-                                     )
+        elif ~config["variational"] and ~config["sparse"]:
+            gpflow_model = build_gpr(
+                init_dataset,
+                search_space,
+                likelihood_variance=config["kernel_variance"],
+                trainable_likelihood=config["trainable_likelihood"],
+            )
 
             model = GaussianProcessRegression(gpflow_model)
 
         else:
-            raise Exception('Classification not implemented with non variational GPs')
+            raise Exception("Classification not implemented with non variational GPs")
+    else:
+        msg = f"No logic implemented for problem_type {problem_type}"
+        raise NotImplementedError(msg)
+
     return model

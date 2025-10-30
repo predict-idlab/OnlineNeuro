@@ -1,31 +1,27 @@
 # simulators/python/main.py
-import json
-import socket
-from pathlib import Path
 import argparse
-from problems import circle, rosenbrock, log_single_var, toy_feasbility, vlmop2
-import warnings
-import sys
-
-from collections import defaultdict
-import select
-import time
 import atexit
+import json
+import select
+import socket
+import time
+from collections import defaultdict
+
+from problems import circle, rosenbrock, vlmop2
+
 try:
     from problems import cajal_problems
-    cajal_problems.load_cajal()
-
 except ImportError as e:
-    warnings.warn("Cajal is not installed, Cajal problems are not loaded.")
+    # TODO this warning needs to be passed to the GUI in case running over it.
+    msg = "Cajal is not installed, Cajal problems are not loaded."
+    raise ImportError(msg) from e
 
 problem_dict = {
-    'circle_classification': circle,
-    'rose_regression': rosenbrock,
-    'moo_problem': vlmop2
+    "circle_classification": circle,
+    "rose_regression": rosenbrock,
+    "moo_problem": vlmop2,
+    "cajal_ap_block": cajal_problems.cajal_fun,
 }
-
-if cajal_problems in sys.modules:
-    problem_dict['cajal_ap_block'] = cajal_fun
 
 VECTORIZED_FUNS = [circle, rosenbrock, vlmop2]
 
@@ -42,7 +38,7 @@ def send_data(fvalues, tcpip_client, size_lim=65536):
     """
 
     json_data = json.dumps(fvalues)
-    print('Data to be sent')
+    print("Data to be sent")
     print(json_data)
 
     if len(json_data) > size_lim:
@@ -51,19 +47,21 @@ def send_data(fvalues, tcpip_client, size_lim=65536):
         if len(json_data) < size_lim:
             pckgs = len(fvalues)
             for i in range(pckgs):
-                print(f'Package {i+1}/{pckgs}', end='\n')
-                chunk = {'data': fvalues[i],
-                         'tot_pckgs': pckgs,
-                         'current_pckg': i  # Track which chunk this is
-                         }
+                print(f"Package {i+1}/{pckgs}", end="\n")
+                chunk = {
+                    "data": fvalues[i],
+                    "tot_pckgs": pckgs,
+                    "current_pckg": i,  # Track which chunk this is
+                }
                 response = write_data(tcpip_client, chunk)
         else:
-            raise NotImplementedError('Package needs to be transmitted in another way (too large for socket)')
+            raise NotImplementedError(
+                "Package needs to be transmitted in another way (too large for socket)"
+            )
 
     else:
         response = write_data(tcpip_client, fvalues)
 
-    print('Message sent')
     return response
 
 
@@ -83,19 +81,25 @@ def evaluate_function(query_points, fixed_features, eval_fun, problem_name, mode
         qp_dict = convert_list_to_dict(query_points)
         for key, value in fixed_features.items():
             if key in qp_dict:
-                raise ValueError(f"Key '{key}' from fixed_features already exists in query_points.")
+                raise ValueError(
+                    f"Key '{key}' from fixed_features already exists in query_points."
+                )
             qp_dict[key] = [value] * len(query_points)
 
-        fvalues = fun_wrapper(eval_fun, qp=qp_dict, problem_name=problem_name, mode=mode)
+        fvalues = fun_wrapper(
+            eval_fun, qp=qp_dict, problem_name=problem_name, mode=mode
+        )
 
     else:
         num_points = len(query_points)
         fvalues = []
         for i in range(num_points):
-            print(f'Exp {i}/{num_points}')
+            print(f"Exp {i}/{num_points}")
             qp = query_points[i]
             qp_with_fixed = {**qp, **fixed_features}
-            result = fun_wrapper(eval_fun, qp=qp_with_fixed, problem_name=problem_name, mode=mode)
+            result = fun_wrapper(
+                eval_fun, qp=qp_with_fixed, problem_name=problem_name, mode=mode
+            )
             fvalues.append(result)
 
     return fvalues
@@ -107,7 +111,7 @@ def read_data(client_socket, timeout=300):
     @param timeout:
     @return:
     """
-    buffer = b''
+    buffer = b""
     end_time = time.time() + timeout
 
     while time.time() < end_time:
@@ -118,35 +122,37 @@ def read_data(client_socket, timeout=300):
                 buffer += part
 
             # Check if buffer contains a complete JSON message ending with newline
-            if b'\n' in buffer:
-                messages = buffer.split(b'\n')
+            if b"\n" in buffer:
+                messages = buffer.split(b"\n")
 
                 # Process each complete message
                 for message in messages[:-1]:  # Ignore any trailing partial message
                     if message:
                         try:
-                            decoded_message = json.loads(message.decode('utf-8').strip())
-                            print('Decoded message:', decoded_message)
+                            decoded_message = json.loads(
+                                message.decode("utf-8").strip()
+                            )
+                            print("Decoded message:", decoded_message)
                             # Update buffer before returning
-                            buffer = messages[-1] if messages[-1] else b''
+                            buffer = messages[-1] if messages[-1] else b""
                             return decoded_message
                         except json.JSONDecodeError as e:
-                            print('JSON decoding error:', e, 'Message:', message)
+                            print("JSON decoding error:", e, "Message:", message)
 
                 # Retain last part as buffer in case it's a partial message
                 buffer = messages[-1]
 
-    raise TimeoutError('Timeout: No complete JSON message received.')
+    raise TimeoutError("Timeout: No complete JSON message received.")
 
 
-def write_data(client_socket, data):
-    json_data = json.dumps(data, ensure_ascii=False).encode('utf-8')
+def write_data(client_socket, data) -> dict:
+    json_data = json.dumps(data, ensure_ascii=False).encode("utf-8")
     try:
         client_socket.sendall(json_data)
-        return {'Message': 'Data sent to server'}
+        return {"Message": "Data sent to server"}
     except Exception as e:
         msg = e
-        return {'Message': f'Something went wrong {msg}'}
+        return {"Message": f"Something went wrong {msg}"}
 
 
 def fun_wrapper(eval_fun, qp, problem_name, mode=None):
@@ -158,116 +164,109 @@ def fun_wrapper(eval_fun, qp, problem_name, mode=None):
     @param mode:
     @return:
     """
-    if problem_name == 'placeholder':
+    if problem_name == "placeholder":
         return 0
     else:
         return eval_fun(**qp)
 
 
-def main(problem_name, problem_type, problem_config, connection_config, *args, **kwargs):
-    print('Verifying port is open')
+def main(problem_config, connection_config, *args, **kwargs):
     # Detect if path or configuration was provided
+    problem_name = problem_config["experiment_parameters"]["problem_name"]
 
-    print(problem_config)
-    # potential_path = Path(problem_config)
-    # if potential_path.is_file() and potential_path.suffix == ".json":
-    #     with open(potential_path) as f:
-    #         problem_config = json.load(f)
-    # elif (root_path / potential_path).is_file() and potential_path.suffx == ".json":
-    #     with (root_path / potential_path) as f:
-    #         problem_config = json.load(f)
-    # elif isinstance(problem_config, str):
-    #     problem_config = json.loads(problem_config)
-    # else:
-    #     msg = f"Problem config: {problem_config} \n not recognized as a json or path"
-    #     raise Exception(msg)
-
-    # Open TCP connection
     tcpip_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    tcpip_client.settimeout(connection_config['Timeout'])
-    buffer_size = connection_config['SizeLimit']
+    tcpip_client.settimeout(connection_config["Timeout"])
+    ## buffer_size = connection_config['SizeLimit']
 
     atexit.register(tcpip_client.close)
 
-    tcpip_client.connect((connection_config['ip'], connection_config['port']))
+    tcpip_client.connect((connection_config["ip"], connection_config["port"]))
     tcpip_client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
     # Send handshake
-    data_to_send = {
-        'message': 'Hello from Python',
-        'dummyNumber': 123
-    }
+    data_to_send = {"message": "Hello from Python", "dummyNumber": 123}
     write_data(tcpip_client, data_to_send)
-    print('Data sent')
-    print('Waiting for data...')
     received_data = read_data(tcpip_client)
-    print(received_data)
-    # End handshake, connection works.
 
+    eval_fun = None
     if problem_name in problem_dict:
         eval_fun = problem_dict[problem_name]
     else:
-        NotImplementedError(f'Problem {problem_name} not implemented.')
+        NotImplementedError(f"Problem {problem_name} not implemented.")
+
+    print(problem_name)
+    print(problem_dict)
+    received_data = read_data(tcpip_client)
+    fixed_features = received_data["Fixed_features"]
 
     received_data = read_data(tcpip_client)
-    fixed_features = received_data['Fixed_features']
-
-    received_data = read_data(tcpip_client)
-    query_points = received_data['query_points']
+    query_points = received_data["query_points"]
 
     operator = None
     # TODO some calls need to be made point by point, but when possible, is best to use the vector form
 
-    fvalues = evaluate_function(query_points=query_points,
-                                fixed_features=fixed_features,
-                                eval_fun=eval_fun,
-                                problem_name=problem_name, mode=operator)
+    fvalues = evaluate_function(
+        query_points=query_points,
+        fixed_features=fixed_features,
+        eval_fun=eval_fun,
+        problem_name=problem_name,
+        mode=operator,
+    )
 
-    response = send_data(fvalues=fvalues,
-                         tcpip_client=tcpip_client)
+    response = send_data(fvalues=fvalues, tcpip_client=tcpip_client)
+
     print(response)
-
-    print('Main side: Entering loop now')
+    print("Main side: Entering loop now")
     terminate_flag = False
 
     while not terminate_flag:
         received_data = read_data(tcpip_client)
-        query_points = received_data['query_points']
-        terminate_flag = received_data.get('terminate_flag', False)
+        query_points = received_data["query_points"]
+        terminate_flag = received_data.get("terminate_flag", False)
 
         if terminate_flag:
-            print('Termination signal received from Python. Saving data and closing connection...')
+            print(
+                "Termination signal received from Python. Saving data and closing connection..."
+            )
         else:
-            fvalues = evaluate_function(query_points=query_points,
-                                        fixed_features=fixed_features,
-                                        eval_fun=eval_fun,
-                                        problem_name=problem_name,
-                                        mode=operator)
+            fvalues = evaluate_function(
+                query_points=query_points,
+                fixed_features=fixed_features,
+                eval_fun=eval_fun,
+                problem_name=problem_name,
+                mode=operator,
+            )
 
-            response = send_data(fvalues=fvalues,
-                                 tcpip_client=tcpip_client)
+            response = send_data(fvalues=fvalues, tcpip_client=tcpip_client)
 
-            print(f'response {response}')
+            print(f"response {response}")
 
     tcpip_client.close()
 
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Script for handling complex arguments.')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Script for handling complex arguments."
+    )
 
     # Define arguments
     parser.add_argument(
-        '--connection_config', type=str, required=True, help='Path or settings for the connection configuration'
+        "--connection_config",
+        type=str,
+        required=True,
+        help="Path or settings for the connection configuration",
     )
+    # parser.add_argument(
+    #     '--problem_name', type=str, required=True, help='Name of the problem'
+    # )
+    # parser.add_argument(
+    #     '--problem_type', type=str, required=True, help='Type of the problem'
+    # )
     parser.add_argument(
-        '--problem_name', type=str, required=True, help='Name of the problem'
-    )
-    parser.add_argument(
-        '--problem_type', type=str, required=True, help='Type of the problem'
-    )
-    parser.add_argument(
-        '--problem_config', type=str, required=True,
-        help='JSON string representing the problem configuration'
+        "--problem_config",
+        type=str,
+        required=True,
+        help="JSON string representing the problem configuration",
     )
     args = parser.parse_args()
 
@@ -275,17 +274,16 @@ if __name__ == '__main__':
     try:
         problem_config = json.loads(args.problem_config)
     except json.JSONDecodeError:
-        print('Error: problem_config must be a valid JSON string.')
+        print("Error: problem_config must be a valid JSON string.")
         exit(1)
     # Convert problem_config from JSON string to Python dictionary
     try:
         connection_config = json.loads(args.connection_config)
     except json.JSONDecodeError:
-        print('Error: connection_config must be a valid JSON string.')
+        print("Error: connection_config must be a valid JSON string.")
         exit(1)
 
-    main(problem_name=args.problem_name,
-         problem_type=args.problem_type,
-         problem_config=problem_config,
-         connection_config=connection_config,
-         )
+    main(
+        problem_config=problem_config,
+        connection_config=connection_config,
+    )

@@ -1,6 +1,4 @@
-import tensorflow as tf
 import numpy as np
-# Closely equivalent problems to the ones in Matlab, but here the python versions of them.
 
 
 def circle(x0, x1, radius=0.5, noise=0, center=np.array([0, 0]), *args, **kwargs):
@@ -44,7 +42,7 @@ def circle(x0, x1, radius=0.5, noise=0, center=np.array([0, 0]), *args, **kwargs
     # Return 1 if the point is outside the radius, otherwise return 0 (opposite of original Python function)
     result = (radii > radius).astype(int).tolist()
 
-    obs = {'observations': result}
+    obs = {"observations": result}
     return obs
 
 
@@ -63,13 +61,13 @@ def multiple_circles(x0, x1, radius, noise, center, *args, **kwargs):
 
     for r, n, c in zip(radius, noise, center):
         result = circle(x0, x1, radius=r, noise=n, center=c)
-        results.append(result['observations'])
+        results.append(result["observations"])
 
     # Sum the results from all circles and return binary results
     combined_results = np.sum(results, axis=0) - (len(radius) - 1)
     binary_results = (combined_results > 0).astype(int)
     binary_results = binary_results.tolist()
-    obs = {'observations': binary_results}
+    obs = {"observations": binary_results}
 
     return obs
 
@@ -86,7 +84,7 @@ def hypersphere(points, radius, noise, center, *args, **kwargs):
     noisy_radius = radius + np.random.uniform(-noise, noise, size=distances.shape)
     result = (distances <= noisy_radius).astype(int)
     result = result.tolist()
-    obs = {'observations': result}
+    obs = {"observations": result}
     return obs
 
 
@@ -102,15 +100,16 @@ def multiple_hyperspheres(points, radii, noises, centers, *args, **kwargs):
 
     for r, n, c in zip(radii, noises, centers):
         result = hypersphere(points, radius=r, noise=n, center=c)
-        results.append(result['observations'])
+        results.append(result["observations"])
 
     # Sum the results from all hyperspheres and return binary results
 
     combined_results = np.sum(results, axis=0) - (len(radii) - 1)
     binary_results = (combined_results > 0).astype(int)
     binary_results = binary_results.tolist()
-    obs = {'observations': binary_results}
+    obs = {"observations": binary_results}
     return obs
+
 
 def log_single_var(x, noise=0, target_loc=1, *args, **kwargs):
     """
@@ -126,7 +125,7 @@ def log_single_var(x, noise=0, target_loc=1, *args, **kwargs):
         x += 0.2 * noise * np.random.normal(size=len(x))
     result = np.where(x > target_loc, 1, 0)
     result = result.tolist()
-    obs = {'observations': result}
+    obs = {"observations": result}
     return obs
 
 
@@ -139,16 +138,18 @@ def toy_feasbility(x, ymax=1, noise=0, *args, **kwargs):
     @param noise:
     @return:
     """
-    term1 = -0.001 / (0.01 * ((ymax - 5 / (4 * np.pi ** 2) * x ** 2 + (5 / np.pi) * x - 2) ** 2))
+    term1 = -0.001 / (
+        0.01 * ((ymax - 5 / (4 * np.pi**2) * x**2 + (5 / np.pi) * x - 2) ** 2)
+    )
     term2 = 0.04 * (1 - 1 / (5 * np.pi)) * np.cos(x) * np.cos(ymax)
-    term3 = 0.05 * np.log(x ** 2 + ymax ** 2 + 1)
+    term3 = 0.05 * np.log(x**2 + ymax**2 + 1)
     result = term1 + term2 + term3 + 1 + 0.3
-    result = {'observations': [result]}
+    result = {"observations": [result]}
     return result
 
 
 def vlmop2(x, *args, **kwargs):
-    transl = 1/np.sqrt(2)
+    transl = 1 / np.sqrt(2)
     # Compute part1 and part2
     part1 = (x[:, 0] - transl) ** 2 + (x[:, 1] - transl) ** 2
     part2 = (x[:, 0] + transl) ** 2 + (x[:, 1] + transl) ** 2
@@ -157,11 +158,11 @@ def vlmop2(x, *args, **kwargs):
     y0 = 1 - np.exp(-part1)
     y1 = 1 - np.exp(-part2)
 
-    result = {'observations': [y0.tolist(), y1.tolist()]}
+    result = {"observations": [y0.tolist(), y1.tolist()]}
 
     return result
 
 
 def rosenbrock(x0, x1, *args, **kwargs):
-    #TODO implement
+    # TODO implement
     return NotImplementedError

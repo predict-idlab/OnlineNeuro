@@ -26,12 +26,13 @@ function out_struct = fun_wrapper(fname, fun, qp, feat_struct, operator, channel
             fN = fieldNames{i};
             feat_struct.(fN) = qp.(fN);
         end
-        display(feat_struct)
 
         feat_struct = preprocess_struct(feat_struct);
+        %display(feat_struct)
         y = fun(feat_struct);
 
         out_struct = struct();
+        %Saves the entire pulses for later verification.
         out_struct.('full_observations') = fname;
         save(fname, 'y');
 
@@ -55,7 +56,6 @@ function out_struct = fun_wrapper(fname, fun, qp, feat_struct, operator, channel
                 out_struct.('observations') = response;
 
             case 'nerve_block'
-                %Saves the entire pulses for later verification.
                 % Verify this?
                 threshold_ap = -20;
                 % We will assume that leftmost electrode is the generating
@@ -79,11 +79,9 @@ function out_struct = fun_wrapper(fname, fun, qp, feat_struct, operator, channel
                 y_min = min(y.Yp(:,channel));
                 y_max = max(y.Yp(:,channel));
                 response = -(y_max - y_min);
-                out_struct.('full_observations') = fname;
-                %out_struct.('observations') = y.Yp;
+                out_struct.('observations') = response;
 
         end
-
     end
 
 end

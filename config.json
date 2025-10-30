@@ -1,36 +1,36 @@
 {
   "connection_config": {
     "ip": "127.0.0.0",
-    "port": 10005,
-    "Timeout": 20,
+    "port": 10001,
+    "Timeout": 30,
     "ConnectTimeout": 30,
     "SizeLimit": 65536,
     "target": "MATLAB"
   },
   "problem_config": {
-    "experiment": {
-      "name": "EXPERIMENT",
+    "experimentParameters": {
+      "problem_name": "EXPERIMENT",
       "type": "classification/regression",
-      "config_path": "PATH"
+      "config_file": "PATH"
     }
   },
   "model_config": {
-    "type": "VGP",
-    "classification": false,
+    "type": "GP",
     "scale_inputs": true,
     "constrains": false,
     "sparse": false,
     "variational": true,
     "noise_free": true,
     "trainable_likelihood": false,
-    "init_samples":1,
+    "init_samples":15,
     "batch_sampling": false,
     "num_query_points": 1
   },
   "path_config": {
-    "save_path": "./simulations",
+    "save_path": "./results/simulations",
     "benchmark_path": "./benchmarks",
     "axonsim_path": "/home/idlab398/AxonSim-r1-main/",
-    "cajal_path": "/home/idlab398/cajal/"
+    "cajal_path": "/home/idlab398/cajal/",
+    "axonml_path": "/home/idlab398/axonml/"
   }
 }

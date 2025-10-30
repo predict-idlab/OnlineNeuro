@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="../static/css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <title>Live Data Plots</title>
+
+</head>
+<body>
+    <script>
+        // This will be rendered by the server.
+        // If the port is 5000, it will become: const APP_CONFIG = { port: 5000 };
+        const APP_CONFIG = {
+            port: {{ port }}
+        };
+    </script>
+
+    <!-- Left Sidebar -->
+    <div class="sidebar" id="sidebar-left">
+        <div class="sidebar-frame" id="toggle-btn-bar-left">
+            <button class="toggle-btn left-toggle">☰</button>
+        </div>
+        <div class="header">
+            <h2>Problem configuration</h2>
+        </div>
+        <div class="experiments-box">
+            <!-- Dropdown for selecting experiments -->
+            <div class="sidebar-frame" id="exp-selector">
+                <select id="experiment" class="styled-select" onchange="experimentChange()">
+                <option value="">Select Experiment...</option>
+                <!-- Options generated dynamically -->
+                </select>
+            </div>
+
+            <div id="parameters-header-fixed"></div>
+            <div id="parameters-container-num"></div>
+            <div id="parameters-container-fixed"></div>
+            <div id="parameters-container-fixed-pulse"></div>
+
+            <div id="parameters-header-rest"></div>
+            <div id="parameters-container-rest"></div>
+            <div id="parameters-container-variable-pulse"></div>
+
+            <div class="path-inputs">
+                <div class="input-container">
+                    <label for="selectFolder">Save Path:</label>
+                    <button id="selectFolder">Choose Folder</button>
+                    <span id="folderPath">No folder selected</span>
+                </div>
+
+                <div class="input-container">
+                    <input type="file" id="inputFile" accept=".csv, .xlsx, .xls, .json" hidden>
+                    <label for="inputFile">Input File (.csv, .xlsx, .json):</label>
+                    <button id="selectFile">Initial samples</button>
+                    <span id="filePath">No file selected</span>
+                </div>
+            </div>
+
+            <div class="control-box">
+                <button id="startExpermient" onclick="startExperiment()">Start Experiment</button>
+                <button id="checkStatus" onclick="checkStatus()">Check Status</button>
+                <button id="stopExpermient" onclick="stopExperiment()">Stop Experiment</button>
+            </div>
+
+            <canvas id="plotCanvas" width="150" height="150"></canvas>
+            <div id="json-view" ></div>
+        </div>
+
+    </div>
+
+    <!-- Main content -->
+    <div id="spinner" class="spinner"></div>
+    <div class="content" id="iframeContainer"></div>
+
+    <!-- Right Sidebar -->
+    <div class="sidebar-right" id="sidebar-right">
+        <div class="sidebar-frame" id="toggle-btn-bar-right">
+            <button class="toggle-btn right-toggle">☰</button>
+        </div>
+
+        <div class="sidebar-frame" id="models-optim-box">
+            <div class="header">
+                <h2>Model config</h2>
+            </div>
+            <div class="sidebar-frame" id="model-selector">
+                <select id="model" class="styled-select" onchange="modelChange()">
+                <option value="">Select Model...</option>
+                <!-- Options generated dynamically -->
+                </select>
+            </div>
+            <div id="parameters-model"></div>
+
+            <div class="header">
+                <h2>Optimization config</h2>
+            </div>
+            <div id="parameters-optimizer"></div>
+
+        </div>
+    </div>
+    <script src="../static/js/app.js"></script>
+</body>
+</html>

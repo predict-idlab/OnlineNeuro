@@ -14,8 +14,8 @@ function [eval_fun, features, n_targets] = circle_problem(varargin)
     problem_setting = p.Results.problem_setting;
 
     n_targets = 'y';
-    %Default values
 
+    %Default values
     x0=[-1,1];
     x1=[-1,1];
     radius=0.5;

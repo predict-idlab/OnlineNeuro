@@ -8,19 +8,36 @@ function main(json_data)
     %display(json_data)
     data = jsondecode(json_data);
     %display(data.('problem_config'))
-    problem_name = data.('problem_name');
-    problem_type = data.('problem_type');
-    connection_config = data.('connection_config');
-    %Detect if path or configuration was provided
-    problem_config = data.('problem_config');
-    if isstring(problem_config)
-        file_path = fullfile(root_path, problem_config);
-        problem_config = jsondecode(fileread(file_path));
+    if ~isfield(data, 'problem_config')
+        error('No problem configuration provided');
+    end
+    if ~isfield(data, 'connection_config')
+        error('No connection configuration provided');
     end
 
+    problem_config = data.problem_config;
+
+    if isstruct(problem_config) && isfield(problem_config, 'config_file')
+        config_file = problem_config.config_file;
+        % Ensure it's a string or char array
+        if isstring(config_file) || ischar(config_file)
+            file_path = fullfile(root_path, config_file);
+            % Check if the file actually exists
+            if exist(file_path, 'file')
+                problem_config = jsondecode(fileread(file_path));
+                problem_config.('config_file') = config_file; % Retain the config_file field
+            else
+                error('Config file specified in problem_config.config_file does not exist: %s', file_path);
+            end
+        end
+    end
+    display(problem_config.('experimentParameters'))
+    problem_name = problem_config.('experimentParameters').('problem_name');
+    problem_type = problem_config.('experimentParameters').('problem_type');
+    connection_config = data.('connection_config');
+
     fprintf("Verifying port is open \n");
-    % IMPORTANT
-    % Matlab comes with its on C++ libraries which are used Python.
+    % IMPORTANT: Matlab comes with its on C++ libraries which are used Python.
     % If using linux, hide those (or delete) as explained in
     % https://nl.mathworks.com/matlabcentral/answers/1907290-how-to-manually-select-the-libstdc-library-to-use-to-resolve-a-version-glibcxx_-not-found
     cmd = sprintf('fuser %d/tcp', connection_config.port);
@@ -49,14 +66,14 @@ function main(json_data)
 
     switch problem_name
         case 'circle_classification'
-            [eval_fun, eval_dict] = circle_problem('plot',true);
+            [eval_fun, eval_dict] = circle_problem('plot', true);
         case 'rose_regression'
-            [eval_fun, eval_dict] = rosenbrock_problem('plot',true);
+            [eval_fun, eval_dict] = rosenbrock_problem('plot', true);
         case 'vlmop2'
             %TODO fix this
-            [eval_fun, eval_dict] = multiobjective_problem('plot',true);
+            [eval_fun, eval_dict] = multiobjective_problem('plot', true);
         case {'axonsim_single', 'axonsim_double', 'axonsim_regression','axon_threshold','axonsim_nerve_block'}
-            [eval_fun, eval_dict] = axon_problem(problem_config,'plot', false);
+            [eval_fun, eval_dict] = axon_problem(problem_config.('experimentParameters'),'plot', false);
             n_features = fieldnames(eval_dict);
         otherwise
             warning('Unexpected problem type, defaulting to Rosenbrock')
