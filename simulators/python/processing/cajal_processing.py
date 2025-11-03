@@ -16,6 +16,85 @@ if CAJAL_AVAILABLE:
     from cajal.nrn.monitors import StateMonitor
     from cajal.units import ms
 
+    def calculate_delay(
+        v_rec: StateMonitor,
+        node: int,
+        stim_time: float = 0.0,
+        threshold: float = -20.0,
+        abs_diff: bool = False,
+    ):
+        """Calculates the delay of the first action potential at a specific node.
+
+        This function finds the first time the recorded voltage `v` at a given `node`
+        crosses a specified `threshold`. The delay is calculated relative to a
+        `stim_time`. It also counts the total number of action potentials (APs)
+        detected in the signal.
+
+        Parameters
+        ----------
+        v_rec : StateMonitor
+            An instance of a monitor (like Brian2's StateMonitor) from which
+            voltage (`.v`) and time (`.t`) arrays can be extracted.
+        node : int
+            The index of the node or neuron where the propagation is measured.
+        stim_time : float, optional
+            The time at which the stimulus was applied. The delay is calculated as
+            (arrival_time - stim_time). Defaults to 0.0.
+        threshold : float, optional
+            The voltage threshold (in mV) that defines the arrival of an
+            action potential. Defaults to -20.0.
+        abs_diff : bool, optional
+            If True, the absolute value of the delay is returned. Defaults to False.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the results with the following keys:
+            'delay' : float
+                The calculated delay in seconds. Returns `np.inf` if the threshold
+                is never crossed.
+            'num_aps' : int
+                The total number of action potentials (rising threshold crossings)
+                detected at the node.
+        """
+        result = {
+            "delay": np.inf,
+            "num_aps": 0,
+        }
+
+        # Ensure the node is valid to prevent IndexError
+        if node >= v_rec.v.shape[0]:
+            # Or raise an error, depending on desired behavior
+            return result
+
+        v = v_rec.v[node, :]
+        t = v_rec.t
+
+        # Find all indices where voltage is above threshold
+        above_threshold_indices = np.where(v > threshold)[0]
+
+        # If the threshold is never crossed, return the default values
+        if len(above_threshold_indices) == 0:
+            return result
+
+        # Find the index of the first crossing
+        first_arrival_idx = above_threshold_indices[0]
+
+        # Calculate the number of APs by counting rising edges (False -> True crossings)
+        as_bool = (v > threshold).astype(int)
+        upward_crossings = np.diff(as_bool) == 1
+        result["num_aps"] = np.sum(upward_crossings)
+
+        # Calculate delay based on the time of the first arrival
+        delay = t[first_arrival_idx] - stim_time
+
+        if abs_diff:
+            delay = np.abs(delay)
+
+        result["delay"] = delay
+
+        return result
+
     def nerve_block_condition(ap_monitor_left, ap_monitor_right, verbose=True):
         """
         # Blocking definition 1:
