@@ -11,6 +11,10 @@ import numpy as np
 from trieste.space import Box
 from trieste.types import TensorType
 
+from .matlab_utils import run_matlab
+
+__all__ = ["run_matlab"]
+
 
 class CustomBox(Box):
     """Superclass of trieste.spae.Box to handle different sampling methods
@@ -32,19 +36,24 @@ class CustomBox(Box):
         sampling_method: str = "sobol",
     ) -> TensorType:
         if sampling_method == "random":
-            return self.sample(num_samples, seed)
+            x = self.sample(num_samples, seed)
         elif sampling_method == "halton":
-            return self.sample_halton(num_samples, seed)
+            x = self.sample_halton(num_samples, seed)
         elif sampling_method == "sobol":
-            return self.sample_sobol(num_samples, skip)
+            x = self.sample_sobol(num_samples, skip)
         elif sampling_method == "random_feasible":
-            return self.sample_feasible(num_samples, seed, max_tries)
+            x = self.sample_feasible(num_samples, seed, max_tries)
         elif sampling_method == "halton_feasible":
-            return self.sample_feasible(num_samples, seed, max_tries)
+            x = self.sample_feasible(num_samples, seed, max_tries)
         elif sampling_method == "sobol_feasible":
-            return self.sample_feasible(num_samples, skip, max_tries)
+            x = self.sample_feasible(num_samples, skip, max_tries)
         else:
             raise ValueError(f"Unsupported sampling method: {sampling_method}")
+
+        assert (
+            x is not None
+        ), f"Sampled method {sampling_method} did not return valid samples"
+        return x
 
 
 @DeprecationWarning
@@ -385,51 +394,6 @@ def generate_grids(
     return grid, midpoints_grid
 
 
-# def write_data(client_socket, data):
-#     json_data = json.dumps(data, ensure_ascii=False).encode('utf-8')
-#     try:
-#         client_socket.sendall(json_data)
-#         return {'Message': 'Data sent to server'}
-#     except Exception as e:
-#         msg = e
-#         return {'Message': f'Something went wrong {msg}'}
-
-
-# def receive_data(socket, buffer_size=65536, timeout=300):
-#     """
-#     Receives JSON data over a socket connection.
-#     @param socket: The socket to receive data from.
-#     @param buffer_size: The size of the buffer for each read operation.
-#     @param timeout: Timeout in seconds for receiving data.
-#     @return: Decoded Python object or raises an error.
-#     """
-#     buffer = b''
-#     end_time = time.time() + timeout
-
-#     while time.time() < end_time:
-#         ready_to_read, _, _ = select.select([socket], [], [], 1)
-#         if ready_to_read:
-#             part = socket.recv(buffer_size)
-#             if part:
-#                 buffer += part
-#                 print(len(buffer))
-#                 print(buffer)
-#             # Check for complete JSON message(s) in the buffer
-#             if b'\\n' in buffer:
-#                 messages = buffer.split(b'\\n')
-#                 for message in messages[:-1]:  # Process complete messages
-#                     if message.strip():  # Ignore empty messages
-#                         try:
-#                             return json.loads(message.decode('utf-8').strip())
-#                         except json.JSONDecodeError as e:
-#                             print(f'Error decoding JSON: {e}, Message: {message}')
-
-#                 # Retain incomplete part in the buffer
-#                 buffer = messages[-1]
-
-#     raise TimeoutError('Timeout: No complete JSON message received.')
-
-
 def receive_package(sock, size_lim: int = 65536):
     """
     Receives and decodes a single JSON package from a sock.
@@ -661,7 +625,8 @@ def define_scaler_search_space(
 
     if not lower_bound and not upper_bound:
         scaler_obj = IdentityScaler()
-        return None, scaler_obj, feature_info
+        raise NotImplementedError("No implementation for only categorical problems ")
+        # return None, scaler_obj, feature_info
 
     if scale_inputs:
         num_features = len(lower_bound)
