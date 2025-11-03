@@ -2,6 +2,8 @@
 import argparse
 import io
 import json
+import os
+import signal
 import subprocess
 import threading
 import time
@@ -226,87 +228,88 @@ def prepare_experiment() -> Response | tuple[Response, int]:
     print("Received data for experiment:")
     print(data)
 
-    # if 'experimentParameters' in data:
-    #     for k, v in data['experimentParameters'].items():
-    #         if k not in data.keys():
-    #             if isinstance(v, dict):
-    #                 data['experimentParameters'][k] = [v]
-    #             else:
-    #                 data['experimentParameters'][k] = v
-
-    data = collapse_lists(data)
-
-    if "experiment" in data["experimentParameters"]:
-        exp_orig = data["experimentParameters"]["experiment"]
-        if exp_orig in python_experiments:
-            exp_name = python_experiments[exp_orig]
-        elif exp_orig in matlab_experiments:
-            exp_name = matlab_experiments[exp_orig]
-        else:
-            raise Exception(
-                f"Experiment with such name is not defined {data['experiment']}"
-            )
-        data["experimentParameters"]["problem_name"] = exp_name
-        data["experimentParameters"]["problem_type"] = experiments_types[exp_name]
-    else:
-        keys = list(data["experimentParameters"].keys())
-        raise NotImplementedError(f"No experiment in {keys}")
-
-    print("reformatted experiment:")
-    print(data)
-
-    # TODO this call will be eventually moved to the frontend and not online_neuro
-    port = app.config.get("PORT", DEFAULT_PORT)  # Default to 9000 if not set
-    main_path = str(Path("api") / "experiment_runner.py")
-    base_command = ["python3", main_path]
-
-    if exp_orig in matlab_experiments:
-        connection_payload = {"target": "MATLAB", "port_flask": str(port)}
-    elif exp_orig in python_experiments:
-        connection_payload = {"target": "Python", "port_flask": str(port)}
-    else:
-        raise NotImplementedError
-
-    connection_payload = json.dumps(connection_payload)
-
-    print(data.keys())
-    experiment_params = convert_strings_to_numbers(data.get("experimentParameters", {}))
-    pulse_params = convert_strings_to_numbers(data.get("pulseParameters", {}))
-
-    problem_config_dict = {
-        "experiment_parameters": experiment_params,
-        "pulse_parameters": pulse_params,
-    }
-    prob_load = json.dumps(problem_config_dict)
-
-    model_load = convert_strings_to_numbers(data.get("modelParameters", {}))
-    model_load = json.dumps(model_load)
-
-    command = (
-        base_command
-        + ["--problem_config", prob_load]
-        + ["--connection_config", connection_payload]
-        + ["--model_config", model_load]
-    )
-
     try:
         with process_lock:
-            if process is None:
-                print("Command")
-                print(command)
-                process = subprocess.Popen(
-                    command
-                )  # Start the process with the given command
-                threading.Thread(
-                    target=monitor_process, args=(process,), daemon=True
-                ).start()  # Monitor the process
-                return jsonify({"status": "started", "command": command})
-            else:
+            if process is not None:
                 return jsonify({"status": "already running"})
+
+            if "test_command" in data:
+                command = data["test_command"]
+                print(f"Running in TEST mode with command: {command}")
+            else:
+
+                data = collapse_lists(data)
+
+                if "experiment" in data["experimentParameters"]:
+                    exp_orig = data["experimentParameters"]["experiment"]
+                    if exp_orig in python_experiments:
+                        exp_name = python_experiments[exp_orig]
+                    elif exp_orig in matlab_experiments:
+                        exp_name = matlab_experiments[exp_orig]
+                    else:
+                        raise Exception(
+                            f"Experiment with such name is not defined {data['experiment']}"
+                        )
+                    data["experimentParameters"]["problem_name"] = exp_name
+                    data["experimentParameters"]["problem_type"] = experiments_types[
+                        exp_name
+                    ]
+                else:
+                    keys = list(data["experimentParameters"].keys())
+                    raise NotImplementedError(f"No experiment in {keys}")
+
+                print("reformatted experiment:")
+                print(data)
+
+                port = app.config.get(
+                    "PORT", DEFAULT_PORT
+                )  # Default to 9000 if not set
+                main_path = str(Path("api") / "experiment_runner.py")
+                base_command = ["python3", main_path]
+
+                if exp_orig in matlab_experiments:
+                    connection_payload = {"target": "MATLAB", "port_flask": str(port)}
+                elif exp_orig in python_experiments:
+                    connection_payload = {"target": "Python", "port_flask": str(port)}
+                else:
+                    raise NotImplementedError
+
+                connection_payload = json.dumps(connection_payload)
+                experiment_params = convert_strings_to_numbers(
+                    data.get("experimentParameters", {})
+                )
+                pulse_params = convert_strings_to_numbers(
+                    data.get("pulseParameters", {})
+                )
+
+                problem_config_dict = {
+                    "experiment_parameters": experiment_params,
+                    "pulse_parameters": pulse_params,
+                }
+                prob_load = json.dumps(problem_config_dict)
+
+                model_load = convert_strings_to_numbers(data.get("modelParameters", {}))
+                model_load = json.dumps(model_load)
+
+                command = (
+                    base_command
+                    + ["--problem_config", prob_load]
+                    + ["--connection_config", connection_payload]
+                    + ["--model_config", model_load]
+                )
+
+            preexec_fn = os.setsid if hasattr(os, "setsid") else None
+            process = subprocess.Popen(command, preexec_fn=preexec_fn)
+            # Start the process with the given command
+            threading.Thread(
+                target=monitor_process, args=(process,), daemon=True
+            ).start()  # Monitor the process
+
+            return jsonify({"status": "started", "command": command})
 
     except Exception as e:
         # Handle exceptions
-        print(f"An unexpected error occurred: {e}")  # Optionally log the error
+        print(f"An unexpected error occurred: {e}")  # Optionallfy log the error
         traceback.print_exec()
         return jsonify({"status": "Unexpected error", "error": str(e)}), 500
 
@@ -330,19 +333,49 @@ def stop_experiment() -> Response | tuple[Response, int]:
     global process
     try:
         with process_lock:
-            if process is not None:
-                if process.poll() is None:
+            if process is not None and process.poll() is None:
+                print(f"Attempting to stop process with PID: {process.pid}")
+                try:
+                    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+
+                except ProcessLookupError:
+                    # Process ended
+                    pass
+
+                except AttributeError:
                     process.terminate()
-                    process.wait()  # Ensure the process has finished
-                    process = None
+                    print("Sent SIGTERM to process (Windows fallback)")
+
+                try:
+                    # Waiting for n seconds for shutdown
+                    process.wait(timeout=3)  # Ensure the process has finished
                     return jsonify({"status": "stopped"})
-                else:
+
+                except subprocess.TimeoutExpired:
+                    print("process did not terminate. Forcking kill.")
+                    try:
+                        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                        print("sent SIGKILL to processs")
+                    except ProcessLookupError:
+                        # Process may have ended
+                        pass
+                    except AttributeError:
+                        process.kill()
+                        print("Sent SIGKILL to process (Windows fallback)")
+
+                    process.wait()
                     process = None
-                    return jsonify({"status": "Process had already ended"})
+                    return jsonify({"status": "Forcefully stopped"})
+
+            # Process already ended (shouldn't occur)
+            if process is not None and process.poll() is not None:
+                process = None  # Clearing up
 
             return jsonify({"status": "not running"})
+
     except Exception as e:
         print(f"An unexpected error occurred: {e}")  # Optionally log the error
+        traceback.print_exc()
         return jsonify({"status": "Unexpected error", "error": str(e)}), 500
 
 
