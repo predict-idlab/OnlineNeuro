@@ -13,17 +13,68 @@ from cajal.units import cm, mm, ms, mV, ohm
 from simulators.python.pulses.pulse_definitions import PulseRamp
 
 
-def generate_circular_arc(radius, num_nodes, total_angle):
+def generate_circular_arc(
+    radius,
+    num_nodes,
+    total_angle,
+    plane="xy",
+    center=(0, 0, 0),
+    start_angle=0,
+    degrees=False,
+):
     """
-    TODO (finish this, specify pair of
     Generate positions for a curved axon following a circular arc.
-    Returns:
-    - List of (x, y, z) positions.
+
+    Parameters
+    ----------
+    radius : float
+        Arc radius
+    num_nodes : int
+        Number of discrete nodes
+    total_angle : float
+        Arc angle (radians by default)
+    plane : {"xy", "xz", "yz"}
+        Plane in which to generate the arc
+    center : tuple
+        Center of the circle (cx, cy, cz)
+    start_angle : float
+        Starting angle
+    degrees : bool
+        Interpret angles as degrees
+
+    Returns
+    -------
+    list of (x, y, z)
     """
-    angles = np.linspace(0, total_angle, num_nodes)
-    positions = [
-        (radius * np.sin(theta), radius * (1 - np.cos(theta)), 0) for theta in angles
-    ]
+
+    if degrees:
+        total_angle = np.deg2rad(total_angle)
+        start_angle = np.deg2rad(start_angle)
+
+    angles = np.linspace(start_angle, start_angle + total_angle, num_nodes)
+    cx, cy, cz = center
+
+    positions = []
+    for theta in angles:
+        if plane == "xy":
+            x = cx + radius * np.cos(theta)
+            y = cy + radius * np.sin(theta)
+            z = cz
+        elif plane == "xz":
+            x = cx + radius * np.cos(theta)
+            y = cy
+            z = cz + radius * np.sin(theta)
+        elif plane == "yz":
+            x = cx
+            y = cy + radius * np.cos(theta)
+            z = cz + radius * np.sin(theta)
+        else:
+            raise NotImplementedError(
+                f"plane {plane} is not valid. Select between 'xy', 'xz' and 'yz'"
+            )
+
+        positions.append((x, y, z))
+
     return positions
 
 
@@ -105,7 +156,6 @@ def create_stimulus(
     pos: list[list[float]],
     stimulus_params: list[dict[str, Any]] | dict[str, Any],
     rhoe: float = 500,
-    monitors=None,
     source_type: str = "isotropic",
     **kwargs,
 ):
@@ -264,17 +314,22 @@ def cajal_fun(
         "_".join(k.split("_")[1:]): v for k, v in electrode_params.items()
     }
 
-    stimulus_params = {
-        **{
-            key: value
-            for key, value in all_params.items()
-            if key.startswith("pulse_") or key.startswith("s_")
-        }
+    stimulus_params: dict[int, dict] = dict()
+    flat_params = {
+        k: v
+        for k, v in all_params.items()
+        if k.startswith("pulse_parameters_") or k.startswith("s_")
     }
-    stimulus_params = {
-        "_".join(k.split("_")[1:]): v for k, v in stimulus_params.items()
-    }
-    stimulus_params["fun_type"] = fun_type
+    for key, value in flat_params.items():
+        if key.startswith("pulse_parameters_"):
+            parts = key.split("_")  # ['pulse', 'parameters', '1', 's', 'pw']
+            idx = int(parts[2])  # electrode index
+            name = "_".join(parts[4:])  # 's_pw', 's_amp', etc.
+
+            stimulus_params.setdefault(idx, {})[name] = value
+    stimulus_params_list = [stimulus_params[i] for i in sorted(stimulus_params.keys())]
+    for e, d in enumerate(stimulus_params_list):
+        d["fun_type"] = fun_type[e]
 
     axon_model = create_mrg(**axon_params)
     monitors = create_monitors(axon_model)
@@ -284,14 +339,14 @@ def cajal_fun(
         print("Axon params")
         print(axon_params)
         print("Stimulus params")
-        print(stimulus_params)
+        print(stimulus_params_list)
         print("Electrode params")
         print(electrode_params)
 
     stimulus, pulses = create_stimulus(
         pos=electrode_params["pos"],
         rhoe=electrode_params["rhoe"],
-        stimulus_params=stimulus_params,
+        stimulus_params=stimulus_params_list,
         monitors=monitors,
     )
 
@@ -312,7 +367,15 @@ def cajal_fun(
     else:
         msg = f"Post processing method {post_processing} not implemented"
         raise NotImplementedError(msg)
-    data_package = {"observations": y}
+    # v_rec.t, v_rec.v[MEAS_POSITION,:]
+
+    data_package = {
+        "observations": y,
+        "full_observations": {
+            "time": monitors["state"].t.tolist(),
+            "voltage": monitors["state"].v.tolist(),
+        },
+    }
     # "time": monitors['state'].t.tolist(),
     # "v": monitors['state'].v.tolist(),
     # "pulse_a": pulses[0](monitors['state'].t).tolist(),
