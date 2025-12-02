@@ -1,70 +1,40 @@
 function [eval_fun, features, n_targets] = circle_problem(varargin)
+   % A function that defines a (noisy) circle classification problem.
+   % It accepts name-value pairs for configuration.
+
    % Create an input parser object
     p = inputParser;
 
-    % Define the parameters and their default values
-    addOptional(p, 'plot', false, @(x) islogical(x) || isnumeric(x));
-    addOptional(p, 'problem_setting', false, @(x) isstruct(x));
+    % Define all parameters with their default values and validation functions
+    addParameter(p, 'plot', false, @(x) islogical(x) || isscalar(x));
+    addParameter(p, 'x0', [-1, 1], @(x) isnumeric(x) && numel(x)==2);
+    addParameter(p, 'x1', [-1, 1], @(x) isnumeric(x) && numel(x)==2);
+    addParameter(p, 'radius', 0.5, @(x) isnumeric(x) && isscalar(x) && x > 0);
+    addParameter(p, 'noise', 0.0, @(x) isnumeric(x) && isscalar(x) && x >= 0);
+    addParameter(p, 'center', [0, 0], @(x) isnumeric(x) && numel(x)==2);
 
-    % Parse the input arguments
+    % Parse the input arguments and fill in any missing ones with defaults.
     parse(p, varargin{:});
 
     % Retrieve values after parsing
-    plot_bool = p.Results.plot;
-    problem_setting = p.Results.problem_setting;
+    params = p.Results;
 
     n_targets = 'y';
-
-    %Default values
-    x0=[-1,1];
-    x1=[-1,1];
-    radius=0.5;
-    noise=0.1;
-    center= [0,0];
+    features = struct('x0', params.x0, 'x1', params.x1);
 
     missing_vars = [];
     spec_vars = {'x0','x1','radius','noise','center'};
 
-    if problem_setting
-        for i = 1:length(spec_vars)
-            if ~isfield(problem_setting, spec_vars{i})
-                missing_vars = [missing_vars, spec_vars{i}];
-            end
-        end
-        if ~isempty(missing_vars)
-            warning(['The following variables are missing: ', strjoin(missing_vars, ', '), '. Using default values.']);
-        end
-        if isfield(problem_setting, 'x0')
-            x0 = problem_setting.x0;
-        end
-        if isfield(problem_setting, 'x1')
-            x1 = problem_setting.x1;
-        end
-        if isfield(problem_setting, 'radius')
-            radius = problem_setting.radius;
-        end
-        if isfield(problem_setting, 'noise')
-            noise = problem_setting.noise;
-        end
-        if isfield(problem_setting, 'center')
-            center = problem_setting.center;
-        end
-    else
-        warning('No problem configuration was passed, using default values');
-    end
+    % Define the evaluation function handle using the parsed parameters
+    eval_fun = @(x) calculateCircle(x, params.radius, params.noise, params.center);
 
-    features = struct('x0', x0, 'x1', x1);
-
-    % Define the objective function (Rosenbrock function)
-    eval_fun = @(x) calculateCircle(x, radius, noise, center);
-
-    % Plot the function surface
-    if plot_bool
+    % Plot the function surface if requested
+    if params.plot
         % Define the range for plotting
-        x1_range = linspace(-1, 1, 100);
-        x2_range = linspace(-1, 1, 100);
+        x1_range = linspace(params.x0(1), params.x0(2), 100);
+        x2_range = linspace(params.x1(1), params.x1(2), 100);
 
-        % Generate a grid of points for plotting
+        % Generate a grid of points
         [X1, X2] = meshgrid(x1_range, x2_range);
         Z = zeros(size(X1));
 
@@ -76,14 +46,25 @@ function [eval_fun, features, n_targets] = circle_problem(varargin)
         end
 
         figure;
-        surf(X1, X2, Z);
-        xlabel('x1');
-        ylabel('x2');
-        zlabel('f(x)');
-        title('Circle Function');
+        % Use contourf for a 2D classification problem view
+        contourf(X1, X2, Z, [0.5 0.5]);
+        colormap([0.8 0.8 1; 1 0.8 0.8]); % Blue for inside, Red for outside
+        hold on;
+
+        % Plot the "true" circle boundary
+        theta = linspace(0, 2*pi, 200);
+        xc = params.center(1) + params.radius * cos(theta);
+        yc = params.center(2) + params.radius * sin(theta);
+        plot(xc, yc, 'k--', 'LineWidth', 2);
+
+        axis equal;
+        xlabel('x0');
+        ylabel('x1');
+        title(sprintf('Circle Problem (Radius=%.2f, Noise=%.2f)', params.radius, params.noise));
+        legend('Classification Regions', 'True Boundary');
+        grid on;
         drawnow;
     end
-
 end
 
 function result = calculateCircle(x, radius, noise, center)
