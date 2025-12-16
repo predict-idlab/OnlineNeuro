@@ -6,55 +6,82 @@ from pathlib import Path
 import imageio
 
 
-def natural_key(file: Path):
+def natural_key(file: Path) -> list[int | str]:
     """
-    This function is used to sort filenames in a natural order.
+    Generate a natural sorting key from a filename.
 
-    @param file: Path to the file.
-    @return: list of integers and strings extracted from the filename.
+    Splits the filename into alternating numeric and non-numeric parts so that
+    files like 'file2', 'file10' sort in intuitive order.
 
+    Parameters
+    ----------
+    file : Path
+        The file whose stem will be processed.
+
+    Returns
+    -------
+    List[Union[int, str]]
+        A list containing integers for numeric parts and strings for text parts.
     """
     # Extract numeric parts from the filename
-    return [
-        int(text) if text.isdigit() else text for text in re.split(r"(\d+)", file.stem)
-    ]
+    parts = re.split(r"(\d+)", file.stem)
+    return [int(part) if part.isdigit() else part for part in parts]
 
 
 def generate_animation(
     duration: float = 10,
-    folder_name: str = "figures",
-    save_folder: str = "animations",
+    source_folder: str | Path = "figures",
+    save_folder: str | Path = "animations",
     delete_figures: bool = False,
     loop: int = 0,
-):
+) -> Path:
     """
-    Generate an animation from images in a folder.
-    This function creates a GIF animation from images in a specified folder.
+    Create a GIF animation from all images in a folder.
 
+    Parameters
+    ----------
+    duration : float
+        Duration (in seconds) between frames in the GIF.
+    source_folder : str
+        Folder containing the source image files.
+    save_folder : str
+        Folder where the GIF will be written.
+    delete_figures : bool
+        If True, deletes all images from the folder after saving the GIF.
+    loop : int
+        Number of times the GIF will loop. ``0`` means infinite loop.
 
-    @param duration: float, duration in seconds
-    @param folder_name: path to the image folder.
-    @param save_folder: path to save the animation.
-    @param delete_figures: boolean. Deletes source images after saving.
-    @param loop: Number of loops. Defaults to 0 (infinite).
-    @return:
+    Returns
+    -------
+    Path
+        Path to the created GIF file.
     """
-    folder_path = Path(folder_name)
-    save_path = Path(save_folder) / "animation1.gif"
+    source_folder = Path(source_folder)
+    save_folder = Path(save_folder)
 
-    if not folder_path.exists():
-        folder_path.mkdir(parents=True, exist_ok=True)
+    save_path = save_folder / "animation1.gif"
 
-    filenames = sorted(folder_path.iterdir(), key=natural_key)
+    save_folder.mkdir(parents=True, exist_ok=True)
 
+    filenames = sorted(source_folder.iterdir(), key=natural_key)
+
+    # Read images and append to list
     images = []
     for file in filenames:
         if file.is_file():
-            image = imageio.v2.imread(file)
-            images.append(image)
+            try:
+                image = imageio.v2.imread(file)
+                images.append(image)
+            except Exception as e:
+                print(f"Error reading {file}: {e}")
 
+    if not images:
+        raise ValueError(f"No valid images found in {source_folder}")
+
+    # Save animation
     imageio.mimsave(save_path, images, duration=duration, loop=loop)
 
+    # Optionally, delete the original frames
     if delete_figures:
         for file in filenames:
             try:
@@ -63,44 +90,59 @@ def generate_animation(
             except Exception as e:
                 print(f"Error deleting {file}: {e}")
 
+    return save_path
 
-def parse_arguments():
+
+def parse_arguments() -> argparse.Namespace:
     """
-    Parse command line arguments.
+    Parse command-line arguments for the animation generator.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed command-line arguments.
     """
+
     parser = argparse.ArgumentParser(description="Generate an animation from figures.")
     parser.add_argument(
         "--duration", type=int, default=5, help="Duration of the animation in seconds"
     )
+
     parser.add_argument(
-        "--folder_name",
+        "--source_folder",
         type=str,
         default="figures",
         help="Folder containing figure files",
     )
+
     parser.add_argument(
         "--save_folder",
         type=str,
         default="animations",
         help="Folder to save the animation",
     )
+
     parser.add_argument(
         "--delete_figures",
         action="store_true",
         help="Delete figure files after creating the animation",
     )
+
     parser.add_argument(
         "--loop", type=int, default=0, help="Number of loops (0 for infinite)"
     )
-    args = parser.parse_args()
-    return args
+
+    return parser.parse_args()
 
 
 def main():
+    """CLI entrypoint to generate animations."""
+
     args = parse_arguments()
+
     generate_animation(
         duration=args.duration,
-        folder_name=args.folder_name,
+        source_folder=args.source_folder,
         save_folder=args.save_folder,
         delete_figures=args.delete_figures,
         loop=args.loop,

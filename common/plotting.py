@@ -3,24 +3,29 @@
 import os
 import warnings
 from pathlib import Path
+from typing import Any, Callable
 
 import gpflow
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from matplotlib import cm
+from matplotlib.axes import Axes
 from matplotlib.colors import LinearSegmentedColormap, Normalize
-from matplotlib.figure import Figure
+from matplotlib.figure import Figure, SubFigure
 from mpl_toolkits.mplot3d import axes3d
 from trieste.acquisition.multi_objective.pareto import Pareto
 from trieste.data import Dataset
+from trieste.models.interfaces import ProbabilisticModel
 from trieste.observer import OBJECTIVE
 from trieste.space import SearchSpace
 
-# TODO, change grid resolution to DATAPOINTS
 # TODO update functions for more clarity
 GRID_RESOLUTION = 0.02
+GRID_POINTS_1D = 50  # Number of points for 1D plots
+GRID_POINTS_2D = 20  # Number of points for 2D plots (per dimension)
 
+ScalerType = Any
 # The following line is necessary for Matplotlib to recognize the 3D projection.
 # It is not directly used in the code, so we tell the linter to ignore it.
 axes3d.__dir__  # noqa: F401
@@ -28,7 +33,8 @@ axes3d.__dir__  # noqa: F401
 
 # TODO HV calculation so that previously calculated values are cached
 def custom_cmap() -> LinearSegmentedColormap:
-    """Creates a custom colormap with two colors.
+    """
+    Create a custom colormap with two colors ('C1', 'C0').
 
     Returns:
         A Matplotlib LinearSegmentedColormap.
@@ -40,15 +46,24 @@ def custom_cmap() -> LinearSegmentedColormap:
 
 
 def save_figure(
-    fig: Figure, save_path: str | Path, dpi: int = 300, save_svg: bool = False
+    fig: Figure | SubFigure,
+    save_path: str | Path,
+    dpi: int = 300,
+    save_svg: bool = False,
 ) -> None:
-    """Save the figure to the specified path.
+    """
+    Save the figure to the specified path and closes it.
 
-    :param fig: The matplotlib figure to save.
-    :param save_path: The file path to save the figure.
-    :param dpi: Dots per inch for the figure. Defaults to 300.
-    :param save_svg: Whether to save the figure as SVG. Defaults to False.
-
+    Parameters
+    ----------
+    fig : Figure | SubFigure
+        The matplotlib figure or subfigure to save.
+    save_path: str | Path
+        The base file path to save the figure (excludes the extensiopn).
+    dpi: int
+        Dots per inch for raster formats (PNG). Defaults to 300.
+    save_svg: bool
+         If True, saves as SVG; otherwise, saves as PNG. Defaults to False.
     """
     save_path = Path(save_path)
 
@@ -61,11 +76,14 @@ def save_figure(
 
     path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(path, dpi=dpi, format=fmt)
-    plt.close(fig)
+    if isinstance(fig, Figure):
+        plt.close(fig)
+    elif isinstance(fig, SubFigure):
+        plt.close(fig.figure)
 
 
 def plot_log_reg(
-    model,
+    model: ProbabilisticModel,
     initial_data: Dataset,
     search_space: SearchSpace,
     scaler=None,
@@ -75,33 +93,56 @@ def plot_log_reg(
     ground_truth_function=None,
     save_dir: str | Path | None = None,
     count: int = 0,
-) -> None:
-    """Plots a 1D logistic regression model.
-
-    Args:
-        model: The Trieste model to plot.
-        initial_data: The initial dataset.
-        search_space: The search space definition.
-        scaler: The data scaler, if used.
-        sampled_data: New data points sampled during optimization.
-        test_data: Data points to evaluate (normally test)
-        plot_ground_truth: Whether to plot the true underlying function.
-        ground_truth_function: The true function to plot, if available.
-        save_dir: The directory to save the figure.
-        count: The current iteration number, used for the filename.
-
+) -> Axes:
     """
+    Plots a 1D logistic regression model with mean predictions and uncertainty.
+
+    Parameters
+    ----------
+    model : ProbabilisticModel
+        The ProbabilisticModel (trieste) model interface to plot predictions from.
+    initial_data : trieste.data.Dataset
+        The initial dataset (query points and observations).
+    search_space : trieste.space.SearchSpace
+        The search space definition, used for defining plot limits.
+    scaler : ScalerType, optional
+        Data scaler used, if any.
+    sampled_data : trieste.data.Dataset, optional
+        New data points sampled during optimization (acquisition results).
+    test_data : trieste.data.Dataset, optional
+        Data points used for evaluation (e.g., test set prediction).
+    plot_ground_truth : bool, optional
+        Whether to plot the true underlying function. Defaults to False.
+    ground_truth_function : Callable, optional
+        The true function to plot, if available. Must accept (X, noise=0).
+    save_dir : str or pathlib.Path, optional
+        The directory to save the figure.
+    count : int, optional
+        The current iteration number, used for the filename. Defaults to 0.
+
+    Raises
+    ------
+    ValueError
+        If `plot_ground_truth` is True but `ground_truth_function` is None.
+    """
+
     if plot_ground_truth and ground_truth_function is None:
         raise ValueError(
             "ground_truth_function must be provided if plot_ground_truth is True."
         )
+    ndims = initial_data.query_points.numpy().squeeze().ndim
+    if ndims > 1:
+        ValueError(f"plot_log_reg expects 1-dimensional inputs, received {ndims}")
+
+    X_init = np.atleast_2d(initial_data.query_points.numpy().squeeze())
+    Y_init = np.atleast_2d(initial_data.observations.numpy().squeeze())
 
     fig, ax = plt.subplots(figsize=(6, 3))
 
     # Plot initial data
     ax.plot(
-        initial_data[0].to_numpy()[:, 0],
-        initial_data[1].to_numpy()[:, 0],
+        X_init[:, 0],
+        Y_init[:, 0],  # By default the first feature
         "ro",
         mew=2,
         label="Initial samples",
@@ -109,38 +150,61 @@ def plot_log_reg(
 
     # Plot ground truth if available
     if plot_ground_truth and ground_truth_function:
-        x_min = search_space._lower.numpy()
-        x_max = search_space._upper.numpy()
-        x = np.linspace(x_min, x_max, num=50)
-        mean = ground_truth_function(x, noise=0)
-        ax.plot(x, mean, color="k", linestyle="--", label="Ground truth")
+        x_min = search_space.lower.numpy().squeeze()
+        x_max = search_space.upper.numpy().squeeze()
+        x_plot = np.linspace(x_min, x_max, num=GRID_POINTS_1D).reshape(-1, 1)
+
+        mean = ground_truth_function(x_plot, noise=0)
+
+        ax.plot(x_plot, mean, color="k", linestyle="--", label="Ground truth")
 
     if sampled_data:
-        mean, var = model.predict(sampled_data[0])
-        ax.plot(sampled_data[0][:, 0], mean, "rx", mew=2, label="Sampled points")
-
-    if test_data:
-        mean, var = model.predict_y(test_data[0])
-        ax.plot(test_data[0][:, 0], mean, "C0", lw=2, label="Test points")
-        ax.fill_between(
-            test_data[0][:, 0],
-            mean[:, 0] - 2 * np.sqrt(var[:, 0]),
-            mean[:, 0] + 2 * np.sqrt(var[:, 0]),
-            color="C0",
-            alpha=0.2,
-            label="Uncertainty (test)",
-        )
-
-    iv = getattr(model, "inducing_variable", None)
-    if iv is not None:
-        ind_preds, _ = model.predict_y(iv.Z)
+        X_sampled = sampled_data.query_points
+        mean, _ = model.predict(X_sampled)
         ax.plot(
-            iv.Z.numpy()[:, 0],
-            ind_preds.numpy(),
+            X_sampled.numpy().squeeze(),
+            mean.numpy().squeeze(),
             "rx",
             mew=2,
-            label="Inducing variables",
+            label="Sampled acquisition points",
         )
+
+    if test_data:
+        X_test = test_data.query_points
+        mean, var = model.predict_y(X_test)
+
+        X_test_np = X_test.numpy().squeeze()
+        mean_np = mean.numpy().squeeze()
+        std_np = np.sqrt(var.numpy().squeeze())
+
+        # Sort for proper filling
+        sort_idx = np.argsort(X_test_np)
+        X_test_np = X_test_np[sort_idx]
+        mean_np = mean_np[sort_idx]
+        std_np = std_np[sort_idx]
+
+        ax.plot(X_test_np, mean_np, "C0", lw=2, label="Test prediction mean")
+        ax.fill_between(
+            X_test_np,
+            mean_np - 2 * std_np,
+            mean_np + 2 * std_np,
+            color="C0",
+            alpha=0.2,
+            label="Uncertainty (2 std)",
+        )
+
+    if hasattr(model.model, "inducing_variable"):
+        iv = model.model.inducing_variable
+        if hasattr(iv, "Z"):
+            Z = iv.Z
+            ind_preds, _ = model.predict_y(Z)
+            ax.plot(
+                Z.numpy().squeeze(),
+                ind_preds.numpy().squeeze(),
+                "kx",
+                mew=2,
+                label="Inducing variables",
+            )
 
     ax.set_ylim(-0.5, 1.5)
     ax.set_xlabel("X")
@@ -152,30 +216,47 @@ def plot_log_reg(
         save_dir = Path(save_dir)
         save_figure(fig, save_dir / f"plot_{count:02d}")
 
+    return ax
 
-def plot_circle(
-    model,
+
+def plot_2d_classification(
+    model: ProbabilisticModel,
     initial_data: Dataset,
     search_space: SearchSpace,
-    scaler,
-    test_data=None,
-    sampled_data=None,
-    plot_ground_truth=None,
-    ground_truth_function=None,
+    scaler: ScalerType = None,
+    test_data: Dataset | None = None,
+    sampled_data: Dataset | None = None,
+    plot_ground_truth: bool = False,
+    ground_truth_function: Callable | None = None,
     save_dir: str | Path | None = None,
     count: int = 0,
 ):
     """
-    @param model:
-    @param initial_data:
-    @param search_space_pipe:
-    @param test_data:
-    @param sampled_data:
-    @param plot_ground_truth:
-    @param ground_truth_function:
-    @param save_dir:
-    @param count:
-    @return:
+    Plots a 2D input Gaussian Process Classification model
+    showing the probability surface P(y=1) in 3D projection.
+
+    Parameters
+    ----------
+    model : ProbabilisticModel
+        The ProbabilisticModel (Trieste) model interface.
+    initial_data : trieste.data.Dataset
+        The initial dataset.
+    search_space : trieste.space.SearchSpace
+        The search space definition.
+    scaler : ScalerType, optional
+        Data scaler used, if any.
+    test_data : trieste.data.Dataset, optional
+        Test data points and their predictions.
+    sampled_data : trieste.data.Dataset, optional
+        New data points sampled during optimization.
+    plot_ground_truth : bool, optional
+        Whether to plot the true underlying classification boundary.
+    ground_truth_function : Callable, optional
+        The true classification boundary function (must return probabilities).
+    save_dir : str or pathlib.Path, optional
+        Directory to save figure.
+    count : int, optional
+        Iteration count.
     """
 
     if plot_ground_truth:
@@ -188,486 +269,618 @@ def plot_circle(
     x_max = search_space._upper.numpy()
 
     xx, yy = np.meshgrid(
-        np.arange(x_min[0], x_max[0] + GRID_RESOLUTION, GRID_RESOLUTION),
-        np.arange(x_min[1], x_max[1] + GRID_RESOLUTION, GRID_RESOLUTION),
+        np.linspace(x_min[0], x_max[0], GRID_POINTS_2D),
+        np.linspace(x_min[1], x_max[1], GRID_POINTS_2D),
     )
 
-    if scaler:
-        xx_unscaled = scaler.inverse_transform_mat(xx, 0)
-        yy_unscaled = scaler.inverse_transform_mat(yy, 1)
-    else:
-        xx_unscaled = xx
-        yy_unscaled = yy
+    X_grid = np.c_[xx.ravel(), yy.ravel()]
+    mean, _ = model.predict_y(tf.cast(X_grid, tf.float64))
 
-    mean, _ = model.predict_y(np.c_[xx.ravel(), yy.ravel()])
-    Z = gpflow.likelihoods.Bernoulli().invlink(mean).numpy().squeeze()
-    Z = Z.reshape(xx.shape)
+    try:
+        likelihood = model.model.likelihood
+        if isinstance(likelihood, gpflow.likelihoods.Bernoulli):
+            Z_prob = likelihood.invlink(mean).numpy().squeeze()
+        else:
+            Z_prob = mean.numpy().squeeze()
+    except AttributeError:
+        Z_prob = mean.numpy().squeeze()
 
-    if scaler:
-        ax.plot_surface(xx_unscaled, yy_unscaled, Z, cmap=cm.coolwarm)
-    else:
-        ax.plot_surface(xx, yy, Z, cmap=cm.coolwarm)
+    Z = Z_prob.reshape(xx.shape)
+
+    ax.plot_surface(xx, yy, Z, cmap=cm.coolwarm, alpha=0.8)
 
     # Highlighting initial data points
-    x = initial_data[0].to_numpy()
-    locs = (initial_data[1] == 1).to_numpy().squeeze()
+    X_init = initial_data.query_points.numpy()
+    Y_init = initial_data.observations.numpy().squeeze()
 
-    ax.scatter(x[locs, 0], x[locs, 1], marker="o", c="k", label="Train-pos")
-    ax.scatter(x[~locs, 0], x[~locs, 1], marker="x", c="k", label="Train-neg")
+    # Highlighting initial data points
+    locs = Y_init == 1
 
-    # Plotting the data that has been sampled ~ Without the "observed" labels
-    if len(sampled_data) > 0:
+    ax.scatter(
+        X_init[locs, 0],
+        X_init[locs, 1],
+        Y_init[locs],
+        marker="o",
+        c="k",
+        label="Train-pos",
+    )
+    ax.scatter(
+        X_init[~locs, 0],
+        X_init[~locs, 1],
+        Y_init[~locs],
+        marker="x",
+        c="k",
+        label="Train-neg",
+    )
+
+    # Plotting the sampled data
+    if sampled_data and len(sampled_data.query_points) > 0:
+        X_sampled = sampled_data.query_points.numpy()
+
+        # Get predictions for height visualization
+        mean_sampled, _ = model.predict_y(sampled_data.query_points)
+        Y_sampled_pred = mean_sampled.numpy().squeeze()
+
         ax.scatter(
-            sampled_data[0].to_numpy()[:, 0],
-            sampled_data[0].to_numpy()[:, 1],
-            marker="x",
+            X_sampled[:, 0],
+            X_sampled[:, 1],
+            Y_sampled_pred,
+            marker="*",
             c="r",
-            label="Sampled datapoints",
+            label="Sampled acquisition points",
         )
+        # Plotting the ground truth boundary
+    if plot_ground_truth and ground_truth_function is not None:
+        Z_gt = ground_truth_function(X_grid)
+        Z_gt = Z_gt.reshape(xx.shape)
 
-    # Plotting the ground truth
-    if plot_ground_truth:
-        if scaler:
-            Z = ground_truth_function(np.c_[xx_unscaled.ravel(), yy_unscaled.ravel()])
-        else:
-            Z = ground_truth_function(np.c_[xx.ravel(), yy.ravel()])
-
-        Z = Z.reshape(xx.shape)
-        ax.contour(xx, yy, Z, colors="k", linestyles="solid", linewidths=1)
+        # Contour Z_gt=0.5 projected slightly below the surface
+        ax.contour(
+            xx,
+            yy,
+            Z_gt,
+            levels=[0.5],
+            colors="k",
+            linestyles="solid",
+            linewidths=2,
+            offset=-0.1,
+        )
 
     # Plotting test samples
     if test_data:
-        mean, var = model.predict_y(test_data[0])
-        mean = gpflow.likelihoods.Bernoulli().invlink(mean).numpy().squeeze()
-        preds = tf.math.round(mean).numpy()
-        bool_ix = (preds > 0).squeeze()
-        col_0 = test_data.columns[0]
-        col_1 = test_data.columns[1]
+        X_test = test_data.query_points
+        X_test_np = X_test.numpy()
 
+        mean, _ = model.predict_y(X_test)
+
+        # Predicted probability and labels
+        likelihood = model.model.likelihood
+        if isinstance(likelihood, gpflow.likelihoods.Bernoulli):
+            Z_test_prob = likelihood.invlink(mean).numpy().squeeze()
+        else:
+            Z_test_prob = mean.numpy().squeeze()
+
+        preds = tf.math.round(Z_test_prob).numpy().astype(bool).squeeze()
+
+        # We plot the prediction probability Z value (height)
         ax.scatter(
-            test_data[0].loc[bool_ix, col_0],
-            test_data[0].loc[bool_ix, col_1],
+            X_test_np[preds, 0],
+            X_test_np[preds, 1],
+            Z_test_prob[preds],
             c="C0",
             marker="o",
-            label="Pos-test",
+            label="Pos-test Prediction",
         )
         ax.scatter(
-            test_data[0].loc[~bool_ix, col_0],
-            test_data[0].loc[~bool_ix, col_1],
+            X_test_np[~preds, 0],
+            X_test_np[~preds, 1],
+            Z_test_prob[~preds],
             c="C1",
             marker="x",
-            label="Neg-test",
+            label="Neg-test Prediction",
         )
 
+    ax.set_xlabel("X1")
+    ax.set_ylabel("X2")
+    ax.set_zlabel("P(Y=1)")
+    ax.set_title("2D Classification Surface Prediction")
     ax.legend()
+
     if save_dir:
         save_dir = Path(save_dir)
         save_figure(fig, save_dir / f"plot_{count:02d}")
 
 
-def plot_surface(
-    model,
+def plot_predictions_2d(
+    model: ProbabilisticModel,
     initial_data: Dataset,
     search_space: SearchSpace,
-    scaler,
-    test_data=None,
-    sampled_data=None,
-    plot_ground_truth=None,
-    ground_truth_function=None,
-    feasible_region=None,
+    scaler: ScalerType | None = None,
+    test_data: Dataset | None = None,
+    sampled_data: Dataset | None = None,
+    plot_ground_truth: bool = False,
+    ground_truth_function: Callable | None = None,
     save_dir: str | Path | None = None,
     count: int = 0,
 ):
     """
-    @param model: Model from Trieste. TODO in some cases this may be a list with single output.
-    @param initial_data:
-    @param search_space_pipe:
-    @param test_data:
-    @param sampled_data:
-    @param plot_ground_truth:
-    @param ground_truth_function:
-    @param feasible_region:
-    @param save_dir:
-    @param count:
-    @return:
+    Plots predictions for a 2D input, 1D output regression task (e.g., Rosenbrock),
+    visualizing the mean prediction surface.
+
+    Parameters
+    ----------
+    model : ProbabilisticModel
+        The Trieste model interface.
+    initial_data : trieste.data.Dataset
+        Initial dataset.
+    search_space : trieste.space.SearchSpace
+        Search space definition.
+    scaler : ScalerType, optional
+        Data scaler (currently unused in core plotting logic).
+    test_data : trieste.data.Dataset, optional
+        Test points and their predictions.
+    sampled_data : trieste.data.Dataset, optional
+        Sampled points from the acquisition function.
+    plot_ground_truth : bool, optional
+        Whether to plot ground truth (not fully implemented).
+    ground_truth_function : Callable, optional
+        The true function.
+    save_dir : str or pathlib.Path, optional
+        Directory to save figure.
+    count : int, optional
+        Iteration count.
+
+    Notes
+    ----------
+        Linting has issues detecting the axes3D type.
+        Ignore the warnings.
     """
     if plot_ground_truth:
         assert callable(ground_truth_function)
 
-    fig = plt.figure()
+    fig = plt.figure(figsize=(8, 8))
     ax1 = fig.add_subplot(111, projection="3d")
     ax = [ax1]
 
-    if search_space:
-        x_min, y_min = search_space._lower.numpy()
-        x_max, y_max = search_space._upper.numpy()
-        xx, yy = np.meshgrid(
-            np.arange(x_min, x_max + GRID_RESOLUTION, GRID_RESOLUTION),
-            np.arange(y_min, y_max + GRID_RESOLUTION, GRID_RESOLUTION),
-        )
-        Z, Zvar = model.predict_y(np.c_[xx.ravel(), yy.ravel()])
-        Z = Z.numpy().squeeze()
-        Z = Z.reshape(xx.shape)
-        Zvar = Zvar.numpy().squeeze()
-        Zvar = Zvar.reshape(xx.shape)
-        ax[0].plot_surface(xx, yy, Z, alpha=0.8)
-        # ax[1].contourf(xx, yy, Zvar, alpha=0.8)
+    x_min, y_min = search_space.lower.numpy()
+    x_max, y_max = search_space.upper.numpy()
 
+    # Generate grid
+    xx, yy = np.meshgrid(
+        np.linspace(x_min, x_max, GRID_POINTS_2D),
+        np.linspace(y_min, y_max, GRID_POINTS_2D),
+    )
+    X_grid = np.c_[xx.ravel(), yy.ravel()]
+
+    # Prediction
+    Z_tf, _ = model.predict_y(tf.cast(X_grid, tf.float64))
+
+    Z = Z_tf.numpy().squeeze()
+    Z = Z.reshape(xx.shape)
+
+    ax[0].plot_surface(xx, yy, Z, alpha=0.8, cmap=cm.viridis)
+
+    # Plot Initial Data
     if initial_data is not None:
+        X_init = initial_data.query_points.numpy()
+        Y_init = initial_data.observations.numpy().squeeze()
         ax[0].scatter(
-            initial_data[0][:, 0],
-            initial_data[0][:, 1],
-            initial_data[1][:, 0],
+            X_init[:, 0],
+            X_init[:, 1],
+            Y_init,
             marker="o",
             c="k",
-            label="Train-pos",
+            label="Initial samples",
+            s=30,
         )
 
-    if feasible_region:
-        # TODO
-        pass
-
+    # Plot Sampled Data
     if sampled_data:
-        y_samps, _ = model.predict_y(sampled_data[0])
+        X_samps = sampled_data.query_points
+        Y_samps, _ = model.predict_y(X_samps)
         ax[0].scatter(
-            sampled_data[0][:, 0],
-            sampled_data[0][:, 1],
-            y_samps,
+            X_samps[:, 0].numpy(),
+            X_samps[:, 1].numpy(),
+            Y_samps[:, 0].numpy(),
             marker="x",
             c="r",
-            label="Sampled-Points",
+            label="Sampled Acquisition Points",
+            s=30,
         )
 
+    # Plot Test Data
     if test_data:
-        mean, var = model.predict_y(test_data[0])
-        # TODO, check if this is correct
-        preds = tf.math.round(mean).numpy()
+        X_test = test_data.query_points
+        Y_test_mean, _ = model.predict_y(X_test)
 
         ax[0].scatter(
-            test_data[0][:, 0],
-            test_data[0][:, 1],
-            preds,
-            c="k",
-            marker="o",
-            label="Samples added",
+            X_test[:, 0].numpy(),
+            X_test[:, 1].numpy(),
+            Y_test_mean[:, 0].numpy(),
+            c="C0",
+            marker="s",
+            s=30,
+            label="Test Predictions",
         )
 
+    ax[0].set_xlabel("X1")
+    ax[0].set_ylabel("X2")
+    ax[0].set_zlabel("Predicted Y")
+    ax[0].set_title("2D Prediction Surface")
     ax[0].legend()
+
     if save_dir:
         save_dir = Path(save_dir)
         save_figure(fig, save_dir / f"plot_{count:02d}")
 
 
-def calculate_reference_point(observations):
+def calculate_reference_point(observations: tf.Tensor) -> tf.Tensor:
     """
-    @param observations:
-    @return:
+    Calculates the reference point for hypervolume calculation based on the Pareto front.
+    (Assumes minimization objectives where the origin is the ideal point).
+
+    The reference point is calculated as the maximum point on the front plus
+    a small buffer based on the front's range.
+
+    Parameters
+    ----------
+    observations : tf.Tensor
+        Tensor of objective observations (N, D).
+
+    Returns
+    -------
+    tf.Tensor
+        The calculated reference point (D,).
     """
     pareto_obj = Pareto(observations)
     front = pareto_obj.front
-    f = tf.math.reduce_max(front, axis=-2) - tf.math.reduce_min(front, axis=-2)
-    ref = tf.math.reduce_max(front, axis=-2) + 2 * f / tf.cast(
-        tf.shape(front)[-2], f.dtype
-    )
+
+    f = tf.math.reduce_max(front, axis=0) - tf.math.reduce_min(front, axis=0)
+
+    N_front = tf.cast(tf.shape(front)[0], f.dtype)
+    ref = tf.math.reduce_max(front, axis=0) + 2 * f / N_front
+
     return ref
 
 
-def log_hv(obs, ref_point):
+def log_hv(obs: tf.Tensor, ref_point: tf.Tensor) -> float:
     """
-    @param obs:
-    @param ref_point:
-    @return:
+    Calculates the log base 10 Hypervolume indicator relative to a reference point.
+
+    Parameters
+    ----------
+    obs : tf.Tensor
+        Tensor of observations (N, D).
+    ref_point : tf.Tensor
+        Reference point tensor (D,).
+
+    Returns
+    -------
+    float
+        log10(Hypervolume).
     """
     obs_hv = Pareto(obs).hypervolume_indicator(ref_point)
     return np.log10(obs_hv)
 
 
 def plot_pareto_2d(
-    model,
+    model: ProbabilisticModel,
     initial_data: Dataset,
     search_space: SearchSpace,
-    scaler,
-    test_data=None,
-    sampled_data=None,
-    plot_ground_truth=None,
-    ground_truth_function=None,
+    scaler: ScalerType | None = None,
+    sampled_data: Dataset | None = None,
+    plot_ground_truth: bool = False,
+    ground_truth_function: Callable | None = None,
     save_dir: str | Path | None = None,
     count: int = 0,
 ):
     """
-    @param model:
-    @param search_space_pipe:
-    @param initial_data:
-    @param test_data:
-    @param sampled_data:
-    @param plot_ground_truth:
-    @param ground_truth_function:
-    @param save_dir:
-    @param count:
-    @return:
+    Plots results for 2D input, 2D output multiobjective optimization.
+
+    This generates a 4-panel figure showing:
+    1. Objective 1 prediction contour (input space).
+    2. Objective 2 prediction contour (input space).
+    3. Pareto front (objective space).
+    4. Hypervolume history over iterations.
+
+    Parameters
+    ----------
+    model : ProbabilisticModel
+        The Trieste model interface (expected to be a model stack).
+    initial_data : trieste.data.Dataset
+        Initial dataset.
+    search_space : trieste.space.SearchSpace
+        Search space definition.
+    scaler : ScalerType, optional
+        Data scaler (currently unused in core plotting logic).
+    sampled_data : trieste.data.Dataset, optional
+        Sampled points from the acquisition function, including observations.
+    plot_ground_truth : bool, optional
+        Whether to plot ground truth (currently unsupported).
+    ground_truth_function : Callable, optional
+        The true function (currently unsupported).
+    save_dir : str or pathlib.Path, optional
+        Directory to save figure.
+    count : int, optional
+        Iteration count.
     """
 
-    if plot_ground_truth:
-        assert callable(ground_truth_function)
-
-    fig, ax = plt.subplots(figsize=(10, 10), ncols=2, nrows=2)
+    fig, ax = plt.subplots(figsize=(12, 10), ncols=2, nrows=2)
     ax = ax.ravel()
 
-    if search_space:
-        x_min, y_min = search_space._lower.numpy()
-        x_max, y_max = search_space._upper.numpy()
-        xx, yy = np.meshgrid(
-            np.arange(x_min, x_max + GRID_RESOLUTION, GRID_RESOLUTION),
-            np.arange(y_min, y_max + GRID_RESOLUTION, GRID_RESOLUTION),
-        )
-        # if isinstance(model, TrainableModelStack):
-        Z, Zvar = model.predict(np.c_[xx.ravel(), yy.ravel()])
-        Z = Z.numpy()
-        Zvar = Zvar.numpy()
-        # else:
-        #    raise Exception("Case not defined (If Not TrainableModelStack")
-        ax[0].contour(xx, yy, Z[:, 0].reshape(*xx.shape), 40, zorder=1, alpha=1)
-        ax[1].contour(xx, yy, Z[:, 1].reshape(*xx.shape), 40, zorder=1, alpha=1)
+    X_init = initial_data.query_points.numpy()
+    Y_init = initial_data.observations.numpy()
 
-    ax[0].scatter(
-        initial_data[0][:, 0],
-        initial_data[0][:, 1],
-        zorder=2,
-        marker="o",
-        c="orange",
-        label="Initial samples",
-    )
-    ax[1].scatter(
-        initial_data[0][:, 0],
-        initial_data[0][:, 1],
-        zorder=2,
-        marker="o",
-        c="orange",
-        label="Initial samples",
-    )
+    X_samp = sampled_data.query_points.numpy() if sampled_data else np.array([])
 
-    if sampled_data:
-        ax[0].scatter(
-            sampled_data[0][:, 0],
-            sampled_data[0][:, 1],
-            zorder=1,
+    # --- Panel 0 & 1: Prediction Contours (in input space) ---
+    x_min, y_min = search_space.lower.numpy()
+    x_max, y_max = search_space.upper.numpy()
+
+    xx, yy = np.meshgrid(
+        np.linspace(x_min, x_max, GRID_POINTS_2D),
+        np.linspace(y_min, y_max, GRID_POINTS_2D),
+    )
+    X_grid = tf.cast(np.c_[xx.ravel(), yy.ravel()], tf.float64)
+
+    assert isinstance(X_grid, tf.Tensor), "X_grid must be a tf.Tensor"
+
+    Z_mean, _ = model.predict(X_grid)
+    Z1 = Z_mean.numpy()[:, 0].reshape(*xx.shape)
+    Z2 = Z_mean.numpy()[:, 1].reshape(*xx.shape)
+
+    ax[0].contourf(xx, yy, Z1, 40, cmap="viridis", zorder=1, alpha=0.8)
+    ax[1].contourf(xx, yy, Z2, 40, cmap="viridis", zorder=1, alpha=0.8)
+
+    # Plot initial and sampled points on contours
+    for a in ax[:2]:
+        a.scatter(
+            X_init[:, 0],
+            X_init[:, 1],
+            zorder=2,
             marker="o",
-            c="red",
-            label="Sampled-data",
+            c="orange",
+            label="Initial samples",
         )
-        ax[1].scatter(
-            sampled_data[0][:, 0],
-            sampled_data[0][:, 1],
-            zorder=1,
-            marker="o",
-            c="red",
-            label="Sampled-data",
-        )
+        if sampled_data:
+            a.scatter(
+                X_samp[:, 0],
+                X_samp[:, 1],
+                zorder=3,
+                marker="D",
+                c="red",
+                label="Sampled point",
+            )
+        a.set_xlabel("X1")
+        a.set_ylabel("X2")
 
-    if test_data:
-        # if isinstance(TrainableModelStack):
-        Z, Zvar = model.predict(test_data[0])
-        Z = Z.numpy()
-        Zvar = Zvar.numpy()
-        # else:
-        #    raise Exception("Case not defined (If Not TrainableModelStack")
-        # TODO, for single models with two outputs the predict may be different, verify this
-        ax[0].scatter(
-            test_data[0][:, 0],
-            test_data[0][:, 1],
-            Z[:, 0],
-            zorder=1,
-            c="k",
-            marker="x",
-            label="Test samples",
-        )
-        ax[1].scatter(
-            test_data[0][:, 0],
-            test_data[0][:, 1],
-            Z[:, 1],
-            zorder=1,
-            c="k",
-            marker="x",
-            label="Test samples",
-        )
+    ax[0].set_title("Objective 1 Prediction Mean")
+    ax[1].set_title("Objective 2 Prediction Mean")
 
-    # TODO, probably a caching would be handy to not have to recompute all the hlv values
-    # TODO. Note: a bit arbitrary how trieste select the ref point, verify if there are other methods. In general
-    # it should be fine as the ref. value doesn't change when comparing vs other models-techniques, or acrros incremental
-    # calculations of the HV
+    # --- Combining observed data for Pareto/HV calculation ---
+    Y_observed = Y_init
+    if sampled_data and sampled_data.observations.shape[0] > 0:
+        Y_observed = np.vstack([Y_init, sampled_data.observations.numpy()])
 
-    Z_init, Zvar_init = model.predict(initial_data[0])
-    Z_samp, Zvar_init = model.predict(sampled_data[0])
+    Y_observed_tf = tf.Tensor(Y_observed, dtype=tf.float64)
 
-    Z_init = Z_init.numpy()
-    Z_samp = Z_samp.numpy()
+    # --- Panel 2: Pareto Front (in objective space) ---
+    front = Pareto(Y_observed_tf).front.numpy()
 
-    Z_stack = np.vstack([Z_init, Z_samp])
+    N_init = len(Y_init)
 
-    front = Pareto(Z_stack).front
     ax[2].scatter(
-        Z_init[:, 0], Z_init[:, 1], c="C0", marker="o", label="Initial \n sample"
+        Y_init[:, 0],
+        Y_init[:, 1],
+        c="C0",
+        marker="o",
+        label=f"Initial Samples (N={N_init})",
     )
-    ax[2].scatter(
-        Z_samp[:, 0], Z_samp[:, 1], c="purple", marker="o", label="Sampled-data"
-    )
-    # Just for the toy problem, other problems have ranges beyond these limits.
+
+    if sampled_data and sampled_data.observations.shape[0] > 0:
+        Y_samp_obs = sampled_data.observations.numpy()
+        ax[2].scatter(
+            Y_samp_obs[:, 0],
+            Y_samp_obs[:, 1],
+            c="purple",
+            marker="D",
+            label="Observed Sampled Points",
+        )
+
+    # Plot Pareto Front line
+    if front.size > 0:
+        order = np.argsort(front[:, 0])
+        sorted_front = front[order]
+        ax[2].plot(
+            sorted_front[:, 0],
+            sorted_front[:, 1],
+            c="r",
+            linestyle="--",
+            label="Estimated Pareto Front",
+        )
+
+    # Set common VLMOP2 limits
     ax[2].set_xlim(0, 1.2)
     ax[2].set_ylim(0, 1.2)
-
-    order = tf.argsort(front[:, 0])
-    sorted_front = tf.gather(front, order).numpy()
-    ax[2].plot(sorted_front[:, 0], sorted_front[:, 1], c="r", label="Pareto front")
-
     ax[2].set_xlabel("Objective #1")
-    ax[2].set_xlabel("Objective #2")
+    ax[2].set_ylabel("Objective #2")
+    ax[2].set_title("Pareto Front in Objective Space")
 
-    ref_point = calculate_reference_point(initial_data[1].to_numpy())
+    # --- Panel 3: Hypervolume History ---
 
-    _idxs = np.arange(1, len(Z_stack) + 1)
-    log_vol = [log_hv(Z_stack[:i, :], ref_point) for i in _idxs]
-    ax[3].plot(_idxs, log_vol, color="C1", label="Neg. Log hypervolume")
-    ax[3].axvline(x=len(initial_data[0]), color="C2", label="Initial samples")
-    ax[3].grid()
-    ax[3].set_xlabel("Data points")
-    ax[3].set_ylabel("Log (HV)")
-    ax[3].grid()
+    ref_point = calculate_reference_point(Y_observed_tf)
 
-    ax[0].legend()
-    ax[1].legend()
+    _idxs = np.arange(1, len(Y_observed) + 1)
+
+    # Calculate cumulative HV
+    log_vol = [log_hv(Y_observed_tf[:i, :], ref_point) for i in _idxs]
+
+    ax[3].plot(_idxs, log_vol, color="C1", label="Log hypervolume (Cumulative)")
+
+    ax[3].axvline(x=N_init, color="C2", linestyle=":", label="End of Initial Samples")
+
+    ax[3].grid(True, linestyle="--")
+    ax[3].set_xlabel("Cumulative Data Points (N)")
+    ax[3].set_ylabel("Log (Hypervolume)")
+    ax[3].set_title("Hypervolume Progress")
+
+    # Final layout adjustments
+    ax[0].legend(loc="upper right")
+    ax[1].legend(loc="upper right")
     ax[2].legend(loc="lower left")
-    ax[3].legend()
+    ax[3].legend(loc="lower right")
 
-    ax[0].set_title("Objective 1")
-    ax[1].set_title("Objective 2")
-    ax[2].set_title("Pareto front")
-    ax[3].set_title("Hypervolume")
-    fig.suptitle(f"Multiobjective optimization Step #{count}")
-    fig.tight_layout()
+    fig.suptitle(f"Multiobjective Optimization Step #{count}", fontsize=14)
+    # fig.tight_layout(rect=[0, 0.03, 1, 0.97])
+
     if save_dir:
         save_dir = Path(save_dir)
         save_figure(fig, save_dir / f"plot_{count:02d}")
 
 
-def plot_nerve_block(
+def plot_classification_2d_slices(
     model,
     initial_data: Dataset,
-    search_space: SearchSpace = None,
-    scaler=None,
-    sampled_data=None,
-    plot_ground_truth=None,
-    ground_truth_function=None,
+    search_space: SearchSpace,
+    scaler: ScalerType = None,
+    sampled_data: Dataset | None = None,
+    plot_ground_truth: bool = False,
+    ground_truth_function: Callable | None = None,
     save_dir: str | Path | None = None,
     count: int = 0,
 ):
     """
-    Nerve_block is a binary output but has more inputs.
-    I implement a simple 2 inputs 1 output plot (similar to circle), in which the first 2 variables
-    are plotted and for the rest the central value of the search_space is taken for the rest of the features.
+    Plots predictions for a high-dimensional binary classification problem showing 2D slices.
 
-    As a side plot, a PCA is included.
+    For each unique pair of input features (X_i, X_j), a 2D contour plot is generated
+    by fixing all other features at the midpoint of the search space.
 
-    @param model:
-    @param initial_data:
-    @param search_space:
-    @param sampled_data:
-    @param plot_ground_truth:
-    @param ground_truth_function:
-    @param save_dir:
-    @param count:
-    @return:
+    Parameters
+    ----------
+    model : ProbabilisticModel
+        The Trieste model interface.
+    initial_data : trieste.data.Dataset
+        The initial dataset.
+    search_space : trieste.space.SearchSpace
+        The search space definition.
+    scaler : ScalerType, optional
+        Data scaler (if used).
+    sampled_data : trieste.data.Dataset, optional
+        New data points sampled during optimization.
+    plot_ground_truth : bool, optional
+        Whether to plot ground truth (currently unsupported).
+    ground_truth_function : Callable, optional
+        The true function (currently unsupported).
+    save_dir : str or pathlib.Path, optional
+        Directory to save figure.
+    count : int, optional
+        Iteration count.
+
+    Warnings
+    --------
+    If `num_vars` < 2, the plot is skipped. Ground truth plotting is complex
+    and currently skipped.
     """
-
     if plot_ground_truth:
         assert callable(ground_truth_function)
 
-    num_vars = len(search_space._lower.numpy())
+    mins_ = search_space.lower.numpy()
+    maxs_ = search_space.upper.numpy()
+    num_vars = len(mins_)
+
+    if num_vars < 2:
+        warnings.warn(
+            "Cannot plot 2D slices for problems with fewer than 2 dimensions."
+        )
+        return
+
+    # Generate unique pairs of indices
     counts = np.arange(num_vars)
-    feat_pairs = {frozenset((a, b)) for a in counts for b in counts if a != b}
-    feat_pairs = [tuple(pair) for pair in feat_pairs]
+    feat_pairs = [(i, j) for i in counts for j in counts if i < j]
     num_feat_pairs = len(feat_pairs)
 
-    fig, ax = plt.subplots(
-        figsize=(num_feat_pairs * 3, 6), ncols=num_feat_pairs, nrows=2
-    )
-    ax = ax.ravel()
+    # Determine layout (max 4 columns)
+    N_COLS = min(num_feat_pairs, 4)
+    N_ROWS = int(np.ceil(num_feat_pairs / N_COLS))
 
-    mins_ = search_space._lower.numpy()
-    maxs_ = search_space._upper.numpy()
+    fig, ax = plt.subplots(figsize=(N_COLS * 5, N_ROWS * 5), ncols=N_COLS, nrows=N_ROWS)
+    ax = np.atleast_1d(ax).ravel()
 
     mean_values = (mins_ + maxs_) / 2
     norm = Normalize(vmin=0, vmax=1)
 
-    for i in range(num_feat_pairs):
-        x_ix = feat_pairs[i][0]
-        y_ix = feat_pairs[i][1]
+    # Data points (in search space coordinates)
+    X_init = initial_data.query_points.numpy()
+    Y_init = initial_data.observations.numpy().squeeze()
+    X_samp = sampled_data.query_points.numpy() if sampled_data else np.array([])
 
+    cmap_binary = custom_cmap()
+
+    for i, (x_ix, y_ix) in enumerate(feat_pairs):
         x_min, y_min = mins_[x_ix], mins_[y_ix]
         x_max, y_max = maxs_[x_ix], maxs_[y_ix]
 
         xx, yy = np.meshgrid(
-            np.arange(x_min, x_max + GRID_RESOLUTION, GRID_RESOLUTION),
-            np.arange(y_min, y_max + GRID_RESOLUTION, GRID_RESOLUTION),
+            np.linspace(x_min, x_max, GRID_POINTS_2D),
+            np.linspace(y_min, y_max, GRID_POINTS_2D),
         )
 
-        x_y_cols = np.c_[xx.ravel(), yy.ravel()]
-        mean_cols = np.ones((x_y_cols.shape[0], mean_values.shape[0])) * mean_values
-        inputs = np.zeros((x_y_cols.shape[0], mean_values.shape[0]))
-        other_ixs = [i for i in range(mean_values.shape[0]) if i not in [x_ix, y_ix]]
-        inputs[:, x_ix] = x_y_cols[:, 0]
-        inputs[:, y_ix] = x_y_cols[:, 1]
-        for ix in other_ixs:
-            inputs[:, ix] = mean_cols[:, ix]
+        # 1. Construct high-D input tensor (other features fixed at mean)
+        X_grid_flat = np.c_[xx.ravel(), yy.ravel()]
+        N_grid = X_grid_flat.shape[0]
 
-        Z, Zvar = model.predict_y(inputs)
-        Z = gpflow.likelihoods.Bernoulli().invlink(Z)
-        Z = Z.numpy()
-        Z = Z.squeeze().reshape(xx.shape)
+        inputs = np.tile(mean_values, (N_grid, 1))
+        inputs[:, x_ix] = X_grid_flat[:, 0]
+        inputs[:, y_ix] = X_grid_flat[:, 1]
 
-        if scaler:
-            xx = scaler.inverse_transform_mat(xx, ix=x_ix)
-            yy = scaler.inverse_transform_mat(yy, ix=y_ix)
+        inputs_tf = tf.cast(inputs, tf.float64)
+
+        # 2. Prediction
+        Z_mean, _ = model.predict_y(inputs_tf)
+        Z_prob = gpflow.likelihoods.Bernoulli().invlink(Z_mean).numpy().squeeze()
+        Z = Z_prob.reshape(xx.shape)
 
         ax[i].contourf(xx, yy, Z, alpha=0.8, cmap=cm.coolwarm, norm=norm)
-        ax[i].set_ylabel(f"feat_{y_ix}")
-        ax[i].set_xlabel(f"feat_{x_ix}")
-        ax[i].set_title(f"{i}")
+        ax[i].set_ylabel(f"Feature {y_ix}")
+        ax[i].set_xlabel(f"Feature {x_ix}")
+        ax[i].set_title(f"Slice: X{x_ix} vs X{y_ix}")
 
-    x = initial_data[0].to_numpy()
-    y = initial_data[1].to_numpy()
+        # 4. Plot Initial Data points
+        ax[i].scatter(
+            X_init[:, x_ix],
+            X_init[:, y_ix],
+            c=Y_init,
+            marker="o",
+            edgecolors="k",
+            s=60,
+            cmap=cmap_binary,
+            zorder=2,
+        )
 
-    if scaler:
-        x = scaler.inverse_transform(x)
-
-    for i in range(num_feat_pairs):
-        x_ix = feat_pairs[i][0]
-        y_ix = feat_pairs[i][1]
-        ax[i].scatter(x[:, x_ix], x[:, y_ix], c=y, marker="*", edgecolors="k", s=60)
-
-    if plot_ground_truth:
-        # TBD
-        msg = "Ground truth not implemented for Nerve block (yet). This may work as a precomputed result"
-        warnings.warn(msg)
-
-    if sampled_data:
-        samp_data = sampled_data[0]
-        if scaler:
-            samp_data = scaler.inverse_transform(samp_data)
-        for i in range(num_feat_pairs):
-            x_ix = feat_pairs[i][0]
-            y_ix = feat_pairs[i][1]
+        # 5. Plot Sampled Data points
+        if X_samp.size > 0:
             ax[i].scatter(
-                samp_data[:, x_ix],
-                samp_data[:, y_ix],
-                c="k",
-                marker="*",
-                s=50,
-                label="Sampled data",
+                X_samp[:, x_ix],
+                X_samp[:, y_ix],
+                c="r",
+                marker="X",
+                s=80,
+                label="Sampled acquisition point",
+                zorder=3,
             )
-        # ax[1].scatter(sampled_data[0][:, x_ix], sampled_data[0][:, y_ix],
-        #               marker='x', c='r', label='Sampled datapoints')
-    # ax[0].legend()
-    fig.tight_layout()
+
+    # Clean up empty subplots
+    for j in range(num_feat_pairs, N_ROWS * N_COLS):
+        if j < len(ax):
+            fig.delaxes(ax[j])
+
+    # Add legend to the first subplot only
+    if len(ax) > 0:
+        ax[0].legend(loc="lower right")
+
+    fig.suptitle(f"Nerve Block 2D Slices Step #{count}", fontsize=14)
+    fig.tight_layout(rect=[0, 0.03, 1, 0.97])
+
     if save_dir:
         save_dir = Path(save_dir)
         save_figure(fig, save_dir / f"plot_{count:02d}")
@@ -722,12 +935,12 @@ def update_plot(
     }
     plot_functions = {
         "log_reg": plot_log_reg,
-        "circle_classification": plot_circle,
-        "axonsim_nerve_block": plot_nerve_block,
-        "rosenbruck": plot_surface,
-        "axon_single": plot_surface,
-        "axon_double": plot_surface,
-        "axon_threshold": plot_surface,
+        "circle_classification": plot_2d_classification,
+        "axonsim_nerve_block": plot_classification_2d_slices,
+        "rosenbruck": plot_predictions_2d,
+        "axon_single": plot_predictions_2d,
+        "axon_double": plot_predictions_2d,
+        "axon_threshold": plot_predictions_2d,
         "vlmop2": plot_pareto_2d,
         "multiobjective": plot_pareto_2d,
     }

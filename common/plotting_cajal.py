@@ -1,4 +1,22 @@
 # common/plotting_cajal.py
+"""
+Plotting utilities for visualizing axonal morphology, electrode placements,
+action-potential propagation, and stimulation waveforms using the Cajal
+neurophysiology simulation library.
+
+This module provides a collection of high-level plotting functions built around:
+    • MRG axon models (from `cajal.nrn.cells.MRG`)
+    • Extracellular point sources (`IsotropicPoint`)
+    • Membrane potential time series recorded via `StateMonitor`
+    • Arbitrary stimulation and blocking waveforms
+
+The functions figures for:
+    - 3D visualization of the axon and electrode placement
+    - 2D and 3D representations of action potential (AP) propagation
+    - Stimulation / blocking waveforms over time
+    - First-spike detection and propagation-delay visualizations
+"""
+
 from pathlib import Path
 from typing import Sequence
 
@@ -6,7 +24,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from cajal.nrn.cells import MRG
 from cajal.nrn.monitors import StateMonitor
-from cajal.nrn.sources import IsotropicPoint
+from cajal.nrn.sources import Point
+from cajal.nrn.stimuli import Stimulus
 from cajal.units import ms
 from matplotlib.axes import Axes
 
@@ -27,14 +46,41 @@ colors = [
 
 def plot_setup_3d(
     mrg: MRG,
-    point_sources: Sequence[IsotropicPoint],
+    point_sources: Sequence[Point],
     labels: list = [],
     figsize: tuple[int, int] = (12, 8),
     dpi: int = 300,
     title: str = "Axon and the Stimulation and Blocking electrode position",
     save_path: str | Path = "",
     save_svg: bool = True,
-) -> None:
+) -> Axes:
+    """
+    Plot a 3D visualization of the MRG axon and (point) electrodes.
+
+    Parameters
+    ----------
+    mrg : MRG
+        The MRG axon model containing spatial 3D node coordinates.
+    point_sources : Sequence[Point]
+        Extracellular point sources to visualize (e.g., electrodes).
+    labels : list[str] or None, optional
+        Labels for each electrode. If omitted, default labels are used.
+    figsize : tuple of int, optional
+        Figure size in inches. Default is (12, 8).
+    dpi : int, optional
+        Image resolution. Default is 300.
+    title : str, optional
+        Title of the plot.
+    save_path : str or Path, optional
+        Destination for saving the figure. If empty, no saving is performed.
+    save_svg : bool, optional
+        Whether to additionally save an SVG version.
+
+    Returns
+    -------
+    Axes
+        The ax containing the visualization.
+    """
 
     # Extract 3D coordinates of axon nodes and convert from um to mm
     node_x = np.array([n.x3d(0) for n in mrg.node]) / 1000.0
@@ -56,7 +102,6 @@ def plot_setup_3d(
 
         # Use provided labels or default to "Electrode"
         label = labels[e] if labels and e < len(labels) else "Electrode"
-
         ax.scatter(x, y, z, color=colors[e], s=80, marker="o", label=label)
 
     # Add axis labels
@@ -75,7 +120,7 @@ def plot_setup_3d(
     if save_path:
         save_figure(fig, save_path, dpi=dpi, save_svg=save_svg)
 
-    plt.show()
+    return ax
 
 
 def plot_progression_AP_2D(
@@ -92,6 +137,39 @@ def plot_progression_AP_2D(
     with_cbar: bool = True,
     invert_y: bool = True,
 ) -> Axes:
+    """
+    Plot a 2D heatmap of action potential propagation along the axon.
+
+    Parameters
+    ----------
+    mrg : MRG
+        The axon model, used to determine the number of nodes.
+    v_rec : StateMonitor
+        State monitor recording membrane potentials over time.
+    vmin, vmax : float, optional
+        Color range for membrane potentials in mV.
+    figsize : tuple of int, optional
+        Size of the figure.
+    dpi : int, optional
+        Resolution in dots-per-inch.
+    ax : matplotlib.axes.Axes or None, optional
+        Existing axes to plot into. If None, a new figure is created.
+    title : str, optional
+        Plot title.
+    save_path : str or Path, optional
+        If provided, saves the figure.
+    save_svg : bool, optional
+        Whether to save an SVG version.
+    with_cbar : bool, optional
+        Whether to display the colorbar.
+    invert_y : bool, optional
+        Whether to invert the y-axis so node 0 appears at the top.
+
+    Returns
+    -------
+    Axes
+        The axes containing the heatmap.
+    """
     V = v_rec.v  # This gives you the membrane potential of all nodes over time
     t = v_rec.t  # This gives you all time points recorded
 
@@ -131,15 +209,40 @@ def plot_progression_AP_2D(
 
 
 def plot_progression_AP_3D(
-    mrg,
-    v_rec,
-    vmin=-120,
-    vmax=70,
+    mrg: MRG,
+    v_rec: StateMonitor,
+    vmin: float = -120.0,
+    vmax: float = 70,
     figsize: tuple[int, int] = (10, 6),
     dpi: int = 300,
     save_path: str | Path = "",
     save_svg: bool = True,
-) -> None:
+) -> Axes:
+    """
+    Plot a 3D surface of membrane potential over time and axon nodes.
+
+    Parameters
+    ----------
+    mrg : MRG
+        Axon model used for node count.
+    v_rec : StateMonitor
+        Recorder holding membrane potential traces.
+    vmin, vmax : float, optional
+        Color limits in mV.
+    figsize : tuple[int, int], optional
+        Size of the figure.
+    dpi : int, optional
+        Resolution of the figure.
+    save_path : str or Path, optional
+        If provided, saves the figure.
+    save_svg : bool, optional
+        Whether to save an SVG copy.
+
+    Returns
+    -------
+    Axes
+        The ax containing the visualization.
+    """
     V = v_rec.v
     t = v_rec.t  # This gives you all time points recorded
 
@@ -176,45 +279,12 @@ def plot_progression_AP_3D(
     if save_path:
         save_figure(fig, save_path, dpi=dpi, save_svg=save_svg)
 
-    plt.show()
-
-
-def plot_stim_and_block(
-    stim,
-    block,
-    v_rec,
-    figsize: tuple[int, int] = (9, 5),
-    dpi: int = 300,
-    save_path: str | Path = "",
-    save_svg: bool = True,
-) -> None:
-
-    t = v_rec.t
-    T = t / ms  # time axes (X-as)
-
-    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
-    ax.plot(T, np.asarray(stim(t=v_rec.t)), label="stimulation")
-    ax.plot(T, np.asarray(block(t=v_rec.t)), label="block")
-    ax.set_xlabel("Time (ms)")
-    ax.set_ylabel("Amplitude (mV)")
-    ax.set_title(
-        f"Electrode waveforms during stimulation; \n Block parameters: Pulse Width: {block.pw}, Amplitude: {block.amp}"
-        f" Delay: {block.delay}"
-    )
-    ax.legend(loc="upper left")
-    ax.grid()
-
-    fig.tight_layout()
-
-    if save_path:
-        save_figure(fig, save_path, dpi=dpi, save_svg=save_svg)
-
-    plt.show()
+    return ax
 
 
 def plot_waveform(
-    waveform,
-    v_rec,
+    waveform: Stimulus,
+    v_rec: StateMonitor,
     label: str,
     ax: Axes | None = None,
     figsize: tuple[int, int] = (9, 5),
@@ -223,7 +293,36 @@ def plot_waveform(
     save_path: str | Path = "",
     save_svg: bool = True,
 ) -> Axes:
+    """
+    Plot a single waveform.
+    Figure returns the ax, so multiple pulses can be added.
 
+    Parameters
+    ----------
+    waveform : callable
+        A function returning waveform values for a given time array.
+    v_rec : StateMonitor
+        Provides the time vector used for evaluation.
+    label : str
+        Legend label.
+    ax : Axes or None, optional
+        Optional axes to draw onto.
+    figsize : tuple[int, int], optional
+        Size of the figure if new axes are created.
+    dpi : int, optional
+        Resolution.
+    title : str, optional
+        Title of the plot.
+    save_path : str or Path, optional
+        Destination to save the figure.
+    save_svg : bool, optional
+        Whether to also save an SVG.
+
+    Returns
+    -------
+    Axes
+        The axes containing the waveform.
+    """
     t = v_rec.t
     T = t / ms  # time axis in ms
     y = np.asarray(waveform(t=v_rec.t))  # waveform values
@@ -246,15 +345,43 @@ def plot_waveform(
 
 
 def plot_first_detection(
-    mrg,
-    v_rec,
-    stim_delay,
-    meas_position,
-    propagation_delay,
+    mrg: MRG,
+    v_rec: StateMonitor,
+    stim_delay: float,
+    meas_position: int,
+    propagation_delay: float,
     figsize=(5, 3),
-    dpi=90,
+    dpi: int = 300,
     title="AP propagation",
 ) -> Axes:
+    """
+    Plot AP progression and annotate first detection of action potential.
+
+    Parameters
+    ----------
+    mrg : MRG
+        Axon model.
+    v_rec : StateMonitor
+        Voltage monitor.
+    stim_delay : float
+        Time at which the stimulation pulse is initiated (ms).
+    meas_position : int
+        Node index where AP detection is measured.
+    propagation_delay : float
+        Time from stimulation to first AP detection (ms).
+    figsize : tuple[int, int], optional
+        Figure size.
+    dpi : int, optional
+        Rendering dpi.
+    title : str, optional
+        Title of the plot.
+
+    Returns
+    -------
+    Axes
+        Axes containing the annotated plot.
+    """
+
     ax = plot_progression_AP_2D(mrg, v_rec, figsize=figsize, dpi=dpi, title=title)
     ax.axvline(stim_delay, color="k", label="Pulse init", linestyle="--")
     ax.axhline(meas_position, color="orange", label="Meas pos.", linestyle=":")
