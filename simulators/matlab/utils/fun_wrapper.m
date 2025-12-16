@@ -28,7 +28,6 @@ function out_struct = fun_wrapper(fname, fun, qp, feat_struct, operator, channel
         end
 
         feat_struct = preprocess_struct(feat_struct);
-        %display(feat_struct)
         y = fun(feat_struct);
 
         out_struct = struct();
@@ -75,7 +74,7 @@ function out_struct = fun_wrapper(fname, fun, qp, feat_struct, operator, channel
                 end
                 out_struct.('observations') = response;
 
-            otherwise % Returning the complete series
+            otherwise % Returning the range
                 y_min = min(y.Yp(:,channel));
                 y_max = max(y.Yp(:,channel));
                 response = -(y_max - y_min);

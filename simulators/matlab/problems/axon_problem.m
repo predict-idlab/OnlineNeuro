@@ -1,73 +1,93 @@
-function [eval_fun, eval_dict] = axon_problem(problem_setting, varargin)
-    % Create an input parser object
+function [eval_fun, eval_dict] = axon_problem(experiment_params, varargin)
+    % Sets up an evaluation function for an AxonSim problem.
+    %
+    % Inputs:
+    %   experiment_params: A struct containing all parameters for the axon simulation.
+    %   varargin: Optional name-value pairs:
+    %     'plot'        - (logical) A flag for plotting (currently unused). Default: false.
+    %     'path_config' - (string|struct) Path to path_config.json or a pre-loaded struct. Default: 'config.json'.
+
+    % 1. Validate the required input
+    if ~isstruct(experiment_params)
+        error('The first argument "experiment_params" must be a struct containing the problem configuration.');
+    end
+
+    % 2 Create an input parser object
     p = inputParser;
-    p.KeepUnmatched = true;  % Optional, to allow unspecified name-value pairs
-    p.PartialMatching = false;  % To avoid ambiguities in argument names
-
-    % Define the parameters and their default values
-    addRequired(p, 'problem_setting', @(x) ischar(x) || isstring(x) || isstruct(x));
-    addParameter(p, 'plot', false, @(x) islogical(x) || isnumeric(x));
+    addParameter(p, 'plot', false, @(x) islogical(x) || isscalar(x));
     addParameter(p, 'path_config', 'config.json', @(x) ischar(x) || isstring(x) || isstruct(x));
-    % Parse the input arguments
-    parse(p, problem_setting, varargin{:});
+    parse(p, varargin{:});
+    % Store parsed optional arguments in a single struct
+    opts = p.Results;
 
-    % Retrieve values after parsing
-    plot = p.Results.plot;
-    problem_setting = p.Results.problem_setting;
-    path_setting = p.Results.path_config;
+    % 3. Load path configuration from its source (file or struct)
+    try
+        path_params = load_config_from_source(opts.path_config);
+    catch ME
+        error('Could not load path configuration: %s', ME.message);
+    end
 
-    % If problem_setting is a string, interpret it as a JSON file path and load the config
-    if ischar(problem_setting) || isstring(problem_setting)
-        try
-            display("Loading problem configuration")
-            experiment_params = jsondecode(fileread(problem_setting));
-        catch
-            error("Configuration file could not be loaded.");
-        end
-    elseif isstruct(problem_setting)% If problem_setting is already a struct, use it directly
-        display("Valid configuration, proceeding")
-        experiment_params = problem_setting;
+    % 4. Set up the environment
+    % Adding axonsim and all its folders to path
+    if isfield(path_params, 'path_config') && isfield(path_params.path_config, 'axonsim_path')
+        addpath(genpath(path_params.path_config.axonsim_path));
     else
-        error('Invalid type for problem_setting. It must be either a string (filename) or a struct.');
+        warning('axonsim_path not found in path configuration. Ensure it is already in the MATLAB path.');
     end
 
-    if ischar(path_setting) || isstring(path_setting)
-        try
-            path_params = jsondecode(fileread(path_setting));
-        catch
-            error("Configuration file could not be loaded.");
-        end
-    elseif isstruct(path_setting)% If path_setting is already a struct, use it directly
-        path_params = path_setting;
-    else
-        error('Invalid type for path_setting. It must be either a string (filename) or a struct.');
-    end
-    %Adding axonsim and all its folders to path
-    addpath(genpath(path_params.path_config.axonsim_path))
+    % --- Main Function Logic ---
 
-    % Plot the function surface
-    if plot
-        disp("AxonSim can't display a plot as the response surface is unknown");
-    end
+    % The evaluation function handle is static
     eval_fun = @axonsim_call;
 
-    fields = fieldnames(experiment_params);
-    eval_dict = struct();
+    % 5. Transform the input parameter struct into the flat format needed by the simulation
+    % This isolates the complex transformation logic into a helper function.
+    eval_dict = flatten_param_struct(experiment_params);
 
-    array_size = experiment_params.('num_electrodes');
-
-    if isstring(array_size)
-        array_size = str2double(array_size);
+    % Post-processing: Handle specific data type conversions if necessary
+    if isfield(eval_dict, 'num_electrodes') && (isstring(eval_dict.num_electrodes) || ischar(eval_dict.num_electrodes))
+        eval_dict.num_electrodes = str2double(eval_dict.num_electrodes);
     end
 
+    % Handle the 'plot' option
+    if opts.plot
+        disp("Note: AxonSim problem type does not currently support response surface plotting.");
+    end
+end
+
+% --- Helper Functions ---
+function flat_struct = flatten_param_struct(s)
+    % Transforms a nested parameter struct into a flat one.
+    % It checks if a field is a struct containing a '.value' field, and if so,
+    % it "unpacks" it. Otherwise, it copies the value directly.
+    flat_struct = struct();
+    fields = fieldnames(s);
+
     for i = 1:length(fields)
-        % Fixed and included in the experiment_params
-        if isfield(experiment_params.(fields{i}), 'value')
-            eval_dict.(fields{i}) = experiment_params.(fields{i}).value;
-            % If it doesn't contain a value then is not part of the problem requirements i.e. booleans passed from the GUI
-            %eval_dict.(fields{i}) = value;
+        fieldName = fields{i};
+        fieldValue = s.(fieldName);
+
+        % Check if the field is a struct and has a 'value' subfield
+        if isstruct(fieldValue) && isfield(fieldValue, 'value')
+            flat_struct.(fieldName) = fieldValue.value;
         else
-            eval_dict.(fields{i}) = experiment_params.(fields{i});
+            % Otherwise, just copy the value as is
+            flat_struct.(fieldName) = fieldValue;
         end
+    end
+end
+
+function config_struct = load_config_from_source(source)
+    % Loads a configuration from a source, which can be a struct or a file path.
+    if isstruct(source)
+        config_struct = source; % It's already a struct, just return it
+        return;
+    elseif ischar(source) || isstring(source)
+        if ~exist(source, 'file')
+            error('Configuration file does not exist: %s', source);
+        end
+        config_struct = jsondecode(fileread(source));
+    else
+        error('Invalid configuration source type. Must be a struct or a file path string.');
     end
 end

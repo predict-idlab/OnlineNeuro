@@ -1,60 +1,32 @@
 function [eval_fun, features, n_targets] = rosenbrock_problem(varargin)
-    % Define the objective function (Modified Rosenbrock function)
-
+    % Define the objective function (Rosenbrock function)
+    % 1. Create and configure the input parser
     p = inputParser;
+    p.KeepUnmatched = true;
 
-    % Define the parameters and their default values
-    addOptional(p, 'plot', false, @(x) islogical(x) || isnumeric(x));
-    addOptional(p, 'problem_setting', false, @(x) isstruct(x));
+    % Define all parameters with their default values and validation functions
+    addParameter(p, 'plot', false, @(x) islogical(x) || isscalar(x));
+    addParameter(p, 'a', 1, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'b', 100, @(x) isnumeric(x) && isscalar(x));
+    addParameter(p, 'x0', [-2, 2], @(x) isnumeric(x) && numel(x)==2);
+    addParameter(p, 'x1', [-1, 3], @(x) isnumeric(x) && numel(x)==2);
 
-    % Parse the input arguments
+    % 2. Parse the input arguments
+    % This will validate inputs and fill in any missing ones with defaults.
     parse(p, varargin{:});
-    plot_bool = p.Results.plot;
-    problem_setting = p.Results.problem_setting;
+    params = p.Results;
 
+    plot_bool = params.plot;
     n_targets = 'y';
-    %Default values
-    a = 1;
-    b = 100;
-    x0 = [-5, 5];
-    x1 = [-5, 5];
 
-    missing_vars = [];
-    spec_vars = {'a','b','x0','x1'};
-
-    if problem_setting
-       for i = 1:length(spec_vars)
-           if ~isfield(problem_setting, spec_vars{i})
-               missing_vars = [missing_vars, spec_vars{i}];
-           end
-       end
-       if ~isempty(missing_vars)
-           warning(['The following variables are missing: ', strjoin(missing_vars, ', '), '. Using default values.']);
-       end
-
-       if isfield(problem_setting, 'a')
-           a = problem_setting.a;
-       end
-       if isfield(problem_setting, 'b')
-           b = problem_setting.b;
-       end
-       if isfield(problem_setting, 'x0')
-           x0 = problem_setting.x0;
-       end
-       if isfield(problem_setting, 'x1')
-           x0 = problem_setting.x1;
-       end
-    else
-        warning('No problem configuration was passed, using default values');
-    end
-    features = struct('x0',x0,'x1',x1);
-    eval_fun =  @(x) rosenbrock_fun(x, a, b);
+    features = struct('x0', params.x0, 'x1', params.x1);
+    eval_fun =  @(x) rosenbrock_fun(x, params.a, params.b);
 
     % Plot the function surface
     if plot_bool
         % Define the range for plotting
-        x1_range = linspace(-5, 5, 100);
-        x2_range = linspace(-5, 5, 100);
+        x1_range = linspace(params.x0(1), params.x0(2), 100);
+        x2_range = linspace(params.x1(1), params.x1(2), 100);
 
         % Generate a grid of points for plotting
         [X1, X2] = meshgrid(x1_range, x2_range);
@@ -72,7 +44,7 @@ function [eval_fun, features, n_targets] = rosenbrock_problem(varargin)
         xlabel('x1');
         ylabel('x2');
         zlabel('f(x)');
-        title('Rosenbrock Function');
+        title(sprintf('Rosenbrock Function (a=%.1f, b=%.1f)', params.a, params.b));
         drawnow;
     end
 

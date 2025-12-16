@@ -4,6 +4,7 @@ function [eval_fun, features, n_targets] = circle_problem(varargin)
 
    % Create an input parser object
     p = inputParser;
+    p.KeepUnmatched = true;
 
     % Define all parameters with their default values and validation functions
     addParameter(p, 'plot', false, @(x) islogical(x) || isscalar(x));
@@ -21,9 +22,6 @@ function [eval_fun, features, n_targets] = circle_problem(varargin)
 
     n_targets = 'y';
     features = struct('x0', params.x0, 'x1', params.x1);
-
-    missing_vars = [];
-    spec_vars = {'x0','x1','radius','noise','center'};
 
     % Define the evaluation function handle using the parsed parameters
     eval_fun = @(x) calculateCircle(x, params.radius, params.noise, params.center);
