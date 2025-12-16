@@ -1,4 +1,7 @@
 # /simulators/python/processing/cajal_processing.py
+import numpy as np
+from cajal.nrn.monitors import APMonitor
+
 try:
     import cajal
 
@@ -57,10 +60,7 @@ if CAJAL_AVAILABLE:
                 The total number of action potentials (rising threshold crossings)
                 detected at the node.
         """
-        result = {
-            "delay": np.inf,
-            "num_aps": 0,
-        }
+        result = {"delay": np.inf, "num_aps": 0}
 
         # Ensure the node is valid to prevent IndexError
         if node >= v_rec.v.shape[0]:
@@ -95,38 +95,178 @@ if CAJAL_AVAILABLE:
 
         return result
 
-    def nerve_block_condition(ap_monitor_left, ap_monitor_right, verbose=True):
+    def ap_block(
+        ap_monitor_stimulus: APMonitor,
+        ap_monitor_block: APMonitor,
+        start_time: float,
+        end_time: float,
+        verbose: bool = False,
+    ) -> int:
         """
-        # Blocking definition 1:
-        # - It verifies if APs are present in a specific time interval (2.1 ms - 2.9 ms) on the left side.
-        # - If an AP is detected on the right side, conduction is not blocked.
-        # - If no APs are found on the left side during the interval, conduction is not blocked.
-        # - Otherwise, conduction is considered blocked.
+        Evaluate whether an action potential (AP) is blocked at a given axon node.
 
-        Args:
-            ap_monitor_left (_type_): _description_
-            ap_monitor_right (_type_): _description_
-            verbose (bool, optional): _description_. Defaults to True.
+        Parameters
+        ----------
+        ap_monitor_stimulus : APMonitor
+            APMonitor recording the stimulus site (start node).
+            Must have methods `.n(t)` returning the number of spikes up to time t,
+            and `.spikes()` returning all spike times.
+        ap_monitor_block : APMonitor
+            APMonitor recording the block site (end node). Must implement `.n(t)` and `.spikes()`.
+        start_time : float
+            Start time of the evaluation window (ms).
+        end_time : float
+            End time of the evaluation window (ms).
+        verbose : bool, optional
+            If True, prints diagnostic information (default is False).
 
-        Returns:
-            _type_: _description_
+        Returns
+        -------
+        int
+            1 if the AP is not blocked (or no AP was generated at the stimulus site),
+            0 if the AP is blocked between start and end nodes.
+
+        Notes
+        -----
+        - Computes the number of APs at the stimulus node before and after the time window,
+        and the number of APs at the block node at the start time.
+        - Logic:
+            * If there is at least one AP at the block node at start_time, AP is considered unblocked.
+            * If there are zero APs at the stimulus node in the time window, return 1 (no AP).
+            * Otherwise, return 0 (AP blocked).
+        """
+        # AP count at the block node at start_time
+        ap_count_end = ap_monitor_block.n(t=start_time)
+
+        # AP counts at the stimulus node
+        ap_count_start_end = ap_monitor_stimulus.n(t=end_time)
+        ap_count_start_start = ap_monitor_stimulus.n(t=start_time)
+
+        # APs generated at stimulus node within [start_time, end_time]
+        ap_count_left = max(ap_count_start_start - ap_count_start_end, 0)
+
+        # All spike times at the block node
+        ap_times_end = ap_monitor_block.spikes()
+
+        if verbose:
+            print(
+                f"Number of APs between {start_time} and {end_time} ms at start node: {ap_count_left}"
+            )
+            print(f"All spike times at end node: {ap_times_end}")
+
+        if ap_count_end > 0:
+            if verbose:
+                print("AP NOT blocked")
+            return 1
+        else:
+            if ap_count_left == 0:
+                if verbose:
+                    print("NO AP at the left side")
+                return 1
+            else:
+                if verbose:
+                    print("AP is blocked")
+                return 0
+
+    def ap_block_2(
+        v_monitor: APMonitor,
+        threshold: float = 20.0,
+        left_node: int = 15,
+        right_node: int = -15,
+        verbose: bool = False,
+    ) -> int:
+        """
+        Determine if an action potential (AP) is blocked based on voltage traces.
+
+        Parameters
+        ----------
+        v_monitor : APMonitor
+            APMonitor object with attribute `.v` containing voltage traces.
+            Expected shape: (time, nodes) or (nodes, time) depending on implementation.
+        threshold : float, optional
+            Voltage threshold for detecting an AP (default is 20 mV).
+        left_node : int, optional
+            Index of the left node to check (default is 15).
+        right_node : int, optional
+            Index of the right node to check (default is -15).
+        verbose : bool, optional
+            If True, prints which block (left or right) is detected (default is False).
+
+        Returns
+        -------
+        int
+            1 if a block is detected, 0 otherwise.
+
+        Notes
+        -----
+        - Computes the maximum voltage at the specified nodes and compares against
+        the threshold.
+        - Logic:
+            * `a` (Right block) is True if left_node exceeds threshold and right_node
+            is below threshold.
+            * `b` (Left block) is True if left_node is below threshold and right_node
+            exceeds threshold.
+            * Returns 1 if either `a` or `b` is True, 0 otherwise.
+        """
+        data = v_monitor.v
+        max_time = np.max(data, axis=0)
+
+        # Right block condition
+        a = (max_time[left_node] > threshold) and (max_time[right_node] < threshold)
+        # Left block condition
+        b = (max_time[left_node] < threshold) and (max_time[right_node] > threshold)
+
+        if verbose:
+            if a:
+                print("Right block")
+            if b:
+                print("Left block")
+        return int(a or b)
+
+    def nerve_block_condition(
+        ap_monitor_left: StateMonitor,
+        ap_monitor_right: StateMonitor,
+        start_time_left: float,
+        end_time_left: float,
+        start_time_right: float,
+        end_time_right: float,
+        verbose: bool = True,
+    ):
+        """
+        Determine whether a nerve conduction block occurred (blocking definition 1).
+            - It verifies if APs are present in a specific time interval (2.1 ms - 2.9 ms) on the left side.
+            - If an AP is detected on the right side, conduction is not blocked.
+            - If no APs are found on the left side during the interval, conduction is not blocked.
+            - Otherwise, conduction is considered blocked.
+
+        Parameters
+        ----------
+        ap_monitor_left : StateMonitor
+            AP monitor for the left fiber.
+        ap_monitor_right : StateMonitor
+            AP monitor for the right fiber.
+        verbose : bool, optional
+            Whether to print debug information (default True).
+
+        Returns
+        -------
+        int
+            0 if conduction not blocked, 1 if blocked.
         """
 
         # Check if there is an AP on the left side between specific interval
-        start_time_left = 2.1 * ms
-        end_time_left = 2.9 * ms
+        start_time_left = start_time_left * ms
+        end_time_left = end_time_left * ms
+        # Allow AP at the right side but not in the interval of when the stimulation pulse should arrive
+        # Calculate the number of APs between start_time and end_time at the right side
+        # don't allow blocking because of refractory period so set start earlier
+        start_time_right = start_time_right * ms
+        end_time_right = end_time_right * ms
 
         # Check the number of APs between start_time and end_time at the left side
         ap_count_left_end = ap_monitor_left.n(t=end_time_left)
         ap_count_left_start = ap_monitor_left.n(t=start_time_left)
         ap_count_left = ap_count_left_start - ap_count_left_end
-
-        # Allow AP at the right side but not in the interval of when the stimulation pulse should arrive
-        # Calculate the number of APs between start_time and end_time at the right side
-        start_time_right = (
-            1.4 * ms
-        )  # don't allow blocking because of refractory period so set start earlier
-        end_time_right = 3.8 * ms
 
         ap_count_right_end = ap_monitor_right.n(t=end_time_right)
         ap_count_right_start = ap_monitor_right.n(t=start_time_right)
@@ -136,109 +276,15 @@ if CAJAL_AVAILABLE:
 
         if verbose:
             print(
-                f"Number of APs between {start_time_left} and {end_time_left} ms at the left side: {ap_count_left}"
+                f"Left APs between {start_time_left} and {end_time_left}: {ap_count_left}"
             )
-            print(f"All spike times at the right side: {ap_times_end}")
-
+            print(f"All right AP times: {ap_times_end}")
             if ap_count_right > 0:
-                print("There is AP on the right side")
+                print("AP detected on right side")
             elif ap_count_left == 0:
-                print("NO AP at the left side")
+                print("No AP at left side")
             else:
-                print("AP IS BLOCKED!!")
-
-        if ap_count_right > 0 or ap_count_left == 0:
-            return 1
-
-        return 0
-
-    def nerve_block_condition_2(ap_monitor_left, ap_monitor_right, verbose=True):
-        """_summary_
-        # Blocking definition 2:
-        # - Checks for APs at the start node in the interval.
-        # - If an AP is present on the right side, conduction is not blocked.
-        # - If no APs are present at the left start node in the interval, conduction is not blocked.
-        # - Otherwise, conduction is blocked.
-
-        Args:
-            ap_monitor_left (_type_): _description_
-            ap_monitor_right (_type_): _description_
-            verbose (bool, optional): _description_. Defaults to True.
-
-        Returns:
-            _type_: _description_
-        """
-
-        ap_count_right = ap_monitor_right.n(t=0 * ms)
-
-        start_time = 2.1 * ms
-        end_time = 2.9 * ms
-
-        # Calculate the number of APs between start_time and end_time at the start node
-        ap_count_left_end = ap_monitor_left.n(t=end_time)
-        ap_count_left_start = ap_monitor_left.n(t=start_time)
-        ap_count_left = ap_count_left_start - ap_count_left_end  # Never less than zero
-
-        ap_times_end = ap_monitor_right.spikes()
-
-        if verbose:
-            print(
-                f"Number of APs between {start_time} and {end_time} ms at start node: {ap_count_left}"
-            )
-            print(f"All spike times at end node: {ap_times_end}")
-
-            if ap_count_right > 0:
-                print("There is AP on the right side")
-            elif ap_count_left == 0:
-                print("NO AP at the left side")
-            else:
-                print("AP IS BLOCKED!!")
-
-        if ap_count_right > 0 or ap_count_left == 0:
-            return 1
-
-        return 0
-
-    def nerve_block_condition_3(ap_monitor_left, ap_monitor_right, verbose=True):
-        """_summary_
-        # Blocking definition 3:
-        #  Same as defination 2 but allow an AP on the right side before stimulation
-
-        Args:
-            ap_monitor_left (_type_): _description_
-            ap_monitor_right (_type_): _description_
-            verbose (bool, optional): _description_. Defaults to True.
-
-        Returns:
-            _type_: _description_
-        """
-
-        # Allow AP at the right side only in the beginning
-        ap_count_right = ap_monitor_right.n(t=1.1 * ms)
-
-        # Check if there is an AP on the left side between specific interval
-        start_time = 2.1 * ms
-        end_time = 2.9 * ms
-
-        # Calculate the number of APs between start_time and end_time at the start node
-        ap_count_left_end = ap_monitor_left.n(t=end_time)
-        ap_count_left_start = ap_monitor_left.n(t=start_time)
-        ap_count_left = ap_count_left_start - ap_count_left_end  # Never less than zero
-
-        ap_times_end = ap_monitor_right.spikes()
-
-        if verbose:
-            print(
-                f"Number of APs between {start_time} and {end_time} ms at start node: {ap_count_left}"
-            )
-            print(f"All spike times at end node: {ap_times_end}")
-
-            if ap_count_right > 0:
-                print("There is AP on the right side")
-            elif ap_count_left == 0:
-                print("NO AP at the left side")
-            else:
-                print("AP IS BLOCKED!!")
+                print("AP is blocked!")
 
         if ap_count_right > 0 or ap_count_left == 0:
             return 1
@@ -246,21 +292,31 @@ if CAJAL_AVAILABLE:
         return 0
 
     def get_ap_directional(
-        binary_array, min_nodes_for_ap_start=1, y_propagation_threshold=1
-    ):
+        binary_array: np.ndarray,
+        min_nodes_for_ap_start: int = 1,
+        y_propagation_threshold: int = 1,
+    ) -> list[dict]:
         """
+        Detect action potentials (APs) and calculate directional propagation lines.
+
         Identifies APs and provides line coordinates for "upward" propagation from its
         initial min-y extent and "downward" propagation from its initial max-y extent.
         Lines are only generated if significant y-propagation occurs in that direction.
         Lines extend to the end of any plateau at the maximum y-excursion for that specific front's envelope.
 
-        Args:
-            binary_array (np.array): 2D boolean or int (0/1) array.
-            min_nodes_for_ap_start (int): Minimum y-span at AP start.
-            y_propagation_threshold (int): Min change in y for propagation to be considered significant.
+        Parameters
+        ----------
+        binary_array : np.ndarray
+            2D array of shape (nodes, time), with 1 for AP presence and 0 otherwise.
+        min_nodes_for_ap_start : int
+            Minimum y-span at AP start to consider it significant (default 1).
+        y_propagation_threshold : int
+            Minimum y-change to consider as propagation (default 1).
 
-        Returns:
-            list: Dictionaries for each AP:
+        Returns
+        -------
+        list of dict:
+            Dictionaries for each AP:
                 - 'label', 'component_start_time', 'component_end_time' (overall component)
                 - 'y_span_at_start', 'min_y_at_start', 'max_y_at_start'
                 - 'upward_line_coords' (tuple of tuples or None): ((x_start, y_start_min), (x_end_up_plateau, y_extreme_of_min_envelope))
@@ -381,26 +437,37 @@ if CAJAL_AVAILABLE:
         return detected_ap_lines_data
 
     def detect_block(
-        stim_delay: int,
+        stim_delay: int | unyt.array.unyt_quantity,
         ap_directional_lines: list[dict],
         v_rec: StateMonitor,
         block_position: str = "downward",
-    ):
-        """Evaluates whether an AP was generated at the expeced delay/position.
-        If an AP is detected, then it evaluates whether this reached the end of the fiber.
-        NOTE :
-        - We asume that the simulation time is sufficient for the AP to reach the end (this may not be the case)
-
-        Args:
-            stim_delay (_type_): _description_
-            ap_directional_lines (_type_): _description_
-            v_rec (_type_): _description_
-            block_position (str, optional): _description_. Defaults to 'downward'.
-
-        Returns:
-            _type_: _description_
+    ) -> dict[str, bool]:
         """
+        Determine if an AP was generated and if conduction was blocked.
 
+        Notes
+        -----
+            We asume that the simulation time is sufficient for the AP to reach the end
+            (this may not be the case)
+
+        Parameters
+        ----------
+        stim_delay : int or unyt_quantity
+            Expected stimulation delay.
+        ap_directional_lines : list of dict
+            AP propagation line information.
+        v_rec : StateMonitor
+            Voltage recordings.
+        block_position : str, optional
+            'downward' or 'upward' (default 'downward').
+
+        Returns
+        -------
+        dict
+            Dictionary with keys:
+            - 'stim_generated': bool, True if AP detected
+            - 'stim_blocked': bool, True if conduction blocked
+        """
         try:
             if isinstance(stim_delay, unyt.array.unyt_quantity):
                 stim_delay = stim_delay.value
@@ -456,30 +523,45 @@ if CAJAL_AVAILABLE:
         ap_directional_lines: list[dict],
         v_rec: StateMonitor,
         block_position: str = "downward",
-    ):
-        """Evaluates whether an AP was generated at the expeced delay/position.
-        If an AP is detected, then it evaluates whether this reached the end of the fiber.
-        NOTE :
-        - We asume that the simulation time is sufficient for the AP to reach the end (this may not be the case)
-
-        Args:
-            stim_node (_type_): _description_
-            ap_directional_lines (_type_): _description_
-            v_rec (_type_): _description_
-            block_position (str, optional): _description_. Defaults to 'downward'.
-
-        Returns:
-            _type_: _description_
+    ) -> dict[str, bool]:
         """
+        Naive evaluation of AP generation and block status.
 
+        Notes
+        -----
+            We asume that the simulation time is sufficient for the AP to reach the end
+            (this may not be the case)
+
+        Parameters
+        ----------
+        stim_delay : float
+            Expected stimulation delay.
+        ap_directional_lines : list of dict
+            AP propagation line information.
+        v_rec : StateMonitor
+            Voltage recordings.
+        block_position : str, optional
+            'downward' or 'upward' (default 'downward').
+
+        Returns
+        -------
+        dict
+            Dictionary with keys:
+            - 'stim_generated': bool
+            - 'stim_blocked': bool
+            - 'debug_info': dict with extra debug info
+
+        TODO
+        ----
+            - Improve handling of block direction, see specific line.
+        """
         results = {
             "stim_generated": False,
             "stim_blocked": False,  # Default to not blocked if not generated
             "debug_info": None,
         }
 
-        # key = f'{block_position}_line_coords' # TODO improve this
-
+        # TODO improve this
         if block_position == "downward":
             end_position = -2
             start_position = 2

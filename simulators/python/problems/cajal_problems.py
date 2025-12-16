@@ -6,45 +6,48 @@ from cajal.nrn import Backend as CajalBackend
 from cajal.nrn import SimulationEnvironment
 from cajal.nrn.cells import MRG
 from cajal.nrn.monitors import APMonitor, StateMonitor
-from cajal.nrn.sources import IsotropicPoint
-from cajal.nrn.stimuli import MonophasicPulse
+from cajal.nrn.sources import IsotropicPoint, Point
+from cajal.nrn.stimuli import MonophasicPulse, Stimulus
 from cajal.units import cm, mm, ms, mV, ohm
 
+from common.decorators import ensure_lists
+from simulators.python.processing.cajal_processing import ap_block
 from simulators.python.pulses.pulse_definitions import PulseRamp
 
 
 def generate_circular_arc(
-    radius,
-    num_nodes,
-    total_angle,
-    plane="xy",
-    center=(0, 0, 0),
-    start_angle=0,
-    degrees=False,
-):
+    radius: float,
+    num_nodes: int,
+    total_angle: float,
+    plane: str = "xy",
+    center: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    start_angle: float = 0.0,
+    degrees: bool = False,
+) -> list[tuple[float, float, float]]:
     """
     Generate positions for a curved axon following a circular arc.
 
     Parameters
     ----------
     radius : float
-        Arc radius
+        Arc radius.
     num_nodes : int
-        Number of discrete nodes
+        Number of discrete nodes along the arc.
     total_angle : float
-        Arc angle (radians by default)
-    plane : {"xy", "xz", "yz"}
-        Plane in which to generate the arc
-    center : tuple
-        Center of the circle (cx, cy, cz)
-    start_angle : float
-        Starting angle
-    degrees : bool
-        Interpret angles as degrees
+        Arc angle (radians by default).
+    plane : {'xy', 'xz', 'yz'}, optional
+        Plane in which to generate the arc (default is 'xy').
+    center : tuple of 3 floats, optional
+        Center of the circle (cx, cy, cz). Default is (0, 0, 0).
+    start_angle : float, optional
+        Starting angle of the arc (default is 0).
+    degrees : bool, optional
+        Interpret angles as degrees if True (default is False).
 
     Returns
     -------
-    list of (x, y, z)
+    positions : list of tuple of float
+        List of 3D positions (x, y, z) along the arc.
     """
 
     if degrees:
@@ -78,26 +81,41 @@ def generate_circular_arc(
     return positions
 
 
-def ensure_lists(func):
-    def wrapper(*args, **kwargs):
-        # Modify the positional arguments to ensure each is a list
-        new_args = [arg if isinstance(arg, list) else [arg] for arg in args]
+def create_mrg(verbose: bool = False, **kwargs: Any):
+    """
+    Create an MRG axon model with specified parameters.
 
-        # Ensure the keyword arguments
-        new_kwargs = {
-            key: (value if isinstance(value, list) else [value])
-            for key, value in kwargs.items()
-        }
+    Parameters
+    ----------
+    verbose : bool, optional
+        If True, prints detailed information about the axon, including number
+        of nodes, total length, and 3D coordinates of first and last nodes.
+        Default is False.
+    **kwargs
+        Keyword arguments to pass to the MRG constructor.
 
-        # Call the original function with modified arguments
-        return func(*new_args, **new_kwargs)
+    Returns
+    -------
+    MRG
+        An instance of the MRG axon model.
 
-    return wrapper
+    Notes
+    -----
+    When `verbose` is True:
+    - Prints the computed number of nodes.
+    - Prints the total axon length in millimeters.
+    - Prints the 3D coordinates (x, y, z) in millimeters for the first and last nodes.
 
+    Examples
+    --------
+    >>> mrg_model = create_mrg(verbose=True, diameter=10, length=1000)
+    Computed number of Nodes: 200
+    Computed Axon Length: 10.00 mm
+    Node position of the first node in the axon: x=0.00 mm, y=0.00 mm, z=0.00 mm
+    Node position of the last node in the axon: x=0.50 mm, y=10.00 mm, z=0.50 mm
+    """
 
-def create_mrg(verbose: bool = False, *args, **kwargs):
-    # Create the axon model (MRG) with specified diameter, length, and initial voltage
-    mrg = MRG(*args, **kwargs)
+    mrg = MRG(**kwargs)
 
     # If verbose mode is enabled, output detailed information about the axon
     if verbose:
@@ -122,8 +140,40 @@ def create_mrg(verbose: bool = False, *args, **kwargs):
     return mrg
 
 
-def create_monitors(mrg, ap_node_0=0, ap_node_1=1):
-    # TODO AP monitors are redudant as we already have the StateMonitor + postprocessing
+def create_monitors(mrg: MRG, ap_node_0: int = 0, ap_node_1: int = 1) -> dict[str, Any]:
+    """
+    Create action potential (AP) and state monitors for a given MRG axon model.
+
+    Parameters
+    ----------
+    mrg : MRG
+        The MRG axon model instance.
+    ap_node_0 : int, optional
+        Index of the first node for the APMonitor (default is 0).
+    ap_node_1 : int, optional
+        Index of the second node for the APMonitor (default is 1).
+
+    Returns
+    -------
+    monitors : dict
+        Dictionary containing:
+        - 'node_0': APMonitor for the first node.
+        - 'node_1': APMonitor for the second node.
+        - 'state': StateMonitor recording the membrane potential 'v' for all nodes.
+
+    Notes
+    -----
+    - APMonitor triggers when the voltage crosses a threshold (-20 mV by default).
+    - StateMonitor records the membrane potential across all nodes.
+    - AP monitors may be redundant if state recording and postprocessing are sufficient.
+
+    Examples
+    --------
+    >>> monitors = create_monitors(mrg_model, ap_node_0=0, ap_node_1=1)
+    >>> monitors['state']  # StateMonitor object for the MRG nodes
+    >>> monitors['node_0']  # APMonitor for the first node
+    """
+
     ap_monitor_0 = APMonitor(mrg.node[ap_node_0], threshold=-20 * mV)
     ap_monitor_1 = APMonitor(mrg.node[ap_node_1], threshold=-20 * mV)
     # or State monitors
@@ -134,11 +184,47 @@ def create_monitors(mrg, ap_node_0=0, ap_node_1=1):
     return monitors
 
 
-def create_pulse(type, *args, **kwargs):
-    print(kwargs)
+def create_pulse(type: str, *args: Any, **kwargs: Any) -> Stimulus:
+    """
+    Create a stimulus pulse of a specified type.
+
+    Parameters
+    ----------
+    stim_type : str
+        Type of stimulus to create. Supported types:
+        - 'monophasic' or 'single_pulse'
+        - 'pulse_ramp' or 'pulseramp'
+    *args
+        Positional arguments passed to the pulse constructor.
+    **kwargs
+        Keyword arguments passed to the pulse constructor.
+        For monophasic pulses, commonly used arguments include:
+        - amp or amplitude : float
+            Pulse amplitude
+        - pw or pulse_width : float
+            Pulse width
+        - delay : float, optional
+            Delay before pulse starts
+
+    Returns
+    -------
+    stim : Stimulus, currently MonophasicPulse or PulseRamp
+        Instance of the requested stimulus pulse.
+
+    Raises
+    ------
+    NotImplementedError
+        If `stim_type` is not recognized.
+
+    Examples
+    --------
+    >>> pulse = create_pulse('monophasic', amp=1.0, pw=0.1)
+    >>> pulse = create_pulse('pulse_ramp', start=0, stop=1, duration=0.5)
+    """
+
     if type in ["monophasic", "single_pulse"]:
-        amp = kwargs.get("amp", None)
-        pw = kwargs.get("pw", None)
+        amp = kwargs.get("amp", kwargs.get("amplitude", None))
+        pw = kwargs.get("pw", kwargs.get("pulse_width", None))
         delay = kwargs.get("delay", None)
         stim = MonophasicPulse(amp=amp, pw=pw, delay=delay)
 
@@ -157,20 +243,60 @@ def create_stimulus(
     stimulus_params: list[dict[str, Any]] | dict[str, Any],
     rhoe: float = 500,
     source_type: str = "isotropic",
-    **kwargs,
-):
+    **kwargs: Any,
+) -> tuple[list[Point], list[Stimulus]]:
+    """
+    Create electrodes and stimulus pulses for multiple stimulation sites.
+
+    Parameters
+    ----------
+    pos : list of list of float
+        List of electrode 3D positions [[x, y, z], ...] in mm.
+    stimulus_params : dict or list of dict
+        Dictionary or list of dictionaries containing parameters for each pulse.
+        Each dict may contain 'fun_type' key for pulse type and other keyword
+        arguments for `create_pulse`.
+    rhoe : float, optional
+        Extracellular resistivity in ohm·cm (default is 500).
+    source_type : str, optional
+        Type of point source. Only 'isotropic' is implemented (default).
+    **kwargs
+        Additional keyword arguments (not used directly).
+
+    Returns
+    -------
+    electrodes : list
+        List of electrode objects (point source combined with stimulus pulse).
+    stimuli : list
+        List of stimulus pulse objects created for each electrode.
+
+    Raises
+    ------
+    ValueError
+        If the number of stimulus parameter dictionaries does not match the
+        number of electrode positions.
+    NotImplementedError
+        If `source_type` is not implemented.
+
+    Examples
+    --------
+    >>> positions = [[0, 0, 0], [1, 0, 0]]
+    >>> params = [{'fun_type': 'monophasic', 'amp': 1, 'pw': 0.1}, {'fun_type': 'pulse_ramp', 'start':0, 'stop':1}]
+    >>> electrodes, stimuli = create_stimulus(positions, params)
+    """
 
     num_electrodes = len(pos)
 
-    if num_electrodes == 1 and isinstance(stimulus_params, dict):
-        params_list = [stimulus_params]
-    elif isinstance(stimulus_params, list) and len(stimulus_params) == num_electrodes:
-        params_list = stimulus_params
-    else:
+    if not isinstance(stimulus_params, list):
+        stimulus_params = [stimulus_params]
+
+    if len(stimulus_params) != num_electrodes:
         raise ValueError(
-            f"stimulus_params format is incorrect. Expected a list of {num_electrodes} "
-            f"dictionaries, but got something else."
+            f"stimulus_params format is incorrect. Expected {num_electrodes} "
+            f"dictionaries, but got {len(stimulus_params)}."
         )
+
+    params_list = stimulus_params
 
     electrodes = []
     stimuli = []
@@ -209,74 +335,37 @@ def create_stimulus(
 
 
 @ensure_lists
-def create_simulation(axons, stimulus, monitors):
+def create_simulation(axons: Any, stimulus: Any, monitors: Any):
+    """
+    Create a simulation environment for one or more axons with specified stimuli and monitors.
+
+    Parameters
+    ----------
+    axons : object or list of objects
+        Single axon model or list of axon models to simulate.
+    stimulus : object or list of objects
+        Single stimulus or list of stimuli to apply to the axons.
+    monitors : object or list of objects
+        Single monitor or list of monitors for recording axon activity.
+
+    Returns
+    -------
+    SimulationEnvironment
+        An instance of the simulation environment containing the specified axons,
+        stimuli, and monitors.
+
+    Notes
+    -----
+    - The `@ensure_lists` decorator ensures that `axons`, `stimulus`, and `monitors`
+      are always treated as lists internally, even if a single object is provided.
+
+    Examples
+    --------
+    >>> sim_env = create_simulation(axon_model, stimulus_obj, monitors_dict)
+    >>> sim_env.run()  # Run the simulation
+    """
     env = SimulationEnvironment(axons=axons, extra_stim=stimulus, monitors=monitors)
-
     return env
-
-
-def ap_block(
-    ap_monitor_stimulus, ap_monitor_block, start_time, end_time, verbose=False
-) -> int:
-    """
-    TODO Evaluate / Discuss this function as it may not be fully correct.
-
-    @param ap_monitor_stimulus:
-    @param ap_monitor_block:
-    @param start_time:
-    @param end_time:
-    @param verbose:
-    @return:
-    """
-    ap_count_end = ap_monitor_block.n(t=start_time)
-    ap_count_start_end = ap_monitor_stimulus.n(t=end_time)
-    ap_count_start_start = ap_monitor_stimulus.n(t=start_time)
-    ap_count_left = ap_count_start_start - ap_count_start_end  # Never less than zero
-    ap_times_end = ap_monitor_block.spikes()
-
-    if verbose:
-        print(
-            f"Number of APs between {start_time} and {end_time} ms at start node: {ap_count_left}"
-        )
-        print(f"All spike times at end node: {ap_times_end}")
-
-    if ap_count_end > 0:
-        if verbose:
-            print("AP NOT blocked")
-        return 1
-    else:
-        if ap_count_left == 0:
-            if verbose:
-                print("NO AP at the left side")
-            return 1
-        else:
-            if verbose:
-                print("AP is blocked")
-            return 0
-
-
-def ap_block_2(
-    v_monitor, threshold=20, left_node=15, right_node=-15, verbose=False
-) -> int:
-    """
-    TODO Evaluate / Discuss this function as it may not be fully correct.
-    @return:
-    """
-    data = v_monitor.v
-    max_time = np.max(data, axis=0)
-    b0 = max_time[left_node] > threshold
-    b1 = max_time[right_node] < threshold
-    a = b0 and b1
-
-    b2 = max_time[left_node] < threshold
-    b3 = max_time[right_node] > threshold
-    b = b2 and b3
-
-    if a:
-        print("Right block")
-    if b:
-        print("Left block (?)")
-    return int(a or b)
 
 
 def cajal_fun(
@@ -284,37 +373,86 @@ def cajal_fun(
     sim_early_stopping: bool = False,
     fun_type: list = [],
     axon_diameter: float = 5.7,
-    axon_length: float = 35,
+    axon_length: float = 35.0,
     post_processing: str = "ap_block",
     verbose: bool = True,
     **kwargs,
-):
+) -> dict[str, Any]:
+    """
+    Run a single (axon) simulation with specified stimulus and return processed results.
 
+    Parameters
+    ----------
+    sim_dur : float, optional
+        Simulation duration in milliseconds (default 5.0 ms).
+    sim_early_stopping : bool, optional
+        If True, stop the simulation early when criteria are met (default False).
+    fun_type : list of str, optional
+        List specifying pulse types for each electrode (default empty list).
+    axon_diameter : float, optional
+        Axon diameter in micrometers (default 5.7).
+    axon_length : float, optional
+        Axon length in millimeters (default 35.0).
+    post_processing : str, optional
+        Method for post-processing (currently only "ap_block" supported).
+    verbose : bool, optional
+        If True, prints parameters and diagnostic information (default True).
+    **kwargs
+        Additional keyword arguments:
+        - Any parameter starting with "axon_" is treated as axon model parameter.
+        - Any parameter starting with "e_" is treated as electrode parameter.
+        - Any parameter starting with "pulse_parameters_" is treated as pulse parameter.
+        - "time_resolution" can override CajalBackend.dt.
+
+    Returns
+    -------
+    data_package : dict
+        Dictionary containing:
+        - 'observations': processed result of post-processing (e.g., 0 or 1 for AP block)
+        - 'full_observations': dictionary with full voltage traces, time, and pulse signals
+
+    Raises
+    ------
+    NotImplementedError
+        If `post_processing` method is not recognized.
+
+    Notes
+    -----
+    - This function builds the MRG axon model, electrodes, stimuli,
+      and monitors based on the provided parameters.
+    - Post-processing currently only supports AP block detection.
+    """
+
+    # Override time resolution if provided
     if "time_resolution" in kwargs:
         CajalBackend.dt = kwargs["time_resolution"] * ms
 
+    # Collect all parameters
     all_params = {key: value for key, value in locals().items() if key != "kwargs"}
     all_params = {**all_params, **kwargs}
 
+    # Simulation parameters
     sim_params = {
         "dur": sim_dur,
         "early_stopping": sim_early_stopping,
     }
+
+    # Axon parameters
     axon_params = {
-        "axon_diameter": axon_diameter,
-        "axon_length": axon_length,
-        **{key: value for key, value in all_params.items() if key.startswith("axon")},
+        k.replace("axon_", ""): v
+        for k, v in all_params.items()
+        if k.startswith("axon_")
     }
+    axon_params.update({"axon_diameter": axon_diameter, "axon_length": axon_length})
+
     axon_params = {"_".join(k.split("_")[1:]): v for k, v in axon_params.items()}
 
+    # Electrode parameters
     electrode_params = {
-        **{key: value for key, value in all_params.items() if key.startswith("e_")}
-    }
-    electrode_params = {
-        "_".join(k.split("_")[1:]): v for k, v in electrode_params.items()
+        k.replace("e_", ""): v for k, v in all_params.items() if k.startswith("e_")
     }
 
-    stimulus_params: dict[int, dict] = dict()
+    stimulus_params: dict[int, dict[str, Any]] = dict()
     flat_params = {
         k: v
         for k, v in all_params.items()
@@ -325,23 +463,20 @@ def cajal_fun(
             parts = key.split("_")  # ['pulse', 'parameters', '1', 's', 'pw']
             idx = int(parts[2])  # electrode index
             name = "_".join(parts[4:])  # 's_pw', 's_amp', etc.
-
             stimulus_params.setdefault(idx, {})[name] = value
+
     stimulus_params_list = [stimulus_params[i] for i in sorted(stimulus_params.keys())]
     for e, d in enumerate(stimulus_params_list):
         d["fun_type"] = fun_type[e]
 
     axon_model = create_mrg(**axon_params)
     monitors = create_monitors(axon_model)
-    electrode_params["pos"] = np.array(electrode_params["pos"]).T
+    electrode_params["pos"] = np.array(electrode_params["pos"]).T.tolist()
 
     if verbose:
-        print("Axon params")
-        print(axon_params)
-        print("Stimulus params")
-        print(stimulus_params_list)
-        print("Electrode params")
-        print(electrode_params)
+        print("Axon params:", axon_params)
+        print("Stimulus params:", stimulus_params_list)
+        print("Electrode params:", electrode_params)
 
     stimulus, pulses = create_stimulus(
         pos=electrode_params["pos"],
@@ -367,18 +502,15 @@ def cajal_fun(
     else:
         msg = f"Post processing method {post_processing} not implemented"
         raise NotImplementedError(msg)
-    # v_rec.t, v_rec.v[MEAS_POSITION,:]
 
     data_package = {
         "observations": y,
         "full_observations": {
             "time": monitors["state"].t.tolist(),
             "voltage": monitors["state"].v.tolist(),
+            "stim_pulse": pulses[0](monitors["state"].t).tolist(),
+            "block_pulse": pulses[1](monitors["state"].t).tolist(),
         },
     }
-    # "time": monitors['state'].t.tolist(),
-    # "v": monitors['state'].v.tolist(),
-    # "pulse_a": pulses[0](monitors['state'].t).tolist(),
-    # "pulse_b": pulses[1](monitors['state'].t).tolist()
 
     return data_package
