@@ -1,4 +1,4 @@
-{ "delay": {
+{ "s_delay": {
   "optimizable": true,
   "user_fixed": false,
   "value": 0.0,
@@ -6,7 +6,7 @@
   "max_value": 0.25,
   "type": "float"
 },
-"amplitude" :{
+"s_amplitude" :{
   "optimizable": true,
   "user_fixed" : false,
   "value": 0.0,
@@ -14,7 +14,7 @@
   "max_value": 3.0,
   "type": "float"
   },
-"pulse_width": {
+"s_pulse_width": {
   "optimizable": true,
   "user_fixed": false,
   "value": 0.25,
@@ -22,7 +22,7 @@
   "max_value": 1.5,
   "type": "float"
 },
-"interphase_gap": {
+"s_interphase_gap": {
   "optimizable": true,
   "user_fixed": false,
   "value": 0.10,
@@ -30,7 +30,7 @@
   "max_value": 0.5,
   "type": "float"
 },
-"decay_width": {
+"s_decay_width": {
   "optimizable": true,
   "user_fixed": false,
   "value": 0.10,
@@ -38,7 +38,7 @@
   "max_value": 1.0,
   "type": "float"
 },
-"k": {
+"s_k": {
   "optimizable": true,
   "user_fixed": false,
   "value": 0.5,
@@ -46,7 +46,7 @@
   "max_value": 1,
   "type": "float"
 },
-  "tau": {
+"s_tau": {
   "optimizable": true,
   "user_fixed": false,
   "value": 0.5,
@@ -54,7 +54,7 @@
   "max_value": 10,
   "type": "float"
 },
-"ramp_width": {
+"s_ramp_width": {
   "optimizable": true,
   "user_fixed": false,
   "value": 0.25,
