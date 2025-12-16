@@ -5,22 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="../static/css/style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <title>Live Data Plots</title>
-
+    <title>OnlineNeuro live data plots</title>
 </head>
 <body>
     <script>
         // This will be rendered by the server.
-        // If the port is 5000, it will become: const APP_CONFIG = { port: 5000 };
         const APP_CONFIG = {
             port: {{ port }}
         };
     </script>
+    <!-- Header control bar-->
+    <header id="top-control-bar">
+        <div class="top-bar-left">
+            <!-- 1. Left Sidebar Toggle -->
+            <button id="leftSidebarToggle" class="toggle-btn" aria-expanded="true" aria-controls="sidebar-left">☰</button>
+            <!-- 2. Theme Toggle -->
+            <button id="themeToggle" class="toggle-btn">🌓</button>
+        </div>
 
+        <div class="top-bar-right">
+            <!-- 3. Right Sidebar Toggle -->
+            <button id="rightSidebarToggle" class="toggle-btn right-toggle">☰</button>
+        </div>
+    </header>
     <!-- Left Sidebar -->
     <div class="sidebar" id="sidebar-left">
-        <div class="sidebar-frame" id="toggle-btn-bar-left">
-            <button class="toggle-btn left-toggle">☰</button>
+        <div class="sidebar-logo">
+            <h1>Online Neuro</h1>
         </div>
         <div class="header">
             <h2>Problem configuration</h2>
@@ -69,17 +80,13 @@
         </div>
 
     </div>
-
     <!-- Main content -->
-    <div id="spinner" class="spinner"></div>
-    <div class="content" id="iframeContainer"></div>
-
+    <div class="main-content" id="mainContent">
+        <div id="spinner" class="spinner"></div>
+        <div class="content" id="iframeContainer"></div>
+    </div>
     <!-- Right Sidebar -->
-    <div class="sidebar-right" id="sidebar-right">
-        <div class="sidebar-frame" id="toggle-btn-bar-right">
-            <button class="toggle-btn right-toggle">☰</button>
-        </div>
-
+    <div class="sidebar" id="sidebar-right">
         <div class="sidebar-frame" id="models-optim-box">
             <div class="header">
                 <h2>Model config</h2>
@@ -94,6 +101,12 @@
 
             <div class="header">
                 <h2>Optimization config</h2>
+            </div>
+            <div class="sidebar-frame" id="acquisition-selector">
+                <select id="acquisition" class="styled-select" onchange="modelChange()">
+                <option value="">Select Acquisition...</option>
+                <!-- Options generated dynamically -->
+                </select>
             </div>
             <div id="parameters-optimizer"></div>
 

@@ -1,69 +1,154 @@
 :root {
-    --sidebar-left-width: 350px;
+    --header-height: 55px;
+    --header-bg-color: #f0f0f0;
+    --header-text-color: #333333;
+    --sidebar-left-width: 360px;
+    --sidebar-top-offset: var(--header-height);
     --sidebar-padding: 15px;
     --primary-color: #c02a4e;
-    --text-color: #e0e0e0;
-    --bg-color: #121212;
+    /* Default light mode */
+    --text-color: #1a1a1a;
+    --bg-color: #ffffff;
+    --sidebar-bg-color: #f5f5f5;
+    --sidebar-text-color: #333333;
+    --button-bg-color: #f5f5f5;
+    --contour-color: #d14c6b;
+}
+#top-control-bar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: var(--header-height);
+    z-index: 2000; /* Must be higher than sidebars (sidebars usually z-index 1000/1500) */
+
+    display: flex;
+    justify-content: space-between; /* Pushes left group and right group to edges */
+    align-items: center;
+
+    padding: 0 15px;
+    background-color: var(--header-bg-color);
+    color: var(--header-text-color);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+.top-bar-left, .top-bar-right {
+    display: flex;
+    align-items: center;
+    height: 100%;
+}
+#top-control-bar .toggle-btn {
+    padding: 8px 12px;
+    border-radius: 5px;
+    margin: 5px
 }
 body {
     display: grid;
-    grid-template-columns: auto 1fr auto; /* Sidebar, content, sidebar */
+    grid-template-columns: var(--sidebar-left-width) 1fr 250px; /* Use CSS variables for column sizes */
+    transition: grid-template-columns 0.3s ease;
     font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
     margin: 0;
     padding: 0;
     background-color: var(--bg-color);
     color: var(--text-color);
+    min-height: 100vh; /* Ensure full viewport height */
+}
+body.dark-theme {
+    --header-bg-color: #1e1e1e;
+    --text-color: #e0e0e0;
+    --bg-color: #121212;
+    --sidebar-bg-color: #1e1e1e;
+    --sidebar-text-color: #cccccc;
+    --button-bg-color: #333333;
+    --contour-color: #444;
 }
 h1 {
-    text-align: center;
+    margin:3px;
+    text-align: left;
     color: var(--primary-color);
 }
 /* Main container for content */
-.content {
+.main-content {
     grid-column: 2;
-    margin-left: calc(var(--sidebar-left-width) + 2 * var(--sidebar-padding));
+    /* margin-left: var(--sidebar-left-width); */
     padding: 20px;
-    transition: margin-left 0.3s ease;
+    transition: margin-left 0.3s ease, margin-right 0.3s ease;
+    overflow-x: hidden; /* Prevent horizontal scrollbar on the main content area */
+    padding-top: var(--header-height);
+    min-width: 0; /* Allows the content area to shrink below its natural size */
+    min-height: calc(100vh - var(--header-height)); /* Optional: ensures content fills the screen */
+
 }
-/* Toggle button for opening/closing sidebar */
+.content {
+
+    /* padding: 20px; */
+    /* transition: margin-left 0.3s ease, margin-right 0.3s ease; */
+    overflow-x: hidden; /* Prevent horizontal scrollbar on the main content area */
+    /* padding-top: var(--header-height);  */
+    min-width: 0; /* Allows the content area to shrink below its natural size */
+    /* min-height: calc(100vh - var(--header-height));  */
+
+}
+.body-sidebar-left-closed .content {
+    margin-left: 0;
+}
+/* Sidebar styling */
+#sidebar-left {
+    position: fixed;
+    grid-column: 1;
+    top: var(--sidebar-top-offset);
+    left: 0;
+    width: var(--sidebar-left-width);
+    height: 100%;
+    background-color: var(--sidebar-bg-color);
+    padding: var(--sidebar-padding);
+    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
+    transition: width 0.3s ease;
+    overflow-y: auto;
+    z-index: 1;
+}
+/* When the sidebar is hidden */
+#sidebar-left.closed {
+    transform: translateX(-100%);
+}
+#sidebar-left:not(.closed) + #leftSidebarToggle {
+    left: calc(var(--sidebar-left-width, 300px) + 10px);
+}
+body.sidebar-left-closed {
+    /* [Collapsed Left] [Content] [Right Sidebar Width] */
+    grid-template-columns: 0 1fr 250px;
+}
+#sidebar-right {
+    grid-column: 3;
+    position: fixed;
+    top: var(--sidebar-top-offset);
+    right: 0; /* Changed from left: 0 to right: 0 */
+    width: 250px;
+    height: 100%;
+    background-color: var(--sidebar-bg-color);
+    padding: 15px;
+    box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2); /* Adjusted the shadow to appear on the left */
+    transition: width 0.3s ease;
+}
+#sidebar-right.closed {
+    transform: translateX(100%);
+}
+body.sidebar-left-closed.sidebar-right-closed {
+     /* [Collapsed Left] [Content] [Collapsed Right] */
+    grid-template-columns: 0 1fr 0;
+}
 .sidebar-frame{
-    /*margin-bottom: 10px;*/
     padding: 5px;
     border-radius: 5px;
     position: relative;
     z-index:10;
 }
-/* Sidebar styling */
-.sidebar {
-    grid-column: 1;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: var(--sidebar-left-width);
-    height: 100%;
-    background-color: #0e0e0e;
-    padding: var(--sidebar-padding);
-    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.2);
-    transition: width 0.3s ease;
-    overflow-y: auto;
-}
-/* When the sidebar is hidden */
-.sidebar-closed {
-    width: 0;
-    overflow: hidden;
-}
-.sidebar-right {
-    grid-column: 3;
-    position: fixed;
-    top: 0;
-    right: 0; /* Changed from left: 0 to right: 0 */
-    width: 250px;
-    height: 100%;
-    background-color: #0e0e0e;
-    padding: 15px;
-    box-shadow: -2px 0 5px rgba(0, 0, 0, 0.2); /* Adjusted the shadow to appear on the left */
-    transition: width 0.3s ease;
-}
+.button-container{
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    margin-bottom: 15px;
+    max-height: 20px;
+} */
 .sidebar::-webkit-scrollbar {
     width: 8px; /* Width of the vertical scrollbar */
     height: 8px; /* Height of the horizontal scrollbar */
@@ -73,13 +158,11 @@ h1 {
     background: #1e1e1e; /* Dark background color */
     border-radius: 4px; /* Rounded corners */
 }
-
 /* Thumb (draggable part of the scrollbar) */
 .sidebar::-webkit-scrollbar-thumb {
     background: #555; /* Gray thumb color */
     border-radius: 4px; /* Rounded corners */
 }
-
 /* Thumb hover (when hovered over) */
 .sidebar::-webkit-scrollbar-thumb:hover {
     background: #888; /* Lighter gray when hovered */
@@ -88,9 +171,15 @@ h1 {
     display: flex;
     align-items: center;
 }
+.sidebar {
+    top: var(--header-height); /* Sidebars now start below the header */
+    /* ... rest of sidebar styles (width, fixed positioning, etc.) ... */
+    height: calc(100vh - var(--header-height));
+    z-index: 1500; /* Ensure they are below the header (2000) but above content (1000) */
+}
 .sidebar h2 {
     color: #6b6b6b;
-    margin-top: 0;
+    margin: 2px;
 }
 .sidebar .experiments-box{
     display: contents;
@@ -110,32 +199,38 @@ h1 {
 }
 .sidebar button {
     display: block;
-    /*width: 100%;*/
+    width: min-content;
     margin-bottom: 10px;
     padding: 10px;
-    background-color: #333;
-    color: white;
+    background-color: var(--button-bg-color);
+    color: var(--sidebar-text-color);
     border: none;
     border-radius: 5px;
     cursor: pointer;
     font-size: small;
     transition: background-color 0.3s ease;
+    border: 1px solid var(--contour-color);
+}
+.single-button{
+    padding: 5px;
+    border-radius: 5px;
+    position: relative;
+    z-index:10;
 }
 .path-inputs button{
     display: none; /* Initially hidden */
 }
 .sidebar button:hover {
-    background-color: #e0e0e0; /* Button hover effect */
+    background-color: #b1b1b1; /* Button hover effect */
 }
-
 /* Style for the select dropdown */
 .styled-select {
     width: 100%; /* Full width */
     padding: 6px 10px;
     border-radius: 5px; /* Rounded corners */
-    border: 1px solid #444;
-    background-color:  #333; /* Black background */
-    color: white; /* White text */
+    border: 1px solid var(--contour-color);
+    background-color:  var(--button-bg-color); /* Black background */
+    color: var(--sidebar-text-color); /* Text color */
     font-size: small;
     cursor: pointer;
     position: relative;
@@ -146,7 +241,6 @@ h1 {
     -webkit-appearance: none; /* Safari/Chrome */
     -moz-appearance: none; /* Firefox */
 }
-
 /* Optional: Adding an arrow indicator to match the dropdown button feel */
 .styled-select::after {
     content: '▼';
@@ -154,10 +248,9 @@ h1 {
     right: 10px;
     pointer-events: none;
 }
-
 /* Hover effect to match button hover */
 .styled-select:hover {
-    background-color: #333; /* Darker background on hover */
+    background-color: var(--bg-color); /* Darker background on hover */
 }
 /* Show the dropdown content when the button is clicked */
 .show {
@@ -165,23 +258,26 @@ h1 {
 }
 .toggle-btn {
     display: block;
-    top: 50px;
-    left: 20px;
     font-size: small;
     background-color: #c02a4e;
-    color: white;
+    color: var(--sidebar-text-color);
     border: none;
     border-radius: 5px;
     padding: 10px;
     cursor: pointer;
     transition: background-color 0.3s ease;
+    z-index: 10;
+}
+.right-toggle {
+    position: relative;
+    right: 35px;
 }
 iframe {
     display: block;
-    margin: 20px auto;
+    margin: 10px auto;
     border: none;
     width: 100%;
-    height: 400px;
+    /*height: 400px;*/
 }
 .parameter-container{
     display:flex;
@@ -194,20 +290,20 @@ iframe {
     margin-bottom: 5px;
     font-weight: bold;
     font-size: medium;
-    color: white;
+    color: var(--sidebar-text-color);
     text-overflow: ellipsis
 }
 .parameter-label{
     text-align: left;
     margin-right: 8px;
-    color: white;
+    color: var(--sidebar-text-color);
     /*white-space: nowrap;*/
     /*width: 100px;*/
     font-size: small;
     text-overflow: ellipsis
 }
 .inputs-container {
-    display: flex;               /* Use flexbox for the inputs */
+    display: flex;
     flex-direction: column;
     align-items: center
 }
@@ -224,11 +320,11 @@ iframe {
     width: 40px;
     /*text-align: left;*/
     font-weight: normal;
-    color:white;
+    color: var(--sidebar-text-color);
     align-content: center;
 }
 .dim-label{
-    color:white
+    color: var(--sidebar-text-color);
 }
 .box {
     width: 100%;
@@ -260,10 +356,10 @@ iframe {
     margin-bottom: 4px; /* Space below the line */
 }
 .white-text {
-    color: white;
+    color: var(--sidebar-text-color);
 }
 span {
-    color: white;
+    color: var(--sidebar-text-color);
     font-size: small;
 }
 .input-container {
@@ -276,22 +372,26 @@ span {
     font-weight: bold;
 }
 label {
-    color: white;
+    color: var(--sidebar-text-color);
     width: 100px; /* Ensures labels have the same width */
     text-align: left; /* Aligns text to the right */
     font-size: small;
 }
-
 button, input {
     width: 80px; /* Makes buttons and input fields the same width */
     padding: 5px;
 }
-
 #folderPath {
-    color: white;
+    color: var(--sidebar-text-color);
 }
-
+#iframeContainer {
+    display: grid;
+    /* Layout plots in columns, auto-fitting between 300px min and 1 fraction max */
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    width: 100%; /* Ensure container fills the content width */
+}
 #iframeContainer iframe {
+    /* Important: Height must be fixed or explicit to prevent infinite resize loop */
     width: 100%;
-    height: 500px;
+    height: 400px; /* Adjust this to your desired plot height */
 }

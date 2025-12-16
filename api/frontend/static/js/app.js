@@ -7,14 +7,16 @@ const globalData = {
 let optimizableExperimentFeatures
 let userDefinedExperimentFeatures
 let defaultFeaturesExperimentFeatures
+let iframesCreated = false;
+
+const iframeState = {
+    created: false,
+    config: []
+}
 
 const defaultFeatures = {
     model: null,
     optimizer: null
-}
-
-function toggleSidebar(selector) {
-    document.querySelector(selector).classList.toggle('sidebar-closed');
 }
 
 function showSpinner(show) {
@@ -62,11 +64,15 @@ function cleanFinalParameters(params) {
             const filledMinValues = new Array(maxLength).fill(0);
             const filledMaxValues = new Array(maxLength).fill(0);
 
-
             for (let i = 0; i < maxLength; i++) {
-                values && (filledValues[i] = values);
-                minValues && (filledMinValues[i] = minValues);
-                maxValues && (filledMaxValues[i] = maxValues);
+                if (valuesIsArray) filledValues[i] = values[i] ?? 0;
+                else filledValues[i] = values ?? 0;
+
+                if (minValuesIsArray) filledMinValues[i] = minValues[i] ?? 0;
+                else filledMinValues[i] = minValues ?? 0;
+
+                if (maxValuesIsArray) filledMaxValues[i] = maxValues[i] ?? 0;
+                else filledMaxValues[i] = maxValues ?? 0;
             }
 
             cleanedParams[key] = {
@@ -228,6 +234,8 @@ function collectInputs(elementId, prefix=null) {
 
 async function startExperiment() {
     showSpinner(true);
+    await removeIframes();
+
     // Collect all inputs from the "sidebar-frame" div
     let parameters = {};
     let leftbarParameters = collectInputs('sidebar-left', 'pulse_')
@@ -237,10 +245,19 @@ async function startExperiment() {
 
     let rightbarParametersModel = collectInputs('parameters-model')
     parameters.modelParameters = restructureParameters(rightbarParametersModel.otherParameters)
-    let rightbarParametersOptimizer = collectInputs('parameters-model')
-    parameters.optimizerParameters = restructureParameters(rightbarParametersOptimizer.otherParameters)
 
-    await createIframes()
+    let rightbarParametersOptimizer = collectInputs('parameters-optimizer')
+    parameters.optimizerParameters = restructureParameters(rightbarParametersOptimizer.otherParameters)
+    parameters.optimizerParameters['acquisition'] = document.getElementById('acquisition').value || null
+
+    // Request configuration
+    const selectedExperiment = document.getElementById('experiment').value;
+    const res = await fetch("/plot_config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ experiment: selectedExperiment })
+    });
+    const iframeConfig = await res.json();
 
     try {
         const response = await fetch('/start', {
@@ -253,6 +270,13 @@ async function startExperiment() {
         const data = await response.json();
         console.log("Response:", data);
 
+        if (data.status === 'started') {
+            await createIframes(iframeConfig.config);
+            updateButtonState(true); // Disable Start, enable Stop
+        } else {
+            // Handle cases where the experiment is already running or failed to start
+            alert(`Could not start experiment: ${data.status}`);
+        }
     } catch(error) {
         console.error('Error starting the experiment:', error);
     } finally {
@@ -268,9 +292,19 @@ async function checkStatus() {
 
 async function stopExperiment() {
     showSpinner(true);
-    const response = await fetch('/stop', { method: 'POST' });
-    const data = await response.json();
-    console.log(data);
+    try {
+        const response = await fetch('/stop', { method: 'POST' });
+        const data = await response.json();
+        console.log(data);
+    } catch (error) {
+        console.error("Error stopping the experiment: ", error);
+
+    } finally {
+        showSpinner(false);
+    }
+
+    // await removeIframes();
+    updateButtonState(false);
     showSpinner(false);
 }
 
@@ -291,9 +325,10 @@ async function fetchData(endpoint, selectId, defaultText) {
             selectElement.appendChild(option); // Append the option to the select
         });
     } catch (error) {
-        console.error(`Error fetching ${endpoint}:`, error);
+        console.error(`Error fetching ${endpoint}, and option value id = ${defaultText}:`, error);
     }
 }
+
 function sortFeatures(features, dataDic) {
     return features.sort((a, b) => {
         if (dataDic[a].type < dataDic[b].type) return -1;
@@ -304,6 +339,7 @@ function sortFeatures(features, dataDic) {
         return 0; // if they are equal
     });
 }
+
 async function updatePulseParameters(){
     let pulseTypes = Array.from(document.querySelectorAll('[id^="fun_type_"]')).reduce((acc, input) => {
         const match = input.id.match(/_(\d+)$/); // Extract the number at the end of the ID
@@ -319,7 +355,7 @@ async function updatePulseParameters(){
     }
     let configs = [];
     await Promise.all(Object.values(pulseTypes).map(async pt => { // Use Object.values to iterate
-        const response = await fetch('/get_fun_parameters', {
+        const response = await fetch('/fun_parameters', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({function: pt}) // Pass the experiment as JSON in the body
@@ -371,7 +407,6 @@ async function updatePulseParameters(){
 
 }
 async function cleanParametersAndUpdate(){
-    // TODO here
     const containerFixedPulse = document.getElementById('parameters-container-fixed-pulse');
     const containerVariablePulse = document.getElementById('parameters-container-variable-pulse');
     containerFixedPulse.innerHTML = ''; //Clear existing parameters
@@ -403,7 +438,7 @@ async function updateElectrodeListeners(){
     //     input.addEventListener('change', drawPlot);
     // });
     const diameterInput = document.getElementById('dia') || document.getElementById('axon_diameter');
-    //TODO uncomment this once the other thing is fixe
+    //TODO uncomment this once the other thing is fixed
     // diameterInput.addEventListener('change', drawPlot);
     // await drawPlot()
 }
@@ -421,6 +456,9 @@ async function addPlotListeners(){
 }
 async function experimentChange(){
     await loadExperimentParameters()
+    await removeIframes();
+    updateButtonState(false);
+
     if (globalData["experiment"].hasOwnProperty('num_electrodes')) {
         await addPlotListeners();
         // TODO uncomment
@@ -428,14 +466,62 @@ async function experimentChange(){
     } else {
         // Clear the canvas if no electrodes are present
         const canvas = document.getElementById('plotCanvas');
-        const ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the canvas
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
         console.log("No electrodes to plot.");
+    }
+    // TODO apply acquisition filtering rule here
+    await applyVariationalRule(); // Verifying the problem is classification and updating model params if needed
+}
+
+async function applyVariationalRule() {
+    const selectedModelName = document.getElementById('model').value;
+    const selectedExperiment = document.getElementById('experiment').value;
+    const variationalCheckbox = document.getElementById('variational');
+
+    // If the checkbox doesn't exist on the page, do nothing.
+    if (!variationalCheckbox) {
+        return;
+    }
+
+    // Important. Always reset the checkbox to its default (unlocked) state first.
+    variationalCheckbox.disabled = false;
+    variationalCheckbox.checked = false;
+    // If either dropdown isn't selected, we can't apply the rule, so we're done.
+    if (!selectedExperiment || !selectedModelName) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/experiment_type', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({experiment: selectedExperiment})
+        });
+
+        if (!response.ok) {
+            console.error("Failed to fetch experiment type");
+            return;
+        }
+        const data = await response.json();
+
+        // If the experiment is for classification AND the model is 'gp'.
+        if (data.type === 'classification' && selectedModelName === 'gp') {
+            variationalCheckbox.checked = true;
+            variationalCheckbox.disabled = true; // Lock it
+        }
+
+    } catch (error) {
+        console.error("Error in applyVariationalRule:", error);
     }
 }
 
 async function modelChange(){
     await loadParameters("model", {selectable:true});
+    await applyVariationalRule(); // Apply the rule after model changes
+    // TODO adjust acquisitions here
 }
 
 async function loadExperimentParameters() {
@@ -460,7 +546,7 @@ async function loadExperimentParameters() {
         containerVariablePulse.innerHTML = ''; //Clear existing parameters
 
     } else{
-        const response = await fetch('/get_parameters', {
+        const response = await fetch('/parameters', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
@@ -557,7 +643,6 @@ async function loadParameters(id_name, { selectable = true } = {}) {
     let selectedValue = null;
     const container = document.getElementById(`parameters-${id_name}`);
     container.innerHTML = '';  // Clear existing parameters
-    //const selectedModel = document.getElementById('model').value;
 
     if (selectable){
         selectedValue = document.getElementById(id_name).value;
@@ -575,8 +660,8 @@ async function loadParameters(id_name, { selectable = true } = {}) {
         bodyPayload[id_name] = selectedValue;
 
     }
-    console.log(bodyPayload)
-    const response = await fetch('/get_parameters', {
+
+    const response = await fetch('/parameters', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
 
@@ -591,12 +676,6 @@ async function loadParameters(id_name, { selectable = true } = {}) {
     const parameterData = await response.json();
     globalData[id_name] = parameterData;
 
-    console.log("Received load")
-    console.log(parameterData)
-
-    const userDefined = Object.keys(parameterData)
-        .filter(key => parameterData[key].user_fixed === true);
-
     // Non GUI values (see the model .json for non-user_fixed values.)
     const defaults = Object.fromEntries(
         Object.entries(parameterData)
@@ -606,11 +685,7 @@ async function loadParameters(id_name, { selectable = true } = {}) {
 
     defaultFeatures[id_name] = defaults;
 
-    console.log("Default features")
-    console.log(`Default ${id_name} features`, defaults);
-
-    // const fixedTitle = document.getElementById('parameters-header-fixed');
-    // const variableTitle = document.getElementById('parameters-header-rest');
+    console.log(`Default features for ${id_name}:`, defaults);
     await updateParametersId(id_name)
 
 }
@@ -660,8 +735,8 @@ function createNumericInputRow(key, data, index=null) {
     valueInput.type = 'number';
     valueInput.id = index !== null ? `${key}_${index}` : `${key}`;
     if (data.value !== null) valueInput.value = data.value;
-    if (data.min !== null) valueInput.min = data.min;
-    if (data.max !== null) valueInput.max = data.max;
+    if (data.min !== null) valueInput.min = data.min_value;
+    if (data.max !== null) valueInput.max = data.max_value;
 
     inputRow.appendChild(valueInput);
     return inputRow;
@@ -896,8 +971,7 @@ async function updateFixedParameters(keyList, selData, container_name, append=fa
     };
 
     keyList.forEach(key => {
-        console.log(key)
-        console.log(selData[key])
+        console.log(key, selData[key])
         const type = selData[key]['type'];
         const parameterContainer = createParameterContainer();
         const label = createLabel(key, type, selData[key]);
@@ -1137,92 +1211,141 @@ function updateJSONDisplay() {
     jsonDisplay.innerHTML = ''; // Clear previous content
     renderJSON(jsonDisplay, structuredData);
 }
-async function fetchExperimentsAndModels() {
+
+async function initializeUI() {
     await fetchData('experiments', 'experiment', 'Select Experiment');
     await fetchData('models', 'model', 'Select Model');
-    // await fetchData('optimization', 'optimization', 'Select Model');
-}
-
-async function initializeOptimizerParameters() {
-    console.log("Initializing static parameters...");
-    // Load optimizer parameters once
+    await fetchData('acquisitions', 'acquisition', 'Select Acquisition');
     await loadParameters("optimizer", { selectable: false });
-    console.log("Initialization complete.");
+
+    updateButtonState(false)
 }
 
-async function createIframes() {
-    await removeIframes();
+async function createIframes(config) {
     const iframeContainer = document.getElementById('iframeContainer');
+    if (!iframeContainer) {
+        console.error("iframeContainer missing in DOM");
+        return;
+    }
 
-    // iFrame configurations for differnet plot types
-    const iframeConfigs = [
-        { id: 'mainPlot', src: `http://localhost:${APP_CONFIG.port}/plot?type=plotly` },
-        { id: 'scatterPlot', src: `http://localhost:${APP_CONFIG.port}/plot?type=contour`},
-    //    { id: 'pulsesPlot', src: `http://localhost:${APP_CONFIG.port}/plot?type=pulses`},
-    ];
+    await removeIframes();
+    if (!Array.isArray(config) || config.length === 0) {
+        console.log(" No plots defined for this experiment");
+        iframeState.created = false;
+        iframeState.config = [];
+        return;
+    }
 
-    iframeConfigs.forEach(({ id, src }) => {
-        if (!iframeContainer.querySelector(`#${id}`)) { // Scope lookup to iframeContainer
-            const iframe = document.createElement('iframe');
-            iframe.id = id;
-            iframe.src = src;
-            iframeContainer.appendChild(iframe);
-        }
+    config.forEach((plot, index) => {
+        const iframe = document.createElement("iframe");
+        iframe.id = plot.id;
+        iframe.src = `http://localhost:${APP_CONFIG.port}/plot?type=${plot.type}&id=${plot.id}`;
+        iframeContainer.appendChild(iframe);
     });
-    console.log("iFrames Created succesfully")
+
+    iframeState.created = true;
+    iframeState.config = config;
+
+    console.log(`Created ${config.length} plot iframes`);
 }
 
-// Function to remove (or hide) iFrames
+// Function to remove (or hide) iframes
 function removeIframes() {
     const iframeContainer = document.getElementById('iframeContainer');
     if (!iframeContainer) return; // Ensure iframeContainer exists before proceeding
 
-    let existingIframes = iframeContainer.querySelectorAll('iframe');
-
-    while (existingIframes.length > 0) {
-        existingIframes[0].remove();
+    while (iframeContainer.firstChild) {
+        iframeContainer.removeChild(iframeContainer.firstChild);
     }
+
+    iframeState.created = false;
+    iframeState.config = [];
+    console.log("All iframes removed");
 }
 
+function sendThemeToIFrames(theme) {
+    if (!iframeState || !iframeState.created || !Array.isArray(iframeState.config)) {
+        console.warn("No iframes exist yet, theme will be sent when they load");
+        return;
+    }
 
-document.addEventListener("DOMContentLoaded", () => {
-const selectFolderButton = document.getElementById("selectFolder");
-const folderPathDisplay = document.getElementById("folderPath");
+    iframeState.config.forEach(plot => {
+        const frame = document.getElementById(plot.id);
 
-if (selectFolderButton) {
-    selectFolderButton.addEventListener("click", async () => {
+        if (!frame) return;  // Frame not in DOM yet
+
+        // Send when iframe finishes loading
+        frame.addEventListener("load", () => {
+            frame.contentWindow?.postMessage(
+                { type: "theme-update", theme },
+                "*"
+            );
+        });
+
+        // Also try sending immediately (in case it's already loaded)
         try {
-            const handle = await window.showDirectoryPicker();
-            folderPathDisplay.textContent = handle.name; // Show selected folder name
-            window.selectedFolderHandle = handle; // Store handle for later use
+            frame.contentWindow?.postMessage(
+                { type: "theme-update", theme },
+                "*"
+            );
         } catch (err) {
-            console.error("Folder selection cancelled or failed", err);
+            console.error("Failed to send theme to iframe:", plot.id, err);
         }
     });
 }
-document.querySelector('.right-toggle').addEventListener('click', () => {
-    toggleSidebar('.sidebar-right');
+
+document.addEventListener("DOMContentLoaded", () => {
+    const selectFolderButton = document.getElementById("selectFolder");
+    const folderPathDisplay = document.getElementById("folderPath");
+
+    if (selectFolderButton) {
+        selectFolderButton.addEventListener("click", async () => {
+            try {
+                const handle = await window.showDirectoryPicker();
+                folderPathDisplay.textContent = handle.name; // Show selected folder name
+                window.selectedFolderHandle = handle; // Store handle for later use
+            } catch (err) {
+                console.error("Folder selection cancelled or failed", err);
+            }
+        });
+    }
+
+    // Left sidebar toggle (floating button placed outside the sidebar)
+    const leftToggle = document.getElementById('leftSidebarToggle');
+    const leftSidebar = document.getElementById('sidebar-left');
+    if (leftToggle && leftSidebar) {
+        leftToggle.addEventListener('click', () => {
+            const isClosed = leftSidebar.classList.toggle('closed'); // Store the state
+
+            // Move content accordingly
+            document.body.classList.toggle('sidebar-left-closed', isClosed);
+
+            // update aria-expanded for accessibility
+            leftToggle.setAttribute('aria-expanded', !isClosed);
+        });
+    } else {
+        console.warn('Left toggle or left sidebar not found in DOM');
+    }
+
+    // Right toggle: if you keep the button INSIDE the right sidebar (as in your HTML),
+    // it will be hidden when the right sidebar closes. Consider moving it outside as well.
+    const rightToggle = document.querySelector('.right-toggle');
+    const rightSidebar = document.getElementById('sidebar-right');
+    if (rightToggle && rightSidebar) {
+        rightToggle.addEventListener('click', () => {
+            const isClosed = rightSidebar.classList.toggle('closed'); // Store the state
+
+            // Move content accordingly
+            document.body.classList.toggle('sidebar-right-closed', isClosed);
+
+            // update aria-expanded for accessibility
+            rightToggle.setAttribute('aria-expanded', !isClosed);
+
+        });
+    }
 });
 
-document.querySelector('.left-toggle').addEventListener('click', () => {
-    toggleSidebar('.sidebar');
-});
-});
-
-document.addEventListener('DOMContentLoaded', fetchExperimentsAndModels)
-document.addEventListener("DOMContentLoaded", () => {initializeOptimizerParameters();})
-
-// document.getElementById('sidebar-left').addEventListener('input', event => {
-//     if (event.target.tagName === 'INPUT') {
-//         updateJSONDisplay();
-//     }
-// });
-
-// document.getElementById('sidebar-right').addEventListener('input', event => {
-//     if (event.target.tagName === 'INPUT') {
-//         updateJSONDisplay();
-//     }
-// });
+document.addEventListener('DOMContentLoaded', initializeUI)
 
 // Save folder selection
 const folderInput = document.getElementById('selectFolder');
@@ -1248,4 +1371,47 @@ fileInput.addEventListener('change', () => {
     } else {
         filePath.textContent = "No file selected";
     }
+});
+
+function updateButtonState(experimentRunning) {
+    document.getElementById('startExpermient').disabled = experimentRunning;
+    document.getElementById('stopExpermient').disabled = !experimentRunning;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    const toggleBtn = document.getElementById("themeToggle");
+
+    // Load saved theme
+    const savedTheme = localStorage.getItem("theme") || "light";
+    if (savedTheme === "dark") {
+        document.body.classList.add("dark-theme");
+    }
+
+    function updateIcon() {
+        toggleBtn.textContent =
+            document.body.classList.contains("dark-theme")
+                ? "🌙"  // dark mode active
+                : "🌞"; // light mode active
+    }
+
+    updateIcon();
+
+    // SINGLE unified click listener
+    toggleBtn.addEventListener("click", () => {
+        // Toggle body theme
+        document.body.classList.toggle("dark-theme");
+        const newTheme = document.body.classList.contains("dark-theme")
+            ? "dark"
+            : "light";
+
+        // Save preference
+        localStorage.setItem("theme", newTheme);
+
+        // Update UI icon
+        updateIcon();
+
+        // Notify all iframes
+        sendThemeToIFrames(newTheme);
+    });
+
 });

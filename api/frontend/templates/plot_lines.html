@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Line Plot</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body style="margin: 0;">
+    <div id="lines-div-{{ plot_id }}" style="width: 100%; height: 300px;"></div>
+    <script>
+        const socket = io.connect('http://localhost:{{ port }}', { transports: ['websocket', 'polling'] });
+        const plotId = '{{ plot_id }}';
+        const divId = 'lines-div-' + plotId;
+        let isFirstCall = true; // Flag to check if it's the first call
+
+        // General layout, titles will be updated from the server
+        let layout = {
+            title: 'Loading...',
+            paper_bgcolor: 'black',
+            plot_bgcolor: 'black',
+            font: { color: 'white' },
+            xaxis: {
+                title: 'X',
+                gridcolor: 'gray',
+                zerolinecolor: 'gray',
+            },
+            yaxis: {
+                title: 'Y',
+                gridcolor: 'gray',
+                zerolinecolor: 'gray',
+            },
+            margin: { l: 40, r: 20, t: 40, b: 40 },
+            legend: {
+                font: {
+                    color: 'white'
+                }
+            }
+        };
+
+        socket.on('lines-' + plotId, function(newData) {
+
+            if (!newData || !newData.data || !newData.meta) {
+                console.warn("Received data is missing 'data' or 'meta' property.", newData);
+                return;
+            }
+
+            const plotData = newData.data;
+            const meta = newData.meta;
+
+            // Update layout with titles from metadata
+            if (isFirstCall){
+                if (meta.title) layout.title = meta.title;
+                if (meta.xaxis_title) layout.xaxis.title = meta.xaxis_title;
+                if (meta.yaxis_title) layout.yaxis.title = meta.yaxis_title;
+            }
+
+            Plotly.react(divId, plotData, layout);
+        });
+        socket.on('connect', () => console.log('Line plot connected!'));
+    </script>
+    <script>
+        window.__PLOT_DIV_ID__ = 'lines-div-{{ plot_id }}';
+    </script>
+    <script src="/static/js/theme-sync.js"></script>
+
+</body>
+</html>

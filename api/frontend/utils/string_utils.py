@@ -1,9 +1,0 @@
-# /api/frontend/utils/string_utils.py
-import re
-
-
-def camel_to_snake(name: str) -> str:
-    """Convert CamelCase or camelCase to snake_case."""
-    # Insert underscore before capital letters and lowercase everything
-    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
-    return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()

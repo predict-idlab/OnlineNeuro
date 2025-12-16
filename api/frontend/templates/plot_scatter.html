@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scatter plot</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body style="margin: 0;">
+    <div id="scatter-div-{{ plot_id }}" style="width: 100%; width:300px; height: 300px;"></div>
+    <script>
+
+        // Adjust the port in your Flask app if needed
+        console.log("Socket connection port:", '{{ port }}');  // Add this line for debugging
+        const plotId = '{{ plot_id }}';  // unique per plot
+        const socket = io.connect('http://localhost:{{ port }}',  { transports: ['websocket', 'polling'] });  // Ensure port is passed by Flask or hardcoded
+        const divId = 'scatter-div-' + plotId;
+        let isFirstCall = true; // Flag to check if it's the first call
+
+        var trace1 = {
+            x: [],  // Data points where variable = 1
+            y: [],  // Data points where variable = 1
+            type: 'scatter',
+            mode: 'markers',
+            name: 'X 1',  // Legend label for variable = 1
+            marker: { size: 8, color: '#ff3737' }
+        };
+
+        var trace0 = {
+            x: [],  // Data points where variable = 0
+            y: [],  // Data points where variable = 0
+            type: 'scatter',
+            mode: 'markers',
+            name: 'X 0',  // Legend label for variable = 0
+            marker: { size: 8, color: '#3b5b8a' }
+        };
+
+        var traceSingle = {
+            x: [],
+            y: [],
+            type: 'scatter',
+            mode: 'markers',
+            name: 'Data',
+            marker: { size: 8 }
+        };
+
+        var layout = {
+            title: 'Sampling',
+            paper_bgcolor: 'black',
+            plot_bgcolor: 'black',
+            font: { color: 'white' },
+            xaxis: {
+                title: 'X Axis',
+                gridcolor: 'gray',
+                zerolinecolor: 'gray',
+                showgrid: true
+            },
+            yaxis: {
+                title: 'Y Axis',
+                gridcolor: 'gray',
+                zerolinecolor: 'gray',
+                showgrid: true
+            },
+            margin: { l: 30, r: 30, t: 30, b: 30 },
+            showlegend:true
+        };
+
+        socket.on('scatter-' + plotId, function(newData) {
+            console.log("Received data:", newData);  // Log the received data for debugging
+
+            if (!newData || !newData.data || !newData.meta) {
+                console.warn("Received data is missing 'data' or 'meta' property.", newData);
+                return; // Stop execution if data is incomplete
+            }
+
+            const plotData = newData.data;
+            const meta = newData.meta;
+
+            if (isFirstCall){
+                if (meta.title) layout.title = meta.title;
+                if (meta.xaxis_title) layout.xaxis.title = meta.xaxis_title;
+                if (meta.yaxis_title) layout.yaxis.title = meta.yaxis_title;
+
+                // Optional trace renaming
+                if (meta.trace0_name) trace0.name = meta.class_0_name;
+                if (meta.trace1_name) trace1.name = meta.class_1_name;
+
+                // Decide single-trace or two-trace mode
+                if (Array.isArray(plotData.class)) {
+                    Plotly.newPlot(divId, [trace0, trace1], layout);
+                } else {
+                    Plotly.newPlot(divId, [traceSingle], layout);
+                }
+                isFirstCall = false; // Mark as initialized
+            }
+
+            // Check if data contains valid arrays and update the plot
+            if (Array.isArray(plotData.x) && Array.isArray(plotData.y) && Array.isArray(plotData.class) &&
+                plotData.x.length > 0 &&
+                plotData.x.length === plotData.y.length &&
+                plotData.y.length === plotData.class.length){
+
+                if (Array.isArray(plotData.class)) {
+
+                    const x0 = [], y0 = [], x1 = [], y1 = [];
+                    plotData.class.forEach((cls, index) => {
+                        if (cls === 1) {
+                            x1.push(plotData.x[index]);
+                            y1.push(plotData.y[index]);
+                        } else {
+                            x0.push(plotData.x[index]);
+                            y0.push(plotData.y[index]);
+                        }
+                    });
+                    Plotly.extendTraces(divId, { x: [x0], y: [y0] }, [0]);  //
+                    Plotly.extendTraces(divId, { x: [x1], y: [y1] }, [1]);  //
+                } else{
+                    Plotly.extendTraces(divId,
+                    { x: [plotData.x], y: [plotData.y] }, [0]);
+                }
+                console.log("Plot updated successfully.");
+
+            } else {
+                console.warn("Data format is not correct or empty arrays:", plotData);
+            }
+        });
+        socket.on('connect', () => console.log('Successfully connected!'));
+        socket.on('disconnect', () => console.log('Socket disconnected!'));
+    </script>
+
+    <script>
+        window.__PLOT_DIV_ID__ = 'scatter-div-{{ plot_id }}';
+    </script>
+    <script src="/static/js/theme-sync.js"></script>
+
+</body>
+</html>
