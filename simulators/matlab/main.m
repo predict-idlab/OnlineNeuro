@@ -38,8 +38,12 @@ function main(json_data)
         end
     end
     display(problem_config.('experiment_parameters'))
-    problem_name = problem_config.('experiment_parameters').('problem_name');
-    problem_type = problem_config.('experiment_parameters').('problem_type');
+
+    exp_params = problem_config.('experiment_parameters');
+
+    problem_name = getFieldEither(exp_params, 'problem_name', 'name');
+    problem_type = getFieldEither(exp_params, 'problem_type', 'type');
+
     connection_config = data.('connection_config');
 
     max_retries = 5; % Number of times to try connecting
