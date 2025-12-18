@@ -18,12 +18,6 @@
     "max_value": 60,
     "type": "float"
   },
-  "balance_charge":
-  {"optimizable": false,
-    "user_fixed": true,
-    "value": true,
-    "type": "boolean"
-    },
   "num_electrodes":
   { "optimizable": false,
     "user_fixed" : true,

@@ -2,12 +2,6 @@
   "multiple_sets":{
    "value":true
   },
-  "balance_charge":
-    {"optimizable": false,
-      "user_fixed": false,
-      "value": false,
-      "type": "boolean"
-    },
   "num_electrodes" :
   { "optimizable": false,
     "user_fixed" : true,

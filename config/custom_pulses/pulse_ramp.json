@@ -1,4 +1,11 @@
-{ "s_delay": {
+{
+"s_balance_charge":
+  {"optimizable": false,
+    "user_fixed": true,
+    "value": true,
+    "type": "boolean"
+    },
+"s_delay": {
   "optimizable": true,
   "user_fixed": false,
   "value": 0.0,
