@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Streaming plot</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body style="margin: 0;">
+    <div id="stream-div-{{ plot_id }}" style="width: 100%; height: 300px;"></div>
+    <script>
+        console.log("Socket connection port:", '{{ port }}');  // Add this line for debugging
+        const plotId = '{{ plot_id }}';
+        const socket = io.connect('http://localhost:{{ port }}', { transports: ['websocket', 'polling'] });
+        const divId = 'stream-div-' + plotId;
+        let isFirstCall = true;
+
+        let layout = {
+            title: 'Loading...',
+            paper_bgcolor: 'black',
+            plot_bgcolor: 'black',
+            font: { color: 'white' },
+            xaxis: {
+                title: 'X',
+                gridcolor: 'gray',
+                zerolinecolor: 'gray'
+            },
+            yaxis: {
+                title: 'Y',
+                gridcolor: 'gray',
+                zerolinecolor: 'gray'
+            },
+            margin: { l: 40, r: 20, t: 40, b: 40 },
+            showlegend: true,
+            legend: {
+                font: {
+                    color: 'white'
+                }
+            }
+        };
+
+        socket.on('stream-' + plotId, function(newData) {
+            console.log("Received data (streaming):", newData);  // Log the received data for debugging
+
+            if (!newData || !newData.data || !newData.meta) {
+                console.warn("Malformed packet:", packet);
+                return;
+            }
+
+            const plotData = newData.data;
+            const meta = newData.meta
+
+            if (isFirstCall){
+                if (meta.title) layout.title = meta.title;
+                if (meta.xaxis_title) layout.xaxis.title = meta.xaxis_title;
+                if (meta.yaxis_title) layout.yaxis.title = meta.yaxis_title;
+                if (meta.xaxis_type) layout.xaxis.type = meta.xaxis_type;
+                if (meta.yaxis_type) layout.yaxis.type = meta.yaxis_type;
+
+                const traces = [
+                    {
+                        x: newData.data.x,
+                        y: newData.data.y,
+                        mode: 'lines-markers',
+                        type: 'scatter',
+                        name: 'Initial observations',
+                        marker: {
+                            size: 7,
+                            color: 'red'
+                        }
+                    },
+                    {
+                        x: [],
+                        y: [],
+                        mode: 'lines-markers',
+                        type: 'scatter',
+                        name: 'Collected observations',
+                        marker: {
+                            size: 7,
+                            color: 'orange'
+                        }
+                    }
+                ];
+
+                Plotly.newPlot(divId, traces, layout);
+                isFirstCall = false;
+            }else{
+
+                Plotly.extendTraces(
+                    divId,
+                    {
+                        x: [newData.data.x],
+                        y: [newData.data.y]
+                    },
+                    [1]
+                );
+            }
+            console.log("Streaming plot updated successfully.");
+
+        });
+
+        socket.on('connect', () => console.log('Streaming plot connected!'));
+    </script>
+
+    <script>
+        window.__PLOT_DIV_ID__ = 'stream-div-{{ plot_id }}';
+    </script>
+    <script src="/static/js/theme-sync.js"></script>
+</body>
+</html>

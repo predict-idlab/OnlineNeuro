@@ -11,9 +11,9 @@ Key components:
 
 - template_map: Maps experiment identifiers to JSON template files.
 - model_map: Maps model identifiers to model JSON files.
-- acquisition_map: Maps acquisition function names to JSON configuration files.
+- acquisition_map: Maps acquisition identifiers to JSON configuration files.
 - add_model_map: Additional shared JSON files for models.
-- function_map: Maps pulse function names to JSON parameter files.
+- function_map: Maps pulse function identifiers to JSON parameter files.
 - optimizer_config_path: Global path to optimizer configuration.
 - matlab_experiments: User-facing names mapped to internal experiment IDs (MATLAB).
 - python_experiments: User-facing names mapped to internal experiment IDs (Python).
@@ -28,7 +28,7 @@ from typing import Any, Literal
 from api.config_utils import json_or_file
 from common import utils as nn_utils
 
-PlotType = Literal["scatter", "line", "contour", "lines"]
+PlotType = Literal["scatter", "stream", "contour", "lines"]
 PlotParams = dict[str, str]
 PlotConfig = dict[str, object]
 
@@ -113,9 +113,9 @@ plot_configurations: dict[str, list[PlotConfig]] = {
             "params": {
                 "y_cols": ["stim_pulse", "block_pulse"],
                 "x_col": "time",
-                "title": "Stimulation and Blocking Pulses",
                 "xaxis_title": "Time (ms)",
                 "yaxis_title": "Amplitude (mA)",
+                "title": "Stimulation and Blocking Pulses",
             },
         },
         {
@@ -129,6 +129,7 @@ plot_configurations: dict[str, list[PlotConfig]] = {
                 "color_col": "response",
                 "xaxis_title": "pulse_1_pw (ms)",
                 "yaxis_title": "pulse_1_amp (mA)",
+                "title": "Input space",
             },
         },
         {
@@ -139,9 +140,9 @@ plot_configurations: dict[str, list[PlotConfig]] = {
             "params": {
                 "zmin": -80,
                 "zmax": 50,
-                "title": "AP Propagation",
                 "xaxis_title": "Time (ms)",
                 "yaxis_title": "Node (index)",
+                "title": "AP Propagation",
             },
         },
     ],
@@ -157,6 +158,7 @@ plot_configurations: dict[str, list[PlotConfig]] = {
                 "color_col": "response",
                 "xaxis_title": "Time (ms)",
                 "yaxis_title": "Amplitude (mA)",
+                "title": "Input space",
             },
         },
         {
@@ -170,6 +172,7 @@ plot_configurations: dict[str, list[PlotConfig]] = {
                 "color_col": "response",
                 "xaxis_title": "Pulse 1 width (ms)",
                 "yaxis_title": "Delay 1 (ms)",
+                "title": "Input space",
             },
         },
         {
@@ -183,6 +186,7 @@ plot_configurations: dict[str, list[PlotConfig]] = {
                 "z_source": "mean",
                 "xaxis_title": "Pulse 1 amp (mA)",
                 "yaxis_title": "Pulse 1 width (ms)",
+                "title": "Predictive mean",
             },
         },
     ],
@@ -211,6 +215,7 @@ plot_configurations: dict[str, list[PlotConfig]] = {
                 "z_source": "mean",
                 "xaxis_title": "x0",
                 "yaxis_title": "x1",
+                "title": "Predictive mean",
             },
         },
     ],
@@ -238,21 +243,24 @@ plot_configurations: dict[str, list[PlotConfig]] = {
                 "z_source": "mean",
                 "xaxis_title": "pulse_1_amp (mA)",
                 "yaxis_title": "pulse_1_pw (ms)",
+                "title": "Predictive mean",
             },
         },
     ],
     "matlab_rose_regression": [
         {
             "id": "0",
-            "type": "scatter",
-            "src": "scatter_input_input",
-            "generator": "scatter_from_dataframe",
+            "type": "stream",
+            "src": "responses",
+            "generator": "streaming_line_from_dataframe",
             "params": {
-                "x_col": "x0",
-                "y_col": "x1",
-                "color_col": "response",
-                "xaxis_title": "x0",
-                "yaxis_title": "x1",
+                "x_col": "sample_id",
+                "y_col": "response",
+                "xaxis_title": "Sample",
+                "yaxis_title": "Value",
+                "title": "Observed values",
+                "xaxis_type": "linear",
+                "yaxis_type": "log",
             },
         },
         {
@@ -264,6 +272,20 @@ plot_configurations: dict[str, list[PlotConfig]] = {
                 "x_col": "x0",
                 "y_col": "x1",
                 "z_source": "mean",
+                "xaxis_title": "x0",
+                "yaxis_title": "x1",
+                "title": "Predictive mean",
+            },
+        },
+        {
+            "id": "2",
+            "type": "scatter",
+            "src": "scatter_input_input",
+            "generator": "scatter_from_dataframe",
+            "params": {
+                "x_col": "x0",
+                "y_col": "x1",
+                "color_col": "response",
                 "xaxis_title": "x0",
                 "yaxis_title": "x1",
             },

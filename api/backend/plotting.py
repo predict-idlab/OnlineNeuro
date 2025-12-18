@@ -12,8 +12,57 @@ from ..frontend.components.config_forms import plot_configurations
 GRID_POINTS = 20
 
 
+def generate_streaming_line(
+    context: dict, params: dict, with_meta: bool
+) -> dict | None:
+    """
+    Generates a data packet for a streaming plot.
+
+    Required context:
+        - 'results_df': full DataFrame
+
+    Required params:
+        - 'x_col'
+        - 'y_col'
+
+    Optional params:
+        - 'title', 'xaxis_title', 'yaxis_title'
+    """
+    x_col, y_col = params["x_col"], params["y_col"]
+
+    df = context.get("results_df")
+
+    if df is None:
+        warnings.warn("Required dataframe not found in context.")
+        return None
+
+    if not all(col in df.columns for col in [x_col, y_col]):
+        warnings.warn(f"Missing columns for scatter plot: {x_col}, {y_col}")
+        return None
+
+    return_json = {
+        "data": {
+            "x": df[x_col].tolist(),
+            "y": df[y_col].tolist(),
+        },
+        "meta": None,
+    }
+
+    if with_meta:
+        return_json["meta"] = {
+            "title": params.get("title", "Streaming Scatter"),
+            "xaxis_title": params.get("xaxis_title", x_col),
+            "yaxis_title": params.get("yaxis_title", y_col),
+        }
+        for k, v in params.items():
+            if k not in return_json["meta"]:
+                return_json["meta"][k] = v
+    return return_json
+
+
 def generate_line_plot(context: dict, params: dict, with_meta: bool) -> dict | None:
-    """Generates a data packet for a multi-line plot against a common x-axis.
+    """
+    Generates a data packet for a multi-line plot against a common x-axis.
 
     Required context:
         - 'lines_dict': The dictionary with the data.
@@ -35,9 +84,8 @@ def generate_line_plot(context: dict, params: dict, with_meta: bool) -> dict | N
 
     x_col = params["x_col"]
     y_cols = params["y_cols"]
-    y_labels = params.get(
-        "y_labels", y_cols
-    )  # Fallback to column names if labels not provided
+    # Fallback to column names if labels not provided
+    y_labels = params.get("y_labels", y_cols)
 
     if len(y_cols) != len(y_labels):
         raise ValueError("The number of 'y_cols' must match the number of 'y_labels'.")
@@ -72,9 +120,11 @@ def generate_line_plot(context: dict, params: dict, with_meta: bool) -> dict | N
     if with_meta:
         return_json["meta"] = {
             "title": params.get("title", "Line Plot"),
-            "xaxis_title": params.get("xaxis_title", x_col),
             "yaxis_title": params.get("yaxis_title", "Value"),
         }
+        for k, v in params.items():
+            if k not in return_json["meta"]:
+                return_json["meta"][k] = v
 
     return return_json
 
@@ -82,7 +132,8 @@ def generate_line_plot(context: dict, params: dict, with_meta: bool) -> dict | N
 def generate_scatter_from_dataframe(
     context: dict, params: dict, with_meta: bool
 ) -> dict | None:
-    """Generates a data packet for a scatter plot from a pandas DataFrame.
+    """
+    Generates a data packet for a scatter plot from a pandas DataFrame.
 
     Required context:
         - 'results_df': The pandas DataFrame with all experiment results.
@@ -122,9 +173,10 @@ def generate_scatter_from_dataframe(
         return_json["meta"] = {
             "feature_names": feature_names,
             "observation_names": observation_names,
-            "xaxis_title": params.get(x_col, None),
-            "yaxis_title": params.get(y_col, None),
         }
+        for k, v in params.items():
+            if k not in return_json["meta"]:
+                return_json["meta"][k] = v
     return return_json
 
 
@@ -167,13 +219,12 @@ def generate_contour_from_cajal_results(
             "grid_size": GRID_POINTS,
             "feature_names": ["Time (ms)", "Node index"],
             "title": params.get("title", "AP propagation"),
-            "zmin": params.get("zmin", None),
-            "zmax": params.get("zmax", None),
             "xticks": x_index.tolist()[::10],
             "yticks": y_index.tolist()[::10],
-            "xaxis_title": params.get("Time (ms)", None),
-            "yaxis_title": params.get("Node index", None),
         }
+        for k, v in params.items():
+            if k not in return_json["meta"]:
+                return_json["meta"][k] = v
     return return_json
 
 
@@ -233,14 +284,23 @@ def generate_contour_from_model(
             "grid_size": GRID_POINTS,
             "feature_names": [x_col, y_col],
             "title": params.get("title", "Contour Plot"),
-            "zmin": params.get("zmin", None),
-            "zmax": params.get("zmax", None),
             "xticks": x_orig.tolist(),
             "yticks": y_orig.tolist(),
-            "xaxis_title": params.get(x_col, None),
-            "yaxis_title": params.get(y_col, None),
         }
+        for k, v in params.items():
+            if k not in return_json["meta"]:
+                return_json["meta"][k] = v
     return return_json
+
+
+DATA_GENERATORS = {
+    "scatter_from_dataframe": generate_scatter_from_dataframe,
+    "contour_from_model": generate_contour_from_model,
+    "plot_line": generate_line_plot,
+    "contour_from_cajal_results": generate_contour_from_cajal_results,
+    "streaming_line_from_dataframe": generate_streaming_line,
+    # Add new generator mappings here as you create them
+}
 
 
 def prepare_data_bundle(
@@ -274,6 +334,7 @@ def prepare_data_bundle(
                 f"src cannot be None for experiment {experiment_name}  and config: {config}"
             )
             continue
+
         if not src or src in data_sources:
             continue
 
@@ -293,8 +354,9 @@ def prepare_data_bundle(
             continue
 
         assert isinstance(params, dict), "params is not a dictionary"
-
+        assert isinstance(generator_name, str), "Generator name is not a str"
         # Get the generator function from the registry
+
         generator_func = DATA_GENERATORS[generator_name]
 
         # Call the generator and store the result
@@ -304,6 +366,9 @@ def prepare_data_bundle(
                 print(
                     f"For src {src}, following keys are present: \n {data_packet.keys()}"
                 )
+                if src == "responses":
+                    print(data_packet["data"].keys())
+                    print(data_packet["meta"])
                 data_sources[src] = data_packet
 
         except Exception as e:
@@ -312,15 +377,6 @@ def prepare_data_bundle(
             )
 
     return data_sources
-
-
-DATA_GENERATORS = {
-    "scatter_from_dataframe": generate_scatter_from_dataframe,
-    "contour_from_model": generate_contour_from_model,
-    "plot_line": generate_line_plot,
-    "contour_from_cajal_results": generate_contour_from_cajal_results,
-    # Add new generator mappings here as you create them
-}
 
 
 def send_plot_bundle(
@@ -366,6 +422,7 @@ def send_plot_bundle(
         return
 
     json_payload = {"experiment": experiment_name, "sources": data_sources}
+
     try:
         response = requests.post(f"{post_url}/update_plots_bundle", json=json_payload)
         response.raise_for_status()  # Raises an exception for bad status codes
