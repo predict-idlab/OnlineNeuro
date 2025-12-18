@@ -1,5 +1,4 @@
 # /online_neuro/utils/custom_box.py
-
 from typing import Optional
 
 from trieste.space import Box

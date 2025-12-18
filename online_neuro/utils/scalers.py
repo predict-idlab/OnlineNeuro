@@ -349,13 +349,66 @@ def define_scaler_search_space(
     verbose: bool = False,
 ) -> tuple[CustomBox, BaseScaler, dict[str, Any]]:
     """
-    @param problem_config: Information concerning the search space as defined by the user.
-                The gui boundaries should be within the problem_config range.
-                If not the case, these are ignored.
-    @param scale_inputs: bool, I don't see a scenario where this wouldn't be the case.
-    @param scaler : string to specify the scaling type
-    @param output_range : tuple indicating min and max value in the output
-    @return: tuple : CustomBox, BaseScaler, feature_info
+    Parse the raw problem configuration to define the search space boundaries,
+    identifies fixed and variable parameters, and initializes the appropriate
+    input scaler.
+
+    The function first analyzes `problem_config` to separate parameters into
+    fixed, categorical, and variable (numeric) sets, extracting the bounds
+    for the variable parameters. It then constructs the search space object
+    (CustomBox) and the scaler object based on user requirements.
+
+    TODO If needed, extend to other scalers. This may be problematic as not
+        reliable statistics may be known a priori
+        (e.g. StandardScaler requires mean/std)
+
+    TODO Extend this an related functions to handle Categorical features.
+    Parameters
+    ----------
+    problem_config : dict[str, Any]
+        A configuration dictionary defining the features, including their status
+        (fixed, categorical, variable) and, for variable features, their min/max bounds.
+    scale_inputs : bool, optional
+        If True, the inputs will be scaled (typically to `output_range`).
+        If False, the input space and the physical space are identical, and an
+        `IdentityScaler` is used. Defaults to True.
+    scaler : str, optional
+        The type of scaler to use. Currently, only "minmax" is supported
+        for scaling variable inputs. Defaults to "minmax".
+    output_range : tuple[float, float], optional
+        The target range (min, max) for the normalized inputs when `scale_inputs` is True.
+        Defaults to (-1, 1).
+    verbose : bool, optional
+        If True, prints the categorized feature information (`feature_info`).
+        Defaults to False.
+
+    Returns
+    -------
+    tuple[CustomBox, BaseScaler, dict[str, Any]]
+        A tuple containing:
+        1. `search_space`: A `CustomBox` object defining the bounds of the
+           optimization space (either the physical bounds or the scaled bounds).
+        2. `scaler_obj`: An initialized `BaseScaler` instance (`CustomMinMaxScaler`
+           or `IdentityScaler`).
+        3. `feature_info`: A dictionary containing categorized features
+           ('fixed', 'variable', 'categorical') and their associated values or details.
+
+    Raises
+    ------
+    NotImplementedError
+        If a scaler type other than "minmax" is specified.
+        If the search space contains only categorical features (as this logic
+        is currently not fully implemented).
+    ValueError
+        (Implicitly raised by `CustomMinMaxScaler`) if variable features have a
+        zero range (min equals max).
+
+    Notes
+    -----
+    - This function currently relies on the internal utility `_parse_parameter`
+      to dissect the nested configuration structure.
+    - If `scale_inputs` is True, the `CustomBox` bounds correspond to `output_range`.
+    - If no variable features are found, an error is raised as optimization over
     """
     # TODO extend to handle categorical and boolean features (i.e. they have to bypass the feature normalization
     if scaler != "minmax":
