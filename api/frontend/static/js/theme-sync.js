@@ -21,17 +21,27 @@ document.documentElement.setAttribute("data-theme", "light");
 function applyPlotlyTheme(divId, theme) {
     const darkMode = (theme === "dark");
 
+    const gd = document.getElementById(divId);
+
+    const xType = gd.layout?.xaxis?.type || "linear";
+    const yType = gd.layout?.yaxis?.type || "linear";
+
     const update = {
         paper_bgcolor: darkMode ? "black" : "white",
         plot_bgcolor: darkMode ? "black" : "white",
         font: { color: darkMode ? "white" : "black" },
         xaxis: {
+            type: xType,
             gridcolor: darkMode ? "#444" : "#ccc",
             zerolinecolor: darkMode ? "#888" : "#444"
         },
         yaxis: {
+            type: yType,
             gridcolor: darkMode ? "#444" : "#ccc",
             zerolinecolor: darkMode ? "#888" : "#444"
+        },
+        legend: {
+            font: {color: darkMode ? 'white': "black"}
         }
     };
 
