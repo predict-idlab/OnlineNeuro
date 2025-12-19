@@ -32,14 +32,33 @@ PlotType = Literal["scatter", "stream", "contour", "lines"]
 PlotParams = dict[str, str]
 PlotConfig = dict[str, object]
 
+# TODO implement VLMOP2 plots before exposing the experiment
 # Mapping experiment template names to JSON paths
 template_map: dict[str, Path] = {
     "axonsim_nerve_block": Path("config") / "experiments" / "axonsim_template.json",
     "axonsim_regression": Path("config") / "experiments" / "axonsim_template.json",
     "matlab_rose_regression": Path("config") / "experiments" / "rose_template.json",
+    "python_rose_regression": Path("config") / "experiments" / "rose_template.json",
     "circle_classification": Path("config") / "experiments" / "circle_template.json",
-    "vlmop2": Path("config") / "experiments" / "vlmop2_template.json",
+    # "vlmop2": Path("config") / "experiments" / "vlmop2_template.json",
     "cajal_ap_block": Path("config") / "experiments" / "cajal_template.json",
+}
+
+# Mapping of user-friendly experiment names to internal IDs (MATLAB)
+matlab_experiments: dict[str, str] = {
+    "Axonsim (nerve block)": "axonsim_nerve_block",
+    "Axonsim (regression)": "axonsim_regression",
+    "Matlab toy regression": "python_rose_regression",
+    "Toy Classification": "circle_classification",
+    #   "Toy VLMOP2": "vlmop2",
+}
+
+# Mapping of user-friendly experiment names to internal IDs (Python)
+python_experiments: dict[str, str] = {
+    "Toy classification (Python)": "circle_classification",
+    "Toy regression (Python)": "matlab_rose_regression",
+    # "Toy MOO (Python)": "vlmop2",
+    "Cajal nerve block": "cajal_ap_block",
 }
 
 # Mapping model names to JSON files
@@ -75,29 +94,13 @@ function_map: dict[str, Path] = {
 # Optimizer configuration file
 optimizer_config_path: Path = Path("config") / "optimization" / "common.json"
 
-# Mapping of user-friendly experiment names to internal IDs (MATLAB)
-matlab_experiments: dict[str, str] = {
-    "Axonsim (nerve block)": "axonsim_nerve_block",
-    "Axonsim (regression)": "axonsim_regression",
-    "Matlab toy regression": "matlab_rose_regression",
-    "Toy Classification": "circle_classification",
-    "Toy VLMOP2": "vlmop2",
-}
-
-# Mapping of user-friendly experiment names to internal IDs (Python)
-python_experiments: dict[str, str] = {
-    "Toy classification (Python)": "circle_classification",
-    # "Toy regression (Python)": "matlab_rose_regression",
-    "Toy MOO (Python)": "vlmop2",
-    "Cajal nerve block": "cajal_ap_block",
-}
-
 # Type of each experiment by internal ID
 experiments_types: dict[str, Literal["classification", "regression", "moo"]] = {
     "axonsim_nerve_block": "classification",
     "axonsim_regression": "regression",
     "cajal_ap_block": "classification",
     "matlab_rose_regression": "regression",
+    "python_rose_regression": "regression",
     "circle_classification": "classification",
     "vlmop2": "moo",
 }
@@ -248,6 +251,50 @@ plot_configurations: dict[str, list[PlotConfig]] = {
         },
     ],
     "matlab_rose_regression": [
+        {
+            "id": "0",
+            "type": "stream",
+            "src": "responses",
+            "generator": "streaming_line_from_dataframe",
+            "params": {
+                "x_col": "sample_id",
+                "y_col": "response",
+                "xaxis_title": "Sample",
+                "yaxis_title": "Value",
+                "title": "Observed values",
+                "xaxis_type": "linear",
+                "yaxis_type": "log",
+            },
+        },
+        {
+            "id": "1",
+            "type": "contour",
+            "src": "model_uncertainty",
+            "generator": "contour_from_model",
+            "params": {
+                "x_col": "x0",
+                "y_col": "x1",
+                "z_source": "mean",
+                "xaxis_title": "x0",
+                "yaxis_title": "x1",
+                "title": "Predictive mean",
+            },
+        },
+        {
+            "id": "2",
+            "type": "scatter",
+            "src": "scatter_input_input",
+            "generator": "scatter_from_dataframe",
+            "params": {
+                "x_col": "x0",
+                "y_col": "x1",
+                "color_col": "response",
+                "xaxis_title": "x0",
+                "yaxis_title": "x1",
+            },
+        },
+    ],
+    "python_rose_regression": [
         {
             "id": "0",
             "type": "stream",
