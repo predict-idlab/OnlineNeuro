@@ -67,13 +67,8 @@ In Linux
 sh run.sh
 ```
 
-In Windows[^1]  open the file directly or from terminal:
-```bash
-.\run.bat
-```
-
 - The bash script takes care of adding the required folders to PYTHONPATH and calls /api/app.py
-- Open the interface within a browser per default: [https:localhost:9000](https:localhost:9000), or the one specified in the configuration file.
+- Open the interface within a browser per default: [https:localhost:10000](https:localhost:10000), or the one specified in the configuration file.
 
 More details on the GUI usage bellow.
 
