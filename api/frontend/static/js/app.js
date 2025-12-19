@@ -8,6 +8,7 @@ let optimizableExperimentFeatures
 let userDefinedExperimentFeatures
 let defaultFeaturesExperimentFeatures
 let iframesCreated = false;
+let allAcquisitions = [];
 
 const iframeState = {
     created: false,
@@ -308,22 +309,28 @@ async function stopExperiment() {
     showSpinner(false);
 }
 
+function populateSelect(selectElement, items, defaultText) {
+    selectElement.innerHTML = `<option value="">${defaultText}</option>`;
+    items.forEach(item => {
+        const option = document.createElement('option');
+        option.value = item;
+        option.innerText = item;
+        selectElement.appendChild(option);
+    });
+}
+
 async function fetchData(endpoint, selectId, defaultText) {
     try {
         const response = await fetch(`/${endpoint}`); // API route that returns JSON
         const items = await response.json(); // Ensure the response is parsed as JSON
         const selectElement = document.getElementById(selectId);
 
-        // Clear existing options
-        selectElement.innerHTML = `<option value="">${defaultText}</option>`; // Reset to default option
+        if (endpoint === 'acquisitions') {
+            allAcquisitions = items; // Save to global
+        }
 
-        // Populate the select element with the fetched items
-        items.forEach(item => {
-            const option = document.createElement('option');
-            option.value = item; // Set the value for the option
-            option.innerText = item; // Display the item name
-            selectElement.appendChild(option); // Append the option to the select
-        });
+        populateSelect(selectElement, items, defaultText);
+
     } catch (error) {
         console.error(`Error fetching ${endpoint}, and option value id = ${defaultText}:`, error);
     }
@@ -399,6 +406,21 @@ async function updatePulseParameters(){
         await updateFixedParameters(fixPulseFeatures, prefixedPulseConfig, 'parameters-container-fixed-pulse', i)
         await updateVariableParameters(optPulseFeatures, prefixedPulseConfig, 'parameters-container-variable-pulse', i)
     }
+    // Enforce constraints for pulse_ramp after rendering
+    Object.entries(pulseTypes).forEach(([index, type]) => {
+        if (type === 'pulse_ramp') {
+            // ID Pattern
+            const balanceCheckbox = document.getElementById(`pulse_${index}_s_balance_charge`);
+
+            if (balanceCheckbox) {
+                balanceCheckbox.checked = true;
+                balanceCheckbox.disabled = true;
+
+                // Optional: Add a visual hint/style to show it's enforced
+                balanceCheckbox.parentElement.classList.add('enforced-constraint');
+            }
+        }
+    });
 
     Object.keys(pulseTypes).forEach(number => {
         const input = document.getElementById(`fun_type_${number}`);
@@ -472,27 +494,28 @@ async function experimentChange(){
         }
         console.log("No electrodes to plot.");
     }
-    // TODO apply acquisition filtering rule here
-    await applyVariationalRule(); // Verifying the problem is classification and updating model params if needed
+
+    await applyGlobalConstraints(); // Filtering and locking as needed.
 }
 
-async function applyVariationalRule() {
+async function applyGlobalConstraints() {
     const selectedModelName = document.getElementById('model').value;
     const selectedExperiment = document.getElementById('experiment').value;
     const variationalCheckbox = document.getElementById('variational');
+    const acquisitionSelect = document.getElementById('acquisition');
 
-    // If the checkbox doesn't exist on the page, do nothing.
-    if (!variationalCheckbox) {
-        return;
+    // 1. Reset states
+    if (variationalCheckbox) {
+        variationalCheckbox.disabled = false;
+        variationalCheckbox.checked = false;
     }
 
-    // Important. Always reset the checkbox to its default (unlocked) state first.
-    variationalCheckbox.disabled = false;
-    variationalCheckbox.checked = false;
-    // If either dropdown isn't selected, we can't apply the rule, so we're done.
-    if (!selectedExperiment || !selectedModelName) {
-        return;
+    if (acquisitionSelect) {
+        acquisitionSelect.disabled = false;
+        acquisitionSelect.classList.remove('locked-highlight'); // Remove highlight
     }
+
+    if (!selectedExperiment) return;
 
     try {
         const response = await fetch('/experiment_type', {
@@ -501,26 +524,47 @@ async function applyVariationalRule() {
             body: JSON.stringify({experiment: selectedExperiment})
         });
 
-        if (!response.ok) {
-            console.error("Failed to fetch experiment type");
-            return;
-        }
+        if (!response.ok) return;
         const data = await response.json();
+        const isClassification = (data.type === 'classification');
 
-        // If the experiment is for classification AND the model is 'gp'.
-        if (data.type === 'classification' && selectedModelName === 'gp') {
+        // 2. Filter Acquisition Options
+        if (acquisitionSelect) {
+            let filtered;
+            if (isClassification) {
+                // Only allow 'bald' for classification
+                filtered = allAcquisitions.filter(a => a.toLowerCase() === 'bald');
+            } else {
+                // Remove 'bald' for regression/other
+                filtered = allAcquisitions.filter(a => a.toLowerCase() !== 'bald');
+            }
+
+            populateSelect(acquisitionSelect, filtered, "Select Acquisition");
+
+            // 3. Handle specific logic for Classification
+            if (isClassification) {
+                acquisitionSelect.value = 'bald';
+                acquisitionSelect.disabled = true;
+                acquisitionSelect.classList.add('locked-highlight'); // Visual cue
+            } else {
+                acquisitionSelect.value = ""; // Reset to default "Select Acquisition"
+            }
+        }
+
+        // 4. GP + Classification Rule
+        if (isClassification && selectedModelName === 'gp' && variationalCheckbox) {
             variationalCheckbox.checked = true;
-            variationalCheckbox.disabled = true; // Lock it
+            variationalCheckbox.disabled = true;
         }
 
     } catch (error) {
-        console.error("Error in applyVariationalRule:", error);
+        console.error("Error in applyGlobalConstraints:", error);
     }
 }
 
 async function modelChange(){
     await loadParameters("model", {selectable:true});
-    await applyVariationalRule(); // Apply the rule after model changes
+    await applyGlobalConstraints(); // Apply the rule after model changes
     // TODO adjust acquisitions here
 }
 

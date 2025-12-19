@@ -395,3 +395,44 @@ button, input {
     width: 100%;
     height: 400px; /* Adjust this to your desired plot height */
 }
+
+/* Visual highlight for locked/enforced parameters */
+.locked-highlight {
+    border: 2px solid var(--primary-color) !important; /* Gold/Yellow border */
+    background-color: rgba(255, 204, 0, 0.1) !important;
+    cursor: not-allowed;
+    font-weight: bold;
+}
+
+/* Optional: add a tooltip-like effect using title if you want */
+select.locked-highlight:hover::after {
+    content: "Enforced by experiment type";
+}
+
+/* Styling for parameters enforced by the backend logic */
+.enforced-constraint {
+    opacity: 0.8;
+    cursor: not-allowed;
+    color: #888; /* Dims the text to show it's less interactive */
+    position: relative;
+}
+
+/* Make sure the cursor reflects the locked state even on the input */
+.enforced-constraint input {
+    cursor: not-allowed;
+}
+
+/* Optional: Add a small label after the text to explain why it's locked */
+.enforced-constraint::after {
+    content: " (Enforced)";
+    font-size: 0.75rem;
+    font-style: italic;
+    margin-left: 8px;
+    color: var(--primary-color); /* Same gold/yellow color used for the acquisition highlight */
+    vertical-align: middle;
+}
+
+/* If your theme is dark, you might want a slightly brighter text color */
+.dark-theme .enforced-constraint {
+    color: #aaa;
+}
