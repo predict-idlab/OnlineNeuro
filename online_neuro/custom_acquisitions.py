@@ -423,7 +423,7 @@ class TemporalVarianceMovement(AbstractSampler[ProbabilisticModel]):
         return f"{self.__class__.__name__}, alpha ={self.alpha}"
 
 
-class DiscreteMaxVarianceSampling(
+class DiscreteBatchSampling(
     AcquisitionRule[TensorType, SearchSpace, ProbabilisticModelType]
 ):
     """
@@ -436,7 +436,7 @@ class DiscreteMaxVarianceSampling(
     """
 
     def __init__(
-        self: "DiscreteMaxVarianceSampling[ProbabilisticModel]",
+        self: "DiscreteBatchSampling[ProbabilisticModel]",
         sample_size: int,
         query_points: int,
         sampler: Optional[AbstractSampler] = None,
@@ -478,7 +478,7 @@ class DiscreteMaxVarianceSampling(
 
     def __repr__(self) -> str:
         """Return a detailed string representation of the rule."""
-        return f"""DiscreteMaxVarianceSampler(
+        return f"""DiscreteBatchSampling(
             {self._sample_size!r},
             {self._query_points!r},
             {self._sampler!r},
@@ -488,7 +488,6 @@ class DiscreteMaxVarianceSampling(
         self,
         search_space: SearchSpace,
         models: Mapping[Tag, ProbabilisticModelType],
-        # datasets: Optional[Mapping[Tag, Dataset]] = None,
         datasets: Optional[Mapping] = None,
     ) -> TensorType:
         """
@@ -530,23 +529,103 @@ class DiscreteMaxVarianceSampling(
                 f"""datasets must be provided and contain the single key {OBJECTIVE}"""
             )
         # 1. Sample candidates randomly from the search space
-        query_points = search_space.sample_method(
+        candidate_pool = search_space.sample_method(
             self._sample_size, sampling_method="random"
         )
-
         # 2. Use the sampler to rank and select the best K points
         samples = self._sampler.sample(
             models[OBJECTIVE],
             self._query_points,
-            query_points,
+            candidate_pool,
             select_output=self._select_output,
         )
 
         return samples
 
 
+class MaxCoverageSampler(AbstractSampler[ProbabilisticModel]):
+    """Selects points farthest from already observed data (Space-filling)."""
+
+    def sample(
+        self, model, sample_size, at, select_output=None, dataset=None, **kwargs
+    ) -> TensorType:
+        if dataset is None or tf.shape(dataset.query_points)[0] == 0:
+            selected_points = tf.expand_dims(at[0], 0)
+            indices = [0]
+        else:
+            selected_points = tf.cast(dataset.query_points, at.dtype)
+            indices = []
+
+        candidates = at
+        for _ in range(sample_size - len(indices)):
+            dist_matrix = tf.norm(
+                candidates[:, None, :] - selected_points[None, :, :], axis=-1
+            )
+            min_dists = tf.reduce_min(dist_matrix, axis=1)
+            best_idx = tf.argmax(min_dists)
+
+            indices.append(best_idx)
+            selected_points = tf.concat(
+                [selected_points, tf.expand_dims(candidates[best_idx], 0)], axis=0
+            )
+
+        return tf.gather(at, indices)
+
+
+class DiversityUncertaintySampler(AbstractSampler[ProbabilisticModel]):
+    """
+    Balances exploration of high-variance regions with space-filling coverage.
+    """
+
+    def __init__(self, beta: float = 0.5):
+        """
+        Args:
+            beta: Weight for coverage (0.0 = Pure Variance, 1.0 = Pure Coverage).
+        """
+        self.beta = beta
+
+    def _normalize(self, tensor):
+        t_min = tf.reduce_min(tensor)
+        t_max = tf.reduce_max(tensor)
+        return (tensor - t_min) / (t_max - t_min + 1e-9)
+
+    def sample(
+        self, model, sample_size, at, select_output=tf.reduce_mean, dataset=None
+    ) -> TensorType:
+        # 1. Get Model Variance for all candidates
+        _, variance = model.predict(at)
+        uncertainty_scores = self._normalize(select_output(variance, axis=-1))
+
+        # 2. Iteratively pick points to update coverage scores dynamically
+        if dataset is not None:
+            history = tf.cast(dataset.query_points, at.dtype)
+        else:
+            history = tf.expand_dims(at[0], 0)
+
+        selected_indices = []
+        for _ in range(sample_size):
+            # Calculate distance to nearest point in history (coverage)
+            dist_matrix = tf.norm(at[:, None, :] - history[None, :, :], axis=-1)
+            coverage_scores = self._normalize(tf.reduce_min(dist_matrix, axis=1))
+
+            # Combine scores
+            combined_score = (
+                1 - self.beta
+            ) * uncertainty_scores + self.beta * coverage_scores
+
+            # Mask already selected points
+            mask = tf.one_hot(selected_indices, depth=tf.shape(at)[0])
+            combined_score -= tf.reduce_sum(mask, axis=0) * 999.0
+
+            best_idx = tf.argmax(combined_score)
+            selected_indices.append(best_idx)
+            history = tf.concat([history, tf.expand_dims(at[best_idx], 0)], axis=0)
+
+        return tf.gather(at, selected_indices)
+
+
 def select_acquisition_function(
-    problem_type: str, acq_name: str, verbose: bool = True
+    problem_type: str, acq_name: str | None = None, verbose: bool = True
 ) -> SingleModelAcquisitionBuilder:
     """
     Return an appropriate  acquisition function based on the problem type
@@ -567,9 +646,11 @@ def select_acquisition_function(
         High-level problem type (e.g., ``"regression"``, ``"multiobjective"``,
         ``"classification"``). Case-insensitive.
 
-    acq_name : str
+    acq_name : str, optional
         Name of the acquisition function to use for regression problems.
         Ignored for classification and multiobjective problems.
+        If no name is provided, we assume the problem is minimization of variance.
+
 
     verbose : bool, optional
         If True, print which acquisition function was selected.
@@ -617,18 +698,28 @@ def select_acquisition_function(
 
     # Handle Regression case with more options
     elif problem_class == ProblemType.REGRESSION:
-        if acq_name == "negative_predictive_mean":
-            msg = "Using Negative PredictiveMean for regression."
-            acq = NegativePredictiveMean()
-        elif acq_name == "predictive_variance":
-            msg = "Using PredictiveVariance for regression."
+        if acq_name is None:
+            warnings.warn(
+                """
+                Acquisition functions need to be defined, defaulting is not recomended!
+                Defaulting to {} as best guess.
+                """
+            )
+            msg = "No acquisition anme provided, using PredictiveVariance."
             acq = PredictiveVariance()
         else:
-            warnings.warn(
-                f"Acquisition '{acq_name}' not identified for regression. Defaulting to Predictive Variance."
-            )
-            msg = "Using PredictiveVariance for regression."
-            acq = PredictiveVariance()
+            if acq_name == "negative_predictive_mean":
+                msg = "Using Negative PredictiveMean for regression."
+                acq = NegativePredictiveMean()
+            elif acq_name == "predictive_variance":
+                msg = "Using PredictiveVariance for regression."
+                acq = PredictiveVariance()
+            else:
+                warnings.warn(
+                    f"Acquisition '{acq_name}' not identified for regression. Defaulting to Predictive Variance."
+                )
+                msg = "Using PredictiveVariance for regression."
+                acq = PredictiveVariance()
     else:
         raise NotImplementedError(
             f"No implementation for problem of class {problem_class}"

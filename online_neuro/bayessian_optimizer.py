@@ -17,8 +17,6 @@ The primary purpose is to:
 
 This class is crucial for resuming long-running experiments and for post-hoc
 analysis of the optimization trajectory.
-
-@Author Diego Nieves
 """
 
 import pickle
