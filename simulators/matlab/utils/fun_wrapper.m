@@ -1,5 +1,4 @@
 function out_struct = fun_wrapper(fname, fun, qp, feat_struct, operator, channel)
-    % TODO. handle putting multi-input vectors in the correct struct
     if nargin < 3
         error('Fun Wrapper requires at least three input arguments.');
     end
@@ -55,12 +54,9 @@ function out_struct = fun_wrapper(fname, fun, qp, feat_struct, operator, channel
                 out_struct.('observations') = response;
 
             case 'nerve_block'
-                % Verify this?
                 threshold_ap = -20;
                 % We will assume that leftmost electrode is the generating
-                % one, and rightmos is the blocking one. A block could
-                % occur in the other direction, but we ignore that scenario
-                % (not valid event).
+                % one, and rightmost is the blocking one.
                 data = y.Yp;
                 max_time = max(data, [], 1);
                 b0 = max_time(1) > threshold_ap;    % First point exceeds threshold
