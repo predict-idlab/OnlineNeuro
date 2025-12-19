@@ -57,20 +57,23 @@ apt install -y mpich
 
 ## How to start
 
+
 ### GUI
+#### Path configuration
+Make sure that the **path_configuration** in [configuration file](config.json) is complete. Most importantly, specify the paths to the simulators (axonsim_path, cajal_path and axonml_path) as needed. Optionally, specify the **save_path** to the folder where you want to save the results.
 
 In Linux
 ```shell
 sh run.sh
 ```
 
-In Windows open the file directly or from terminal:
+In Windows[^1]  open the file directly or from terminal:
 ```bash
 .\run.bat
 ```
 
 - The bash script takes care of adding the required folders to PYTHONPATH and calls /api/app.py
-- Open the interface within a browser per default: [https:localhost:9000](https:localhost:9000)
+- Open the interface within a browser per default: [https:localhost:9000](https:localhost:9000), or the one specified in the configuration file.
 
 More details on the GUI usage bellow.
 
@@ -99,99 +102,108 @@ Specific configurations:
                         Path to or json string of the model's configuration
   --problem_config PROBLEM_CONFIG
                         Path to or json string of the problems's configuration
+  --optimizer_config OPTIMIZER_CONFIG
+                        Path to or json string of optimizers's configuration
   --path_config PATH_CONFIG
                         Path to or json string of paths's configuration
 ```
-Configuration flags can accept text or files. It is easier and more readable to pass file paths.
-Use the examples in ./config/ folder
-
-## Configuration
-Using the GUI there's no need of writing any code. However, you may want to modify some of the default configurations.
-The code is written in a way that minimum changes are required in the script.
-
-All parameters (connection and optimization) are selected in the config.json.
-Bellow is the example of the config.json
-
-Note: Right now (Nov 2024) the model is fully in the backend, to modify it use the global configuration file: config.json
-More details on the config files are in the [config readme.md](config/README.md)
-
-```json
-{
-  "connection_config": {
-    "ip": "127.0.0.0",
-    "port": 10000,
-    "Timeout": 20,
-    "ConnectTimeout": 30,
-    "SizeLimit": 1048576,
-    "target": "MATLAB"
-  },
-  "problem_config": {
-    "experimentParameters": {
-      "problem_name": "EXPERIMENT",
-      "problem_type": "classification/regression/moo",
-      "config_path": "PATH"
-    }
-  },
-  "model_config": {
-    "type": "VGP",
-    "scale_inputs": true,
-    "constrains": false,
-    "sparse": false,
-    "variational": true,
-    "noise_free": true,
-    "trainable_likelihood": false,
-    "init_samples":15,
-    "batch_sampling": false,
-    "num_query_points": 1
-  },
-  "path_config": {
-    "save_path": "./results/simulations",
-    "benchmark_path": "./benchmarks",
-    "axonsim_path": "../AxonSim-r1-main/"
-  }
-}
-```
+Configuration flags can accept text or file paths. It is easier and more readable to pass file paths.
+For more specifications, use the examples in [config folder](config) and the [config readme.md](config/README.md)
 
 ## Toy Problems
 
 ### Circle
-A classification problem that can be modelled with SVGP and log-likelihood.
+**Description**: Classification problems where one or multiple circles need to be detected in a 2-dimensional search space. These problems can be be modelled with SVGP and log-likelihood.
 
-<img src="figures/circle.jpg" alt="circle" height="250"/>
-<img src="animations/animation_circle.gif" alt="circle_opt" height="250"/>
+**Simulator(s)**: [Python](/simulators/python/problems/toy_problems.py) and [Matlab](/simulators/matlab/problems/circle_problem.m)
 
-<!-- ![circle.jpg](circle.jpg) ![animation_circle.gif](animations%2Fanimation_circle.gif) -->
+**GUI**: Yes
+
+**Notebooks**:
+- [Multiple circles](/notebooks/Multiple%20circles.ipynb)
+- [Single circle](/notebooks/GP_binary%20example.ipynb)
+
+#### Results
+<img src="figures/circle.jpg" alt="circle" width="250"/>
+<img src="animations/animation_circle.gif" alt="circle_opt" width="250"/>
+<img src="figures/multiple_circles.png" alt="multiple_circles" width="250"/>
+
 
 ### Rosenbrock
-A regression problem with smooth surfaces approximated with a GP.
+**Description** A regression problem with smooth surfaces normally in a two inpust pace with predefined parameters a = 1 and b = 100.
+**Simulator(s)**: [Python](/simulators/python/problems/toy_problems.py) and [Matlab](/simulators/matlab/problems/rosenbrock_problem.m)
 
+**GUI** Yes
+
+**Notebooks**
+- None
+
+##### Results
 <img src="figures/rose.jpg" alt="rose" height="250"/>
 <img src="animations/animation_rose.gif" alt="rose_opt" height="250"/>
 
-<!-- ![rose.jpg](rose.jpg)![animation1.gif](animations%2Fanimation_rose.gif) -->
+
 
 ### Multiobjective
-A two objective problem with two inputs. Optimizing towards joined targets using Pareto Front.
+**Description** A two objective problem with two inputs. Optimizing towards joined targets using Pareto Front.
+**Simulator(s)** MATLAB/Python
+**GUI** Yes (Only MATLAB)
+
+**Notebooks**
+- [GP MOE](/notebooks/GP%20MoE.ipynb)
+
+##### Results
 <img src="figures/vlmop2.jpg" alt="vlmop2" width="450"/>
 <img src="animations/animation_vlmop2.gif" alt="animation_vlmop2" width="450"/>
 
 ## Axonsim problems
+### Action potential modeling
+**Description** A multioutput regression problem where the input parameters of a pulse are used to predict the time response of a fixed electrode.
+**Simulator(s)** [MATLAB](/simulators/matlab/problems/axon_problem.m)
+**GUI** Yes
 
-### Single pulse detection
-A classification problem using SVGP to detect the minimum currrent/pulse duration to generate an AP.
-<img src="animations/animation_threshold.gif" alt="Threshold searching" height="250"/>
+**Notebooks**
+- [Axonsim_AP_modelling](/notebooks/Axonsim_AP_modelling.ipynb)
 
-### Double pulse nerve block
-A classification problem using SVGP to discover configurations of two electrodes with single (inverted).
+##### Results
+<img src="figures/axonsim_modelling.png" alt="axonsim_modelling_results" widht="450">
+
+### Pulse nerve block
+**Description** A classification problem using Sparse GP to discover configurations of two electrodes with single, double, or ramp pulses.
 Objective is to generate an AP on one end and block its propagation.
+**Simulator(s)** [MATLAB](/simulators/matlab/problems/axon_problem.m)
+**GUI** Yes
 
-### Single pulse and ramp pulse block
-A classification problem using SVGP to explore a high parameter space (ramp configuration) to allow for the block of an AP
-%TODO need to add figures here
+**Notebooks**
+- Not implement, see Cajal example instead
 
-The problem can be simplified by fixing the parameters of the single pulse (notice that electrodes interact with each other).
-
-## AxonML
+##### Results
+- Pending.
 
 
-## Other sources
+## Cajal problems
+Cajal is a Python axon simulator which has better interfacing than Axonsim (MATLAB).
+Objective over time is to integrate more advance experiments in this section
+
+### Pulse nerve block
+**Description** A classification problem using Sparse GP to discover configurations of two electrodes with single, double, or ramp pulses.
+Objective is to generate an AP on one end and block its propagation.
+**Simulator(s)** [Python](/simulators/python/problems/cajal_problems.py)
+**GUI** Yes
+
+**Notebooks**
+-(GP Cajal AP blocking)[notebooks/GP_Cajal_AP_blocking.ipynb]
+
+##### Results
+<img src="figures/ap_block_example.png" alt="ap_block_example" width="450">
+
+### Pulse sinusoid delay
+**Description** A regression problem using a GP/ANN to find parameters that model the time delay before the AP arrives to a given node, or the configuration that reaches it (minimization).
+**Simulator(s)** [Python](/simulators/python/problems/cajal_problems.py)
+**GUI** No
+
+**Notebooks**
+-(GP Cajal sinusoid delay)[notebooks/GP_Cajal_sinusoid_delay.ipynb]
+
+##### Results
+<img src="figures/ap_block_example.png" alt="ap_block_example" width="450">
