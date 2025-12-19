@@ -131,6 +131,7 @@ For more specifications, use the examples in [config folder](config) and the [co
 
 ### Rosenbrock
 **Description** A regression problem with smooth surfaces normally in a two inpust pace with predefined parameters a = 1 and b = 100.
+
 **Simulator(s)**: [Python](/simulators/python/problems/toy_problems.py) and [Matlab](/simulators/matlab/problems/rosenbrock_problem.m)
 
 **GUI** Yes
@@ -146,7 +147,9 @@ For more specifications, use the examples in [config folder](config) and the [co
 
 ### Multiobjective
 **Description** A two objective problem with two inputs. Optimizing towards joined targets using Pareto Front.
-**Simulator(s)** MATLAB/Python
+
+**Simulator(s)** [MATLAB](/simulators/matlab/problems/multiobjective_problem.m) and [Python](/simulators/python/problems/toy_problems.py)
+
 **GUI** Yes (Only MATLAB)
 
 **Notebooks**
@@ -159,7 +162,9 @@ For more specifications, use the examples in [config folder](config) and the [co
 ## Axonsim problems
 ### Action potential modeling
 **Description** A multioutput regression problem where the input parameters of a pulse are used to predict the time response of a fixed electrode.
+
 **Simulator(s)** [MATLAB](/simulators/matlab/problems/axon_problem.m)
+
 **GUI** Yes
 
 **Notebooks**
@@ -171,7 +176,9 @@ For more specifications, use the examples in [config folder](config) and the [co
 ### Pulse nerve block
 **Description** A classification problem using Sparse GP to discover configurations of two electrodes with single, double, or ramp pulses.
 Objective is to generate an AP on one end and block its propagation.
+
 **Simulator(s)** [MATLAB](/simulators/matlab/problems/axon_problem.m)
+
 **GUI** Yes
 
 **Notebooks**
@@ -188,7 +195,9 @@ Objective over time is to integrate more advance experiments in this section
 ### Pulse nerve block
 **Description** A classification problem using Sparse GP to discover configurations of two electrodes with single, double, or ramp pulses.
 Objective is to generate an AP on one end and block its propagation.
+
 **Simulator(s)** [Python](/simulators/python/problems/cajal_problems.py)
+
 **GUI** Yes
 
 **Notebooks**
@@ -199,11 +208,13 @@ Objective is to generate an AP on one end and block its propagation.
 
 ### Pulse sinusoid delay
 **Description** A regression problem using a GP/ANN to find parameters that model the time delay before the AP arrives to a given node, or the configuration that reaches it (minimization).
+
 **Simulator(s)** [Python](/simulators/python/problems/cajal_problems.py)
+
 **GUI** No
 
 **Notebooks**
 -(GP Cajal sinusoid delay)[notebooks/GP_Cajal_sinusoid_delay.ipynb]
 
 ##### Results
-<img src="figures/ap_block_example.png" alt="ap_block_example" width="450">
+<img src="figures/gp_sinusoid_delay.png" alt="sinusoid_delay_example" width="450">
