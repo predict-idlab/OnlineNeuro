@@ -17,6 +17,7 @@ The functions figures for:
     - First-spike detection and propagation-delay visualizations
 """
 
+import warnings
 from pathlib import Path
 from typing import Sequence
 
@@ -214,6 +215,7 @@ def plot_progression_AP_3D(
     vmin: float = -120.0,
     vmax: float = 70,
     figsize: tuple[int, int] = (10, 6),
+    title: str = "AP progression",
     dpi: int = 300,
     save_path: str | Path = "",
     save_svg: bool = True,
@@ -266,9 +268,8 @@ def plot_progression_AP_3D(
     ax.set_xlabel("Node Number")
     ax.set_ylabel("Time (ms)")
     # ax.set_zlabel('Membrane Potential (mV)')
-    ax.set_title(
-        "AP Progression with with activation of stimulation and blocking pulse"
-    )
+    ax.set_title(title)
+
     # Set the view to top-down (90-degree elevation)
     ax.set_zticks([])
     ax.view_init(elev=90, azim=-90)
@@ -283,9 +284,10 @@ def plot_progression_AP_3D(
 
 
 def plot_waveform(
-    waveform: Stimulus,
-    v_rec: StateMonitor,
-    label: str,
+    stimulus: Stimulus,
+    v_rec: StateMonitor | None = None,
+    t: np.ndarray | None = None,
+    label: str = "",
     ax: Axes | None = None,
     figsize: tuple[int, int] = (9, 5),
     dpi: int = 300,
@@ -299,11 +301,11 @@ def plot_waveform(
 
     Parameters
     ----------
-    waveform : callable
-        A function returning waveform values for a given time array.
+    stimulus : callable
+        An instance of Stimulus that returns waveform values for a given time array.
     v_rec : StateMonitor
         Provides the time vector used for evaluation.
-    label : str
+    label : str, optional
         Legend label.
     ax : Axes or None, optional
         Optional axes to draw onto.
@@ -323,9 +325,21 @@ def plot_waveform(
     Axes
         The axes containing the waveform.
     """
-    t = v_rec.t
+    assert (v_rec is not None) | (t is not None)
+    if v_rec and t:
+        warnings.warn(
+            """
+                      Time vectors passed for both v_rec and t.\n
+                      using t.
+                      """
+        )
+        t = t.copy()
+
+    if v_rec:
+        t = v_rec.t.copy()
+
     T = t / ms  # time axis in ms
-    y = np.asarray(waveform(t=v_rec.t))  # waveform values
+    y = np.asarray(stimulus(t=t))  # waveform values
 
     if ax is None:
         fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
