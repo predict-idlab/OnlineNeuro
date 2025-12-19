@@ -1,13 +1,28 @@
 # simulators/python/main.py
+"""
+TCP-based Python simulator entry point.
+
+This module connects to a TCP server (typically a GUI/controller), receives
+query points for a configured optimization/problem, evaluates the selected
+problem function, and returns the results. It supports both vectorized and
+point-wise evaluation depending on the problem implementation.
+
+Notes
+-----
+- Configuration is passed as JSON strings via the command line.
+- Some problems support vectorized evaluation for efficiency.
+"""
+
 import argparse
 import atexit
 import json
-import select
 import socket
-import time
 from collections import defaultdict
+from typing import Any, Callable
 
 from problems import circle, rosenbrock, vlmop2
+
+from networking.tcp_protocol import receive_message, send_message
 
 try:
     from problems import cajal_problems
@@ -16,57 +31,32 @@ except ImportError as e:
     msg = "Cajal is not installed, Cajal problems are not loaded."
     raise ImportError(msg) from e
 
-problem_dict = {
+ProblemFn = Callable[..., Any]
+problem_dict: dict[str, ProblemFn] = {
     "circle_classification": circle,
-    "rose_regression": rosenbrock,
+    "python_rose_regression": rosenbrock,
     "moo_problem": vlmop2,
     "cajal_ap_block": cajal_problems.cajal_fun,
 }
 
-VECTORIZED_FUNS = [circle, rosenbrock, vlmop2]
+VECTORIZED_FUNS: list[ProblemFn] = [circle, rosenbrock, vlmop2]
 
 
-def send_data(fvalues, tcpip_client, size_lim=65536):
+def convert_list_to_dict(list_of_dicts: list[dict[str, Any]]) -> dict[str, list]:
     """
-    TODO current function is meant to only send the output.
-         This needs to be changed in case we want to send additional data (dict with multiple entries)
+    Convert a list of dictionaries into a dictionary of lists.
 
-    @param fvalues:
-    @param tcpip_client:
-    @param size_lim:
-    @return:
+    Parameters
+    ----------
+    list_of_dicts : Iterable[Mapping[str, Any]]
+        Iterable where each element is a dictionary with identical keys.
+
+    Returns
+    -------
+    list[dict[str, Any]]
+        Dictionary mapping each key to a list of values collected from all
+        dictionaries.
     """
-
-    json_data = json.dumps(fvalues)
-    print("Data to be sent")
-    print(json_data)
-
-    if len(json_data) > size_lim:
-        json_data = json.dumps(fvalues[0])
-
-        if len(json_data) < size_lim:
-            pckgs = len(fvalues)
-            for i in range(pckgs):
-                print(f"Package {i+1}/{pckgs}", end="\n")
-                chunk = {
-                    "data": fvalues[i],
-                    "tot_pckgs": pckgs,
-                    "current_pckg": i,  # Track which chunk this is
-                }
-                response = write_data(tcpip_client, chunk)
-        else:
-            raise NotImplementedError(
-                "Package needs to be transmitted in another way (too large for socket)"
-            )
-
-    else:
-        response = write_data(tcpip_client, fvalues)
-
-    return response
-
-
-def convert_list_to_dict(list_of_dicts):
-    # Convert to dict of lists
     dict_of_lists = defaultdict(list)
 
     for d in list_of_dicts:
@@ -76,7 +66,41 @@ def convert_list_to_dict(list_of_dicts):
     return dict(dict_of_lists)
 
 
-def evaluate_function(query_points, fixed_features, eval_fun, problem_name, mode):
+def evaluate_function(
+    query_points: list[dict],
+    fixed_features: dict,
+    eval_fun: ProblemFn,
+    problem_name: str,
+    mode: str | None = None,
+    verbose: bool = False,
+) -> list[Any]:
+    """
+    Evaluate a problem function on a set of query points.
+
+    The function automatically selects vectorized or point-wise evaluation
+    depending on whether the problem function is listed in ``VECTORIZED_FUNS``.
+
+    Parameters
+    ----------
+    query_points : list[dict[str, Any]]
+        List of query points to evaluate.
+    fixed_features : Mapping[str, Any]
+        Fixed parameters shared across all evaluations.
+    eval_fun : Callable
+        Problem evaluation function.
+    problem_name : str
+        Name of the problem.
+    mode : str, optional
+        Optional execution mode.
+    verbose: bool
+        Boolean to print the iteration number (for non vectorized functions)
+
+    Returns
+    -------
+    list[Any]
+        Evaluation results for each query point.
+    """
+
     if eval_fun in VECTORIZED_FUNS:
         qp_dict = convert_list_to_dict(query_points)
         for key, value in fixed_features.items():
@@ -94,7 +118,8 @@ def evaluate_function(query_points, fixed_features, eval_fun, problem_name, mode
         num_points = len(query_points)
         fvalues = []
         for i in range(num_points):
-            print(f"Exp {i}/{num_points}")
+            if verbose:
+                print(f"Exp {i}/{num_points}")
             qp = query_points[i]
             qp_with_fixed = {**qp, **fixed_features}
             result = fun_wrapper(
@@ -105,78 +130,49 @@ def evaluate_function(query_points, fixed_features, eval_fun, problem_name, mode
     return fvalues
 
 
-def read_data(client_socket, timeout=300):
+def fun_wrapper(
+    eval_fun: Callable, qp: dict, problem_name: str, mode: str | None = None
+) -> Any:
     """
-    @param client_socket:
-    @param timeout:
-    @return:
+    Wrap a problem evaluation call to allow for special-case handling.
+
+    Parameters
+    ----------
+    eval_fun : Callable
+        Problem evaluation function.
+    qp : Mapping[str, Any]
+        Query point parameters passed as keyword arguments.
+    problem_name : str
+        Name of the problem being evaluated.
+    mode : str, optional
+        Optional execution mode (reserved for future extensions).
+
+    Returns
+    -------
+    Any
+        Result of the problem evaluation.
     """
-    buffer = b""
-    end_time = time.time() + timeout
-
-    while time.time() < end_time:
-        ready_to_read, _, _ = select.select([client_socket], [], [], 1)
-        if ready_to_read:
-            part = client_socket.recv(1024)
-            if part:
-                buffer += part
-
-            # Check if buffer contains a complete JSON message ending with newline
-            if b"\n" in buffer:
-                messages = buffer.split(b"\n")
-
-                # Process each complete message
-                for message in messages[:-1]:  # Ignore any trailing partial message
-                    if message:
-                        try:
-                            decoded_message = json.loads(
-                                message.decode("utf-8").strip()
-                            )
-                            print("Decoded message:", decoded_message)
-                            # Update buffer before returning
-                            buffer = messages[-1] if messages[-1] else b""
-                            return decoded_message
-                        except json.JSONDecodeError as e:
-                            print("JSON decoding error:", e, "Message:", message)
-
-                # Retain last part as buffer in case it's a partial message
-                buffer = messages[-1]
-
-    raise TimeoutError("Timeout: No complete JSON message received.")
-
-
-def write_data(client_socket, data) -> dict:
-    json_data = json.dumps(data, ensure_ascii=False).encode("utf-8")
-    try:
-        client_socket.sendall(json_data)
-        return {"Message": "Data sent to server"}
-    except Exception as e:
-        msg = e
-        return {"Message": f"Something went wrong {msg}"}
-
-
-def fun_wrapper(eval_fun, qp, problem_name, mode=None):
-    """
-    Logic on how to post-process the results of the evaluated function
-    @param eval_fun:
-    @param qp:
-    @param problem_name:
-    @param mode:
-    @return:
-    """
-    if problem_name == "placeholder":
-        return 0
-    else:
-        return eval_fun(**qp)
+    return eval_fun(**qp)
 
 
 def main(problem_config, connection_config, *args, **kwargs):
+    """
+    Main entry point for the Python simulator process.
+
+
+    Parameters
+    ----------
+    problem_config : Mapping[str, Any]
+        Problem configuration dictionary.
+    connection_config : Mapping[str, Any]
+        TCP connection configuration dictionary.
+    """
+
     # Detect if path or configuration was provided
     problem_name = problem_config["experiment_parameters"]["problem_name"]
 
     tcpip_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     tcpip_client.settimeout(connection_config["Timeout"])
-    ## buffer_size = connection_config['SizeLimit']
 
     atexit.register(tcpip_client.close)
 
@@ -185,65 +181,81 @@ def main(problem_config, connection_config, *args, **kwargs):
 
     # Send handshake
     data_to_send = {"message": "Hello from Python", "dummyNumber": 123}
-    write_data(tcpip_client, data_to_send)
-    received_data = read_data(tcpip_client)
+    response = send_message(tcpip_client, data_to_send)
+    received_data = receive_message(tcpip_client)
+    print(" Main, received handshake:", received_data)
 
-    eval_fun = None
-    if problem_name in problem_dict:
-        eval_fun = problem_dict[problem_name]
-    else:
-        NotImplementedError(f"Problem {problem_name} not implemented.")
+    response = send_message(
+        tcpip_client, {"message": "Confirmed first message", "status": "ready"}
+    )
 
-    print(problem_name)
-    print(problem_dict)
-    received_data = read_data(tcpip_client)
-    fixed_features = received_data["Fixed_features"]
+    eval_fun = problem_dict.get(problem_name, None)
+    if eval_fun is None:
+        tcpip_client.close()
+        raise NotImplementedError(f"Problem {problem_name} not implemented.")
 
-    received_data = read_data(tcpip_client)
-    query_points = received_data["query_points"]
+    received_data = receive_message(tcpip_client)
+    assert isinstance(
+        received_data, dict
+    ), "Expected response in the form of a dictionary"
 
-    operator = None
-    # TODO some calls need to be made point by point, but when possible, is best to use the vector form
+    fixed_features = received_data.get("Fixed_features", {})
 
+    received_data = receive_message(tcpip_client)
+    assert isinstance(
+        received_data, dict
+    ), "Expected response in the form of a dictionary"
+    query_points = received_data.get("query_points", None)
+    if query_points is None:
+        tcpip_client.close()
+        raise ValueError("Query points not received, terminating ...")
+
+    assert isinstance(query_points, list), "Expected query points int he form of a list"
     fvalues = evaluate_function(
         query_points=query_points,
         fixed_features=fixed_features,
         eval_fun=eval_fun,
         problem_name=problem_name,
-        mode=operator,
     )
 
-    response = send_data(fvalues=fvalues, tcpip_client=tcpip_client)
+    response = send_message(tcpip_client, fvalues)
 
-    print(response)
-    print("Main side: Entering loop now")
+    if response["status"] != "success":
+        raise ConnectionError("Stopping, the server did not sent a success status")
+
     terminate_flag = False
 
     while not terminate_flag:
-        received_data = read_data(tcpip_client)
-        query_points = received_data["query_points"]
+        received_data = receive_message(tcpip_client)
+        query_points = received_data.get("query_points", [])
         terminate_flag = received_data.get("terminate_flag", False)
 
-        if terminate_flag:
+        if not query_points:
             print(
-                "Termination signal received from Python. Saving data and closing connection..."
+                f"No query points received from Python, instead received: {received_data} \n terminating ..."
             )
+            break
+
+        if terminate_flag:
+            msg = received_data.get("message", None)
+            print(f"Termination signal received from Python with message: {msg}")
+            payload = {"status": "ok", "message": "process terminated"}
+            response = send_message(tcpip_client, payload)
+
         else:
             fvalues = evaluate_function(
                 query_points=query_points,
                 fixed_features=fixed_features,
                 eval_fun=eval_fun,
                 problem_name=problem_name,
-                mode=operator,
             )
 
-            response = send_data(fvalues=fvalues, tcpip_client=tcpip_client)
-
-            print(f"response {response}")
+            response = send_message(tcpip_client, fvalues)
 
     tcpip_client.close()
 
 
+# CLI
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Script for handling complex arguments."
@@ -256,12 +268,6 @@ if __name__ == "__main__":
         required=True,
         help="Path or settings for the connection configuration",
     )
-    # parser.add_argument(
-    #     '--problem_name', type=str, required=True, help='Name of the problem'
-    # )
-    # parser.add_argument(
-    #     '--problem_type', type=str, required=True, help='Type of the problem'
-    # )
     parser.add_argument(
         "--problem_config",
         type=str,
@@ -283,7 +289,4 @@ if __name__ == "__main__":
         print("Error: connection_config must be a valid JSON string.")
         exit(1)
 
-    main(
-        problem_config=problem_config,
-        connection_config=connection_config,
-    )
+    main(problem_config=problem_config, connection_config=connection_config)

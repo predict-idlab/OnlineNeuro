@@ -114,7 +114,7 @@ def create_mrg(verbose: bool = False, **kwargs: Any):
     Node position of the first node in the axon: x=0.00 mm, y=0.00 mm, z=0.00 mm
     Node position of the last node in the axon: x=0.50 mm, y=10.00 mm, z=0.50 mm
     """
-
+    print(kwargs)
     mrg = MRG(**kwargs)
 
     # If verbose mode is enabled, output detailed information about the axon
@@ -443,10 +443,10 @@ def cajal_fun(
         for k, v in all_params.items()
         if k.startswith("axon_")
     }
-    axon_params.update({"axon_diameter": axon_diameter, "axon_length": axon_length})
+    # axon_params.update({"axon_diameter": axon_diameter,
+    #                     "axon_length": axon_length})
 
-    axon_params = {"_".join(k.split("_")[1:]): v for k, v in axon_params.items()}
-
+    # axon_params = {"_".join(k.split("_")[1:]): v for k, v in axon_params.items()}
     # Electrode parameters
     electrode_params = {
         k.replace("e_", ""): v for k, v in all_params.items() if k.startswith("e_")
@@ -469,14 +469,14 @@ def cajal_fun(
     for e, d in enumerate(stimulus_params_list):
         d["fun_type"] = fun_type[e]
 
-    axon_model = create_mrg(**axon_params)
-    monitors = create_monitors(axon_model)
-    electrode_params["pos"] = np.array(electrode_params["pos"]).T.tolist()
-
     if verbose:
         print("Axon params:", axon_params)
         print("Stimulus params:", stimulus_params_list)
         print("Electrode params:", electrode_params)
+
+    axon_model = create_mrg(**axon_params)
+    monitors = create_monitors(axon_model)
+    electrode_params["pos"] = np.array(electrode_params["pos"]).T.tolist()
 
     stimulus, pulses = create_stimulus(
         pos=electrode_params["pos"],
