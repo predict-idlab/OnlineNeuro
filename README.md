@@ -213,3 +213,22 @@ Objective is to generate an AP on one end and block its propagation.
 
 ##### Results
 <img src="figures/gp_sinusoid_delay.png" alt="sinusoid_delay_example" width="450">
+
+# How to cite
+Pending journal publication
+
+You can cite the Software as:
+
+@nusc{Nieves_Avendano2026-zh,
+  title     = "{OnlineNeuro}",
+  author    = "Nieves Avendano, Diego and Callaert, Arne and Van Hoecke,
+               Sofie and Ongenae, Femke and Schnepel, Philipp and Mihajlovic,
+               Vojkan",
+  abstract  = "A Bayessian Optimization library for optimization problems for
+               neural simulations. This release works for Axonsim (Matlab) and
+               Cajal/AxonML (Python).",
+  publisher = "Zenodo",
+  year      =  2026
+}
+
+
