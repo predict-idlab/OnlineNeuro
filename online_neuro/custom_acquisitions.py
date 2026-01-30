@@ -84,7 +84,7 @@ class AbstractSampler(ABC, Generic[ProbabilisticModelType]):
         """
 
 
-class ExpectedImprovementXsi(SingleModelAcquisitionBuilder[ProbabilisticModel]):
+class ExpectedImprovementXi(SingleModelAcquisitionBuilder[ProbabilisticModel]):
     """
     Builder for the Expected Improvement (EI) function incorporating the ξ
     trade-off parameter (also denoted ξ).
@@ -116,7 +116,7 @@ class ExpectedImprovementXsi(SingleModelAcquisitionBuilder[ProbabilisticModel]):
 
     def __repr__(self) -> str:
         """Returns a string representation including search space and xsi."""
-        return f"ExpectedImprovement({self._search_space!r}, xsi={self._xsi!r})"
+        return f"ExpectedImprovement({self._search_space!r}, xi={self._xsi!r})"
 
     def prepare_acquisition_function(
         self,
