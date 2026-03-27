@@ -27,7 +27,7 @@ experiment_list = list(matlab_experiments.keys()) + list(python_experiments.keys
 model_list = list(model_map.keys())
 acquisition_list = list(acquisition_map.keys())
 
-process = None
+process_ref = {"process": None}
 process_lock = threading.Lock()  # Lock to ensure thread safety
 
 
@@ -411,7 +411,6 @@ def register_routes(app, socketio):
             unexpected error occurs.
         """
 
-        global process
         data = request.json
 
         if data is None:
@@ -424,8 +423,8 @@ def register_routes(app, socketio):
                 return jsonify({"error": f"Invalid JSON format: {e}"}), 400
 
         with process_lock:
-            if process is not None:
-                return jsonify({"status": "already running", "pid": process.pid}), 200
+            if process_ref["process"] is not None:
+                return jsonify({"status": "already running", "pid": process_ref["process"].pid}), 200
             try:
                 if "test_command" in data:
                     command = data["test_command"]
@@ -433,9 +432,11 @@ def register_routes(app, socketio):
                     port = app.config.get("PORT", DEFAULT_PORT)
                     command = prepare_experiment(data, port)
 
-                process = subprocess.Popen(command, start_new_session=True)
+                process_ref["process"] = subprocess.Popen(command, start_new_session=True)
                 threading.Thread(
-                    target=monitor_process, args=(process,), daemon=True
+                    target=monitor_process,
+                    args=(process_ref["process"], process_ref, process_lock),
+                    daemon=True,
                 ).start()
 
                 return jsonify({"status": "started", "command": command}), 200
@@ -461,9 +462,8 @@ def register_routes(app, socketio):
             - ``not running``: no experiment process is currently running.
             - error message with status 500 if an unexpected exception occurs.
         """
-        global process
         with process_lock:
-            proc = process
+            proc = process_ref["process"]
         try:
             if proc is None or proc.poll() is not None:
                 return jsonify({"status": "not running"})
@@ -494,10 +494,9 @@ def register_routes(app, socketio):
             - ``unexpected error``: an exception occurred during stopping, with
             details included in the response.
         """
-        global process
         with process_lock:
             status = stop_process(
-                process, close_call=close_flush_files, debug_tree_bool=True
+                process_ref["process"], close_call=close_flush_files, debug_tree_bool=True
             )
-            process = None  # clear global reference
+            process_ref["process"] = None  # clear reference
             return jsonify({"status": status}), 200

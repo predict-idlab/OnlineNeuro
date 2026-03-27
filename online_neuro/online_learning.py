@@ -219,7 +219,7 @@ def build_model(init_dataset, search_space, config, problem_type, **kwargs):
                 trainable_likelihood=config["trainable_likelihood"],
             )
             model = SparseVariational(gpflow_model)
-        elif config["variational"] and ~config["sparse"]:
+        elif config["variational"] and not config["sparse"]:
             gpflow_model = build_vgp_classifier(
                 init_dataset, search_space, noise_free=config["noise_free"]
             )
@@ -249,7 +249,7 @@ def build_model(init_dataset, search_space, config, problem_type, **kwargs):
                 ),
             )
 
-        elif config["variational"] and ~config["sparse"]:
+        elif config["variational"] and not config["sparse"]:
             gpflow_model = build_vgp(
                 init_dataset,
                 search_space,
@@ -258,7 +258,7 @@ def build_model(init_dataset, search_space, config, problem_type, **kwargs):
             )
             model = VariationalGaussianProcess(gpflow_model)
 
-        elif ~config["variational"] and config["sparse"]:
+        elif not config["variational"] and config["sparse"]:
             gpflow_model = build_sgpr(
                 init_dataset,
                 search_space,
@@ -275,7 +275,7 @@ def build_model(init_dataset, search_space, config, problem_type, **kwargs):
                 ),
             )
 
-        elif ~config["variational"] and ~config["sparse"]:
+        elif not config["variational"] and not config["sparse"]:
             gpflow_model = build_gpr(
                 init_dataset,
                 search_space,

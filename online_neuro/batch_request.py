@@ -76,13 +76,13 @@ def main(matlab_call: bool = True, verbose: bool = True, *args, **kwargs) -> Non
 
     features = exp_config["n_features"]
     num_features = len(features)
-    train_grid, test_grid = generate_grids(num_features, NUM_POINTS)
 
     lower_bound = np.array(exp_config["lower_bound"])
     upper_bound = np.array(exp_config["upper_bound"])
 
-    train_grid = lower_bound + train_grid * (upper_bound - lower_bound)
-    test_grid = lower_bound + test_grid * (upper_bound - lower_bound)
+    train_grid, test_grid = generate_grids(
+        num_features, NUM_POINTS, upper_bound, lower_bound
+    )
 
     full_grid = np.concatenate([train_grid, test_grid])
 
@@ -124,7 +124,7 @@ def main(matlab_call: bool = True, verbose: bool = True, *args, **kwargs) -> Non
 
     for k, v in default_exp.items():
         if k not in carried_exp:
-            carried_exp[k] = default_exp
+            carried_exp[k] = v
 
     diam = carried_exp["dia"]["value"]
     dip_dis = abs(carried_exp["e_pos"]["value"][0] - carried_exp["e_pos"]["value"][2])

@@ -77,7 +77,7 @@ def test_start_and_stop_normal_experiment(api_server):
     # 3. Stop the experiment via the API
     stop_response = requests.post(f"{BASE_URL}/stop")
     assert stop_response.status_code == 200
-    assert stop_response.json()["status"] in ["stopped", "Forcefully stopped"]
+    assert stop_response.json()["status"] in ["stopped", "forcefully stopped"]
     time.sleep(1)  # Give time for the process to be terminated
 
     # 4. Verify the child process is no longer running
@@ -101,7 +101,7 @@ def test_api_stops_stubborn_process(api_server):
     stop_response = requests.post(f"{BASE_URL}/stop")
     assert stop_response.status_code == 200
     # Your improved /stop endpoint should return 'Forcefully stopped' in this case
-    assert stop_response.json()["status"] == "Forcefully stopped"
+    assert stop_response.json()["status"] == "forcefully stopped"
 
     # 4. Verify the process is gone
     time.sleep(1)  # Give it a moment to disappear from the process table
@@ -127,7 +127,7 @@ def test_api_stops_spawner_process_and_grandchild(api_server):
     # 3. Stop the experiment via the API
     stop_response = requests.post(f"{BASE_URL}/stop")
     assert stop_response.status_code == 200
-    assert stop_response.json()["status"] in ["stopped", "Forcefully stopped"]
+    assert stop_response.json()["status"] in ["stopped", "forcefully stopped"]
 
     # 4. Verify both processes are gone
     time.sleep(1)
