@@ -43,8 +43,5 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Flask port.")
     args = parser.parse_args()
 
-    print("Starting Flask app...")
-    print(f"http://localhost:{args.port}")
-    print(app)
-    print(socketio)
-    socketio.run(app, port=args.port, debug=True)
+    print(f"Starting Flask app at http://localhost:{args.port}")
+    socketio.run(app, port=args.port, debug=False)

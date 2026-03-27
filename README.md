@@ -2,7 +2,7 @@
 
 ![Static Badge](https://img.shields.io/badge/Matlab-2023-green)
 
-A Bayessian Optimization library for optimization problems for neural simulations.
+A Bayesian Optimization library for optimization problems for neural simulations.
 This release works for Axonsim (Matlab) and Cajal/AxonML (Python).
 
 ## Install requirements
@@ -68,9 +68,9 @@ sh run.sh
 ```
 
 - The bash script takes care of adding the required folders to PYTHONPATH and calls /api/app.py
-- Open the interface within a browser per default: [https:localhost:10000](https:localhost:10000), or the one specified in the configuration file.
+- Open the interface within a browser per default: [https://localhost:10000](https://localhost:10000), or the one specified in the configuration file.
 
-More details on the GUI usage bellow.
+More details on the GUI usage below.
 
 ### Terminal
 First install online-neuro as a package, or, add its folder in the Python path of your environment. Run an experiment as follows:
@@ -125,7 +125,7 @@ For more specifications, use the examples in [config folder](config) and the [co
 
 
 ### Rosenbrock
-**Description** A regression problem with smooth surfaces normally in a two inpust pace with predefined parameters a = 1 and b = 100.
+**Description** A regression problem with smooth surfaces normally in a two input space with predefined parameters a = 1 and b = 100.
 
 **Simulator(s)**: [Python](/simulators/python/problems/toy_problems.py) and [Matlab](/simulators/matlab/problems/rosenbrock_problem.m)
 
@@ -166,7 +166,7 @@ For more specifications, use the examples in [config folder](config) and the [co
 - [Axonsim_AP_modelling](/notebooks/Axonsim_AP_modelling.ipynb)
 
 ##### Results
-<img src="figures/axonsim_modelling.png" alt="axonsim_modelling_results" widht="450">
+<img src="figures/axonsim_modelling.png" alt="axonsim_modelling_results" width="450">
 
 ### Pulse nerve block
 **Description** A classification problem using Sparse GP to discover configurations of two electrodes with single, double, or ramp pulses.
@@ -177,7 +177,7 @@ Objective is to generate an AP on one end and block its propagation.
 **GUI** Yes
 
 **Notebooks**
-- Not implement, see Cajal example instead
+- Not implemented, see Cajal example instead
 
 ##### Results
 - Pending.
@@ -196,7 +196,7 @@ Objective is to generate an AP on one end and block its propagation.
 **GUI** Yes
 
 **Notebooks**
--(GP Cajal AP blocking)[notebooks/GP_Cajal_AP_blocking.ipynb]
+- [GP Cajal AP blocking](notebooks/GP_Cajal_AP_blocking.ipynb)
 
 ##### Results
 <img src="figures/ap_block_example.png" alt="ap_block_example" width="450">
@@ -209,7 +209,7 @@ Objective is to generate an AP on one end and block its propagation.
 **GUI** No
 
 **Notebooks**
--(GP Cajal sinusoid delay)[notebooks/GP_Cajal_sinusoid_delay.ipynb]
+- [GP Cajal sinusoid delay](notebooks/GP_Cajal_sinusoid_delay.ipynb)
 
 ##### Results
 <img src="figures/gp_sinusoid_delay.png" alt="sinusoid_delay_example" width="450">
@@ -219,12 +219,12 @@ Pending journal publication
 
 You can cite the Software as:
 
-@nusc{Nieves_Avendano2026-zh,
+@misc{Nieves_Avendano2026-zh,
   title     = "{OnlineNeuro}",
   author    = "Nieves Avendano, Diego and Callaert, Arne and Van Hoecke,
                Sofie and Ongenae, Femke and Schnepel, Philipp and Mihajlovic,
                Vojkan",
-  abstract  = "A Bayessian Optimization library for optimization problems for
+  abstract  = "A Bayesian Optimization library for optimization problems for
                neural simulations. This release works for Axonsim (Matlab) and
                Cajal/AxonML (Python).",
   publisher = "Zenodo",

@@ -106,7 +106,7 @@ class ExpectedImprovementXi(SingleModelAcquisitionBuilder[ProbabilisticModel]):
         ----------
         search_space : SearchSpace, optional
             The global search space. Used to check for feasible points when
-            determining the current best observation ($\eta$).
+            determining the current best observation (eta).
         xsi : float, optional
             The hyperparameter controlling the trade-off. Higher values (xsi > 0)
             encourage more exploration. Defaults to 0.01.
@@ -124,7 +124,7 @@ class ExpectedImprovementXi(SingleModelAcquisitionBuilder[ProbabilisticModel]):
         dataset: Optional[Dataset] = None,
     ) -> AcquisitionFunction:
         """
-        Calculates the current best value ($\eta$) and returns an initialized
+        Calculates the current best value (eta) and returns an initialized
         `expected_improvement_xsi` acquisition function instance.
         """
         tf.debugging.Assert(dataset is not None, [tf.constant([])])
@@ -705,7 +705,7 @@ def select_acquisition_function(
                 Defaulting to {} as best guess.
                 """
             )
-            msg = "No acquisition anme provided, using PredictiveVariance."
+            msg = "No acquisition name provided, using PredictiveVariance."
             acq = PredictiveVariance()
         else:
             if acq_name == "negative_predictive_mean":
@@ -724,8 +724,5 @@ def select_acquisition_function(
         raise NotImplementedError(
             f"No implementation for problem of class {problem_class}"
         )
-
-    if verbose:
-        print(msg)
 
     return acq

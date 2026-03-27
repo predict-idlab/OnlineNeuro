@@ -279,8 +279,7 @@ def handshake_check(
             print("Received data:", handshake_request)
             print("Data sent back", handshake_response)
 
-    except Exception as exception:
-        print(f"An error occurred: {exception}")
+    except Exception:
         raise
     return None
 
@@ -315,5 +314,5 @@ def cleanup_server_socket(
         server_sock.close()
         if verbose:
             print("Server socket closed.")
-    except Exception as exception:
-        print(f"Error closing server socket: {exception}")
+    except Exception:
+        pass

@@ -4,7 +4,7 @@ Using the GUI there's no need of writing any code. However, you may want to modi
 The code is written in a way that minimum changes are required in the script.
 
 All parameters (connection and optimization) are selected in the config.json.
-Bellow is the example of the config.json
+Below is the example of the config.json
 
 ```json
 {
@@ -16,7 +16,7 @@ Bellow is the example of the config.json
     "target": "Python/MATLAB"
   },
   "problem_config": {
-    "experimentParameters": {
+    "experiment_parameters": {
       "problem_name": "EXPERIMENT",
       "type": "classification/regression",
       "config_file": "PATH"
@@ -25,7 +25,7 @@ Bellow is the example of the config.json
   "model_config": {
     "type": "MODEL",
     "scale_inputs": true,
-    "constrains": false,
+    "constraints": false,
     "sparse": false,
     "variational": true,
     "noise_free": true,
@@ -56,6 +56,6 @@ Bellow is the example of the config.json
 - **Classification** Defines whether the problem is a classifier or a regression.
 - **Sparse, Variational** Booleans that define the type of Gaussian Process
 - **init_samples** Number of initial samples to request in the beginning/start model.
-- **noise_free** It should be kept as true. (TODO add discussion as to why later)
-- **batch_sampling** Boolean to indicate if batch sampling (specify number of sampels). Currently not implemented.
+- **noise_free** It should be kept as true.
+- **batch_sampling** Boolean to indicate if batch sampling (specify number of samples). Currently not implemented.
 - **trainable_likelihood** Whether the likelihood of the model is trainable. In most cases should be kept as false.

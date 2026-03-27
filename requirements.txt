@@ -8,7 +8,7 @@ gpflow==2.10.0
 gpflux==0.4.4
 imageio
 jupyter
-matlab==0.1
+matlabengine
 matplotlib
 mpi4py
 neuron

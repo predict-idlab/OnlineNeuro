@@ -17,7 +17,7 @@
   "model_config": {
     "type": "GP",
     "scale_inputs": true,
-    "constrains": false,
+    "constraints": false,
     "sparse": false,
     "variational": true,
     "noise_free": true,
@@ -26,9 +26,9 @@
   "path_config": {
     "save_path": "./results/simulations",
     "benchmark_path": "./benchmarks",
-    "axonsim_path": "/home/idlab398/AxonSim-r1-main/",
-    "cajal_path": "/home/idlab398/cajal/",
-    "axonml_path": "/home/idlab398/axonml/"
+    "axonsim_path": "AXONSIM_PATH",
+    "cajal_path": "CAJAL_PATH",
+    "axonml_path": "AXONML_PATH"
   },
   "optimizer_config": {
     "init_samples":5,

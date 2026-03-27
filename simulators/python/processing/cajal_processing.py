@@ -494,7 +494,6 @@ if CAJAL_AVAILABLE:
 
         if np.any(positive_mask):
             min_pos_ix = np.where(positive_mask)[0][np.argmin(diffs[positive_mask])]
-            print(f"AP detected with a difference of {diffs[positive_mask]}")
             results["stim_generated"] = True
         else:
             results["stim_generated"] = False

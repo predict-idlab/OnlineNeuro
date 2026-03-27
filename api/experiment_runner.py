@@ -214,7 +214,7 @@ def run_optimization_loop(
             )
 
         if steps == count:
-            message = {"terminate_flag": True, "message": "Optimiziation finished"}
+            message = {"terminate_flag": True, "message": "Optimization finished"}
             response = send_message(client_socket, message)
 
     except KeyboardInterrupt:
@@ -222,7 +222,7 @@ def run_optimization_loop(
             print("\n Interrupted by user, cleaning up...")
             message = {
                 "terminate_flag": True,
-                "message": "Optimiziation interrupted (keyboard)",
+                "message": "Optimization interrupted (keyboard)",
             }
             response = send_message(client_socket, message)
             print(response)
@@ -355,7 +355,8 @@ def main(
     send_message(client_socket, first_message)
 
     # Block and wait
-    print("PYTHON: Waiting for client to acknowledge fixed features...")
+    if verbose:
+        print("PYTHON: Waiting for client to acknowledge fixed features...")
     feat_ack = receive_message(client_socket)
     if not feat_ack or feat_ack.get("status") != "ready":
         error_msg = f"PYTHON: Did not receive ready signal from CLIENT. Got: {feat_ack}"
@@ -509,14 +510,12 @@ def main(
 
     if verbose:
         print(exit_message)
-        print("Optimization loop succesfully completed, cleaning up...")
+        print("Optimization loop successfully completed, cleaning up...")
 
     cleanup_server_socket(client_sock=client_socket, server_sock=server_socket)
 
 
 if __name__ == "__main__":
-    print("PYTHONPATH:", sys.path)
-    print("Experiment runner ")
     parser = create_parser()
     args = parser.parse_args()
 

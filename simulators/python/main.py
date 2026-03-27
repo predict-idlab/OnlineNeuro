@@ -183,7 +183,6 @@ def main(problem_config, connection_config, *args, **kwargs):
     data_to_send = {"message": "Hello from Python", "dummyNumber": 123}
     response = send_message(tcpip_client, data_to_send)
     received_data = receive_message(tcpip_client)
-    print(" Main, received handshake:", received_data)
 
     response = send_message(
         tcpip_client, {"message": "Confirmed first message", "status": "ready"}
@@ -231,14 +230,9 @@ def main(problem_config, connection_config, *args, **kwargs):
         terminate_flag = received_data.get("terminate_flag", False)
 
         if not query_points:
-            print(
-                f"No query points received from Python, instead received: {received_data} \n terminating ..."
-            )
             break
 
         if terminate_flag:
-            msg = received_data.get("message", None)
-            print(f"Termination signal received from Python with message: {msg}")
             payload = {"status": "ok", "message": "process terminated"}
             response = send_message(tcpip_client, payload)
 
