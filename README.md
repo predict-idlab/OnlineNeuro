@@ -216,7 +216,7 @@ Objective is to generate an AP on one end and block its propagation.
 
 # How to cite
 Our work has been accepted in SoftwareX. We would appreciate that if in some extent this work has helped your research, you would cite our work:
----
+```
 @article{OnlineNeuro,
 title = {OnlineNeuro: Active online learning for effective exploration of neural simulation parameters},
 journal = {SoftwareX},
@@ -230,6 +230,7 @@ author = {Diego {Nieves Avendano} and Arne Callaert and Philipp Schnepel and Voj
 keywords = {Neuroscience simulation, Neurostimulation, Active learning, Online optimization, Gaussian process, Deep learning},
 abstract = {Neuromodulation studies require efficient exploration of high-dimensional stimulation spaces, where heuristic tuning is often slow and suboptimal. We present OnlineNeuro, an open-source Python framework that combines active learning with neural simulators (AxonSim, Cajal, and AxonML). The package offers a unified interface for experiment setup, model training, adaptive sampling, and reporting. By prioritizing informative queries, OnlineNeuro improves sample efficiency for parameter exploration and meta-model construction. We demonstrate the framework on neural simulation use cases and benchmark tasks.}
 }
----
+```
+
 
 
