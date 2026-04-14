@@ -215,20 +215,21 @@ Objective is to generate an AP on one end and block its propagation.
 <img src="figures/gp_sinusoid_delay.png" alt="sinusoid_delay_example" width="450">
 
 # How to cite
-Pending journal publication
-
-You can cite the Software as:
-
-@misc{Nieves_Avendano2026-zh,
-  title     = "{OnlineNeuro}",
-  author    = "Nieves Avendano, Diego and Callaert, Arne and Van Hoecke,
-               Sofie and Ongenae, Femke and Schnepel, Philipp and Mihajlovic,
-               Vojkan",
-  abstract  = "A Bayesian Optimization library for optimization problems for
-               neural simulations. This release works for Axonsim (Matlab) and
-               Cajal/AxonML (Python).",
-  publisher = "Zenodo",
-  year      =  2026
+Our work has been accepted in SoftwareX. We would appreciate that if in some extent this work has helped your research, you would cite our work:
+---
+@article{OnlineNeuro,
+title = {OnlineNeuro: Active online learning for effective exploration of neural simulation parameters},
+journal = {SoftwareX},
+volume = {34},
+pages = {102648},
+year = {2026},
+issn = {2352-7110},
+doi = {https://doi.org/10.1016/j.softx.2026.102648},
+url = {https://www.sciencedirect.com/science/article/pii/S235271102600141X},
+author = {Diego {Nieves Avendano} and Arne Callaert and Philipp Schnepel and Vojkan Mihajlovic and Femke Ongenae and Sofie {Van Hoecke}},
+keywords = {Neuroscience simulation, Neurostimulation, Active learning, Online optimization, Gaussian process, Deep learning},
+abstract = {Neuromodulation studies require efficient exploration of high-dimensional stimulation spaces, where heuristic tuning is often slow and suboptimal. We present OnlineNeuro, an open-source Python framework that combines active learning with neural simulators (AxonSim, Cajal, and AxonML). The package offers a unified interface for experiment setup, model training, adaptive sampling, and reporting. By prioritizing informative queries, OnlineNeuro improves sample efficiency for parameter exploration and meta-model construction. We demonstrate the framework on neural simulation use cases and benchmark tasks.}
 }
+---
 
 
